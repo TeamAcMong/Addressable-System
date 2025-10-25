@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using AddressableManager.Loaders;
+using AddressableManager.Monitoring;
 
 namespace AddressableManager.Scopes
 {
@@ -23,6 +24,9 @@ namespace AddressableManager.Scopes
             _scopeName = scopeName;
             _loader = new AssetLoader();
             _isActive = false;
+
+            // Report scope registration
+            AssetMonitorBridge.ReportScopeRegistered(_scopeName, false);
         }
 
         public virtual void Activate()
@@ -41,6 +45,9 @@ namespace AddressableManager.Scopes
 
             _isActive = true;
             Debug.Log($"[{_scopeName}] Scope activated");
+
+            // Report scope state change
+            AssetMonitorBridge.ReportScopeStateChanged(_scopeName, true);
         }
 
         public virtual void Deactivate()
@@ -50,6 +57,9 @@ namespace AddressableManager.Scopes
             Debug.Log($"[{_scopeName}] Deactivating scope");
             _loader?.ClearCache();
             _isActive = false;
+
+            // Report scope state change
+            AssetMonitorBridge.ReportScopeStateChanged(_scopeName, false);
         }
 
         public virtual void Dispose()
@@ -58,6 +68,10 @@ namespace AddressableManager.Scopes
 
             Debug.Log($"[{_scopeName}] Disposing scope");
             Deactivate();
+
+            // Report scope cleared
+            AssetMonitorBridge.ReportScopeCleared(_scopeName);
+
             _loader?.Dispose();
             _loader = null;
             _disposed = true;
