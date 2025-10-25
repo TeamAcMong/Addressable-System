@@ -1,0 +1,144 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <Style src="project://database/Assets/com.game.addressables/Editor/UI/Styles.uss?fileID=7433441132597879392&amp;guid=PLACEHOLDER&amp;type=3#Styles" />
+
+    <ui:VisualElement name="root" style="flex-grow: 1;">
+        <!-- Header -->
+        <ui:VisualElement name="header" class="header">
+            <ui:Label text="Addressable Manager Dashboard" name="title" class="header-title" />
+            <ui:Button text="Refresh" name="refresh-btn" class="header-button" />
+        </ui:VisualElement>
+
+        <!-- Tab View -->
+        <ui:VisualElement name="tab-container" style="flex-grow: 1; flex-direction: column;">
+            <!-- Tab Buttons -->
+            <ui:VisualElement name="tab-buttons" class="tab-buttons-container">
+                <ui:Button text="Active Assets" name="tab-assets-btn" class="tab-button tab-button-active" />
+                <ui:Button text="Performance" name="tab-performance-btn" class="tab-button" />
+                <ui:Button text="Scopes" name="tab-scopes-btn" class="tab-button" />
+                <ui:Button text="Settings" name="tab-settings-btn" class="tab-button" />
+            </ui:VisualElement>
+
+            <!-- Tab Content -->
+            <ui:VisualElement name="tab-content" class="tab-content" style="flex-grow: 1;">
+
+                <!-- Tab 1: Active Assets -->
+                <ui:VisualElement name="tab-assets" class="tab-page" style="display: flex;">
+                    <ui:VisualElement name="assets-toolbar" class="toolbar">
+                        <ui:TextField name="search-field" label="Search:" class="search-field" />
+                        <ui:DropdownField name="scope-filter" label="Scope:" class="filter-dropdown" />
+                        <ui:Label text="0 assets loaded" name="asset-count-label" class="info-label" />
+                    </ui:VisualElement>
+
+                    <ui:ScrollView name="assets-scroll" style="flex-grow: 1;">
+                        <ui:ListView name="assets-list" class="asset-list" />
+                    </ui:ScrollView>
+                </ui:VisualElement>
+
+                <!-- Tab 2: Performance -->
+                <ui:VisualElement name="tab-performance" class="tab-page" style="display: none;">
+                    <!-- Stats Cards -->
+                    <ui:VisualElement name="stats-cards" class="stats-container">
+                        <ui:VisualElement name="stat-total-assets" class="stat-card">
+                            <ui:Label text="Total Assets" class="stat-label" />
+                            <ui:Label text="0" name="stat-total-value" class="stat-value" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement name="stat-cache-ratio" class="stat-card">
+                            <ui:Label text="Cache Hit Ratio" class="stat-label" />
+                            <ui:Label text="0%" name="stat-cache-value" class="stat-value" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement name="stat-memory" class="stat-card">
+                            <ui:Label text="Total Memory" class="stat-label" />
+                            <ui:Label text="0 MB" name="stat-memory-value" class="stat-value" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement name="stat-avg-load" class="stat-card">
+                            <ui:Label text="Avg Load Time" class="stat-label" />
+                            <ui:Label text="0 ms" name="stat-load-value" class="stat-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Memory Chart Placeholder -->
+                    <ui:VisualElement name="memory-chart" class="chart-container">
+                        <ui:Label text="Memory Usage Over Time" class="chart-title" />
+                        <ui:VisualElement name="memory-graph" class="graph-area" />
+                    </ui:VisualElement>
+
+                    <!-- Slowest Assets -->
+                    <ui:VisualElement name="slowest-assets-section" class="section">
+                        <ui:Label text="Slowest Loading Assets" class="section-title" />
+                        <ui:ListView name="slowest-assets-list" class="asset-list" />
+                    </ui:VisualElement>
+
+                    <ui:Button text="Export Report (CSV)" name="export-btn" class="action-button" />
+                </ui:VisualElement>
+
+                <!-- Tab 3: Scopes -->
+                <ui:VisualElement name="tab-scopes" class="tab-page" style="display: none;">
+                    <ui:VisualElement name="scopes-toolbar" class="toolbar">
+                        <ui:Label text="Scope Overview" class="section-title" />
+                        <ui:Button text="Cleanup All Scopes" name="cleanup-all-btn" class="action-button-secondary" />
+                    </ui:VisualElement>
+
+                    <ui:ScrollView name="scopes-scroll" style="flex-grow: 1;">
+                        <ui:Foldout text="Global Scope" name="scope-global" class="scope-foldout">
+                            <ui:Label text="Assets: 0 | Memory: 0 MB" name="scope-global-stats" class="scope-stats" />
+                            <ui:ListView name="scope-global-list" class="scope-asset-list" />
+                            <ui:Button text="Cleanup" name="scope-global-cleanup" class="scope-button" />
+                        </ui:Foldout>
+
+                        <ui:Foldout text="Session Scope" name="scope-session" class="scope-foldout">
+                            <ui:Label text="Assets: 0 | Memory: 0 MB" name="scope-session-stats" class="scope-stats" />
+                            <ui:ListView name="scope-session-list" class="scope-asset-list" />
+                            <ui:Button text="Cleanup" name="scope-session-cleanup" class="scope-button" />
+                        </ui:Foldout>
+
+                        <ui:Foldout text="Scene Scope" name="scope-scene" class="scope-foldout">
+                            <ui:Label text="Assets: 0 | Memory: 0 MB" name="scope-scene-stats" class="scope-stats" />
+                            <ui:ListView name="scope-scene-list" class="scope-asset-list" />
+                            <ui:Button text="Cleanup" name="scope-scene-cleanup" class="scope-button" />
+                        </ui:Foldout>
+
+                        <ui:Foldout text="Hierarchy Scope" name="scope-hierarchy" class="scope-foldout">
+                            <ui:Label text="Assets: 0 | Memory: 0 MB" name="scope-hierarchy-stats" class="scope-stats" />
+                            <ui:ListView name="scope-hierarchy-list" class="scope-asset-list" />
+                            <ui:Button text="Cleanup" name="scope-hierarchy-cleanup" class="scope-button" />
+                        </ui:Foldout>
+                    </ui:ScrollView>
+                </ui:VisualElement>
+
+                <!-- Tab 4: Settings -->
+                <ui:VisualElement name="tab-settings" class="tab-page" style="display: none;">
+                    <ui:Label text="Debug Settings" class="section-title" />
+
+                    <ui:DropdownField name="log-level-dropdown" label="Log Level:" class="settings-field" />
+
+                    <ui:Toggle name="auto-refresh-toggle" label="Auto Refresh Dashboard" value="true" class="settings-toggle" />
+
+                    <ui:SliderInt name="refresh-interval-slider" label="Refresh Interval (ms):" low-value="100" high-value="5000" value="500" class="settings-slider" />
+
+                    <ui:Label text="Load Simulation" class="section-title" style="margin-top: 20px;" />
+
+                    <ui:Toggle name="simulate-slow-toggle" label="Simulate Slow Loading" value="false" class="settings-toggle" />
+
+                    <ui:SliderInt name="delay-slider" label="Delay (ms):" low-value="100" high-value="5000" value="500" class="settings-slider" />
+
+                    <ui:Slider name="failure-rate-slider" label="Failure Rate (%):" low-value="0" high-value="50" value="0" class="settings-slider" />
+
+                    <ui:VisualElement style="margin-top: 30px;">
+                        <ui:Button text="Reset All Settings" name="reset-settings-btn" class="action-button-secondary" />
+                        <ui:Button text="Reset Statistics" name="reset-stats-btn" class="action-button-secondary" style="margin-top: 10px;" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Footer -->
+        <ui:VisualElement name="footer" class="footer">
+            <ui:Label text="Last Updated: Never" name="last-updated-label" class="footer-label" />
+            <ui:Label text="Not in Play Mode" name="status-label" class="footer-label" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

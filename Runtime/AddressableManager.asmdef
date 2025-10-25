@@ -3,7 +3,8 @@
     "rootNamespace": "AddressableManager",
     "references": [
         "Unity.ResourceManager",
-        "Unity.Addressables"
+        "Unity.Addressables",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
