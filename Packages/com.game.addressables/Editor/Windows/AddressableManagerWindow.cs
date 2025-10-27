@@ -80,7 +80,7 @@ namespace AddressableManager.Editor.Windows
 
             // Load UXML
             var visualTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                "Assets/com.game.addressables/Editor/UI/AddressableManagerWindow.uxml");
+                "Packages/com.game.addressables/Editor/UI/AddressableManagerWindow.uxml");
 
             if (visualTree != null)
             {
@@ -96,7 +96,7 @@ namespace AddressableManager.Editor.Windows
 
             // Load USS
             var styleSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Assets/com.game.addressables/Editor/UI/Styles.uss");
+                "Packages/com.game.addressables/Editor/UI/Styles.uss");
 
             if (styleSheet != null)
             {
