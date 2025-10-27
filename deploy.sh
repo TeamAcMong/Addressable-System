@@ -30,7 +30,7 @@ if [ -z "$SEMVER" ]; then
 fi
 
 # Configuration
-PREFIX="Assets/com.game.addressables"
+PREFIX="Packages/com.game.addressables"
 BRANCH="upm"
 
 echo "================================"
