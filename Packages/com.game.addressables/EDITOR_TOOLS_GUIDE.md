@@ -1,8 +1,12 @@
-# Editor Tools Guide - Addressable Manager v2.0
+# Editor Tools Guide - Addressable Manager v2.1
 
 ## 🎉 Welcome to the Professional Edition!
 
-Version 2.0 transforms Addressable Manager from a code-only library into a **professional-grade Unity package** with comprehensive Editor tools, visual debugging, and zero hardcoding required!
+Version 2.1 transforms Addressable Manager from a code-only library into a **professional-grade Unity package** with comprehensive Editor tools, visual debugging, and **automatic monitoring**!
+
+> **✨ NEW in v2.1**: All asset loading is now **automatically monitored** in the Editor!
+> No need for `.LoadAssetAsyncMonitored()` extensions - just use regular `LoadAssetAsync()`.
+> All code examples below work with automatic monitoring.
 
 ---
 

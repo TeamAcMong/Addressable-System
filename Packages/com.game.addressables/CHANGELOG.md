@@ -2,6 +2,37 @@
 
 All notable changes to this package will be documented in this file.
 
+## [2.1.0] - 2025-01-XX - Automatic Monitoring
+
+### 🎉 Breaking Changes (Minor)
+- **AssetLoaderExtensions deprecated**: `.LoadAssetAsyncMonitored()` methods marked as obsolete
+  - Migration: Simply remove `.Monitored` from method names (e.g., `LoadAssetAsync` instead of `LoadAssetAsyncMonitored`)
+  - Old code will still work (backward compatible) but shows warnings
+
+### Added
+- **Automatic Monitoring**: All asset loads now automatically tracked in Dashboard (Editor-only, zero build overhead)
+- **AssetLoader constructor**: Now accepts optional `scopeName` parameter for automatic scope tracking
+- **Monitoring integration**: All core load methods (`LoadAssetAsync`, `LoadAssetsByLabelAsync`, etc.) include built-in monitoring
+
+### Changed
+- **AssetLoader**: Added `#if UNITY_EDITOR` wrapped monitoring calls to all load operations
+- **BaseAssetScope**: Now passes scope name to AssetLoader constructor
+- **ScopeManager**: Passes scope ID to AssetLoader for proper tracking
+- **Documentation**: Updated README and EDITOR_TOOLS_GUIDE to reflect automatic monitoring
+
+### Improved
+- **Simplified API**: No need to remember special "Monitored" methods
+- **Complete tracking**: Dashboard always has full data (no missed loads)
+- **Consistent behavior**: Same methods work everywhere (Facade, Scopes, custom loaders)
+- **Zero overhead**: Monitoring code completely stripped in builds
+
+### Fixed
+- Issue where users had to manually use `.LoadAssetAsyncMonitored()` extensions
+- Dashboard missing data when users forgot to use monitored versions
+- Inconsistent API between monitored and non-monitored loads
+
+---
+
 ## [2.0.0] - 2025-01-XX - MAJOR UPDATE
 
 ### Added - Editor Tools & Monitoring
