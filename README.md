@@ -684,58 +684,33 @@ if (SessionAssetScope.Instance != null)
 
 # Design Decisions & Limitations
 
-## ⚠️ Known Limitations & Workarounds
+## ✅ Automatic Monitoring (v2.1+)
 
-### Issue 1: Facade Doesn't Auto-Monitor
+**All asset loading operations are automatically monitored in the Editor!**
 
-**Problem**:
 ```csharp
-// This doesn't appear in Dashboard automatically:
-var sprite = await Assets.Load<Sprite>("UI/Logo");
+// Everything is automatically tracked in Dashboard:
+var sprite = await Assets.Load<Sprite>("UI/Logo"); // ✅ Monitored
+var config = await GlobalAssetScope.Instance.Loader.LoadAssetAsync<Config>("Data/Config"); // ✅ Monitored
+var loader = new AssetLoader("MyScope");
+var handle = await loader.LoadAssetAsync<Texture>("Textures/Icon"); // ✅ Monitored
 ```
 
-**Why**:
-- Facade was designed before monitoring system
-- Adding monitoring would break existing API
-- Users might not want monitoring overhead for all loads
+**How it works:**
+- AssetLoader automatically reports to Dashboard when loading assets (Editor-only)
+- Each scope passes its name to AssetLoader for proper tracking
+- Zero overhead in builds (monitoring code is `#if UNITY_EDITOR`)
+- No need for special "Monitored" methods anymore
 
-**Workarounds**:
-
-**Option A: Use Scopes Directly (Recommended)**
-```csharp
-using AddressableManager.Scopes;
-using AddressableManager.Loaders;
-
-// Get scope
-var globalScope = GlobalAssetScope.Instance;
-
-// Load with monitoring
-var handle = await globalScope.Loader.LoadAssetAsyncMonitored<Sprite>(
-    "UI/Logo",
-    "Global"
-);
-
-// ✅ Now appears in Dashboard!
-```
-
-**Option B: Create Your Own Monitored Facade**
-```csharp
-public static class MonitoredAssets
-{
-    public static async Task<IAssetHandle<T>> Load<T>(string address)
-    {
-        var scope = GlobalAssetScope.Instance;
-        return await scope.Loader.LoadAssetAsyncMonitored<T>(address, "Global");
-    }
-}
-
-// Usage:
-var sprite = await MonitoredAssets.Load<Sprite>("UI/Logo");
-```
+**Deprecated Extensions:**
+- `LoadAssetAsyncMonitored()` - NO LONGER NEEDED (will show obsolete warning)
+- Just use `LoadAssetAsync()` directly - monitoring is built-in!
 
 ---
 
-### Issue 2: Scopes Are Singletons - Not Flexible
+## ⚠️ Known Limitations & Workarounds
+
+### Issue: Scopes Are Singletons - Not Flexible
 
 **Problem**:
 ```csharp
@@ -819,11 +794,8 @@ var playerLoader = scopeManager.GetOrCreateScope("PlayerSession");
 var gameLoader = scopeManager.GetOrCreateScope("GameSession");
 var matchLoader = scopeManager.GetOrCreateScope("MatchSession");
 
-// Load into specific session WITH monitoring
-var playerData = await playerLoader.LoadAssetAsyncMonitored<PlayerData>(
-    "Data/PlayerProfile",
-    "PlayerSession" // Dashboard shows under this scope
-);
+// Load into specific session (automatically monitored)
+var playerData = await playerLoader.LoadAssetAsync<PlayerData>("Data/PlayerProfile");
 
 // Clear specific session
 scopeManager.ClearScope("MatchSession");
@@ -832,7 +804,7 @@ scopeManager.ClearScope("MatchSession");
 **Benefits**:
 - ✅ Multiple sessions/scopes with unique IDs
 - ✅ Full control over lifecycle
-- ✅ Works with monitoring (use `.LoadAssetAsyncMonitored()`)
+- ✅ Automatic monitoring in Dashboard
 - ✅ Dashboard shows each scope separately
 - ✅ No singleton limitations
 
@@ -850,20 +822,13 @@ public class SimpleGame : MonoBehaviour
 {
     async void Start()
     {
-        // Use singleton scopes
+        // Use singleton scopes (automatically monitored in Dashboard)
         var global = GlobalAssetScope.Instance;
         var session = SessionAssetScope.Instance;
 
-        // Load with monitoring
-        var logo = await global.Loader.LoadAssetAsyncMonitored<Sprite>(
-            "UI/Logo",
-            "Global"
-        );
-
-        var playerData = await session.Loader.LoadAssetAsyncMonitored<PlayerData>(
-            "Data/Player",
-            "Session"
-        );
+        // Load assets - automatically tracked in Dashboard!
+        var logo = await global.Loader.LoadAssetAsync<Sprite>("UI/Logo");
+        var playerData = await session.Loader.LoadAssetAsync<PlayerData>("Data/Player");
     }
 }
 ```
@@ -893,16 +858,9 @@ public class ComplexGame : MonoBehaviour
         var gameLoader = _scopes.GetOrCreateScope("GameSession");
         var matchLoader = _scopes.GetOrCreateScope("MatchSession");
 
-        // Load into specific scopes WITH monitoring
-        var logo = await globalLoader.LoadAssetAsyncMonitored<Sprite>(
-            "UI/Logo",
-            "Global"
-        );
-
-        var inventory = await playerLoader.LoadAssetAsyncMonitored<InventoryData>(
-            "Data/Inventory",
-            "PlayerSession"
-        );
+        // Load assets - automatically tracked in Dashboard!
+        var logo = await globalLoader.LoadAssetAsync<Sprite>("UI/Logo");
+        var inventory = await playerLoader.LoadAssetAsync<InventoryData>("Data/Inventory");
     }
 
     void OnApplicationQuit()
@@ -929,18 +887,19 @@ public class ComplexGame : MonoBehaviour
 
 ## 🔧 Why These Design Choices?
 
-### Monitoring Is Opt-In (Not Automatic)
+### Monitoring Is Automatic (v2.1+)
 
-**Reasons**:
-1. **Performance**: Not all assets need tracking
-2. **Flexibility**: Users choose what to monitor
-3. **Backward Compatibility**: Existing code doesn't break
-4. **Zero Overhead in Builds**: Monitoring is Editor-only
+**Why automatic monitoring?**:
+1. **Simplicity**: No need to remember special methods
+2. **Complete Data**: Dashboard always has full picture
+3. **Zero Overhead in Builds**: Monitoring code is `#if UNITY_EDITOR` only
+4. **Consistent API**: Same methods work with and without monitoring
 
-**Trade-off**:
-- ❌ Users must use `.LoadAssetAsyncMonitored()` explicitly
-- ✅ No performance overhead for untracked assets
-- ✅ Clear which assets are being monitored
+**How it's implemented**:
+- AssetLoader constructor accepts optional `scopeName` parameter
+- All load methods have monitoring calls wrapped in `#if UNITY_EDITOR`
+- Scopes automatically pass their name to AssetLoader
+- Zero performance impact in builds (code is completely stripped)
 
 ### Scopes Are Singletons (By Default)
 
@@ -958,40 +917,44 @@ public class ComplexGame : MonoBehaviour
 
 ## ✅ Summary
 
-### Current State (v2.0)
+### Current State (v2.1)
 
 **Monitoring**:
-- ⚠️ Manual opt-in via `.LoadAssetAsyncMonitored()`
-- ✅ Scopes auto-tracked
-- ⚠️ Facade doesn't auto-monitor
+- ✅ **Automatic** - all loads are tracked in Dashboard (Editor-only)
+- ✅ Zero overhead in builds
+- ✅ No special methods needed
+- ✅ Facade, Scopes, and custom loaders all work
 
 **Scopes**:
 - ⚠️ Singletons (not flexible for complex apps)
 - ✅ Simple API for basic cases
-- ✅ Can create custom managers for advanced needs
+- ✅ Can create custom ScopeManager for advanced needs
 
 ### Recommended Approach
 
 **For Most Projects**:
 ```csharp
-// Use scopes directly with monitoring extensions
-var handle = await GlobalAssetScope.Instance.Loader
-    .LoadAssetAsyncMonitored<T>(address, "Global");
+// Everything is automatically monitored!
+var sprite = await Assets.Load<Sprite>("UI/Logo"); // ✅ Tracked
+var handle = await GlobalAssetScope.Instance.Loader.LoadAssetAsync<T>(address); // ✅ Tracked
 ```
 
 **For Complex Projects**:
 ```csharp
-// Create custom ScopeManager
+// Create custom ScopeManager - also automatically monitored
 var loader = ScopeManager.Instance.GetOrCreateScope("PlayerSession");
-var handle = await loader.LoadAssetAsyncMonitored<T>(address, "PlayerSession");
+var handle = await loader.LoadAssetAsync<T>(address); // ✅ Tracked
 ```
 
 ### What To Avoid
 
-❌ **Don't use Facade if you want monitoring**
+❌ **Don't use deprecated .Monitored() extensions**
 ```csharp
-// This won't show in Dashboard:
-var sprite = await Assets.Load<Sprite>("UI/Logo");
+// Old way (deprecated):
+var sprite = await loader.LoadAssetAsyncMonitored<Sprite>(address, scope);
+
+// New way (automatic):
+var sprite = await loader.LoadAssetAsync<Sprite>(address); // ✅
 ```
 
 ❌ **Don't expect multiple sessions from built-in scopes**
@@ -999,6 +962,8 @@ var sprite = await Assets.Load<Sprite>("UI/Logo");
 // Won't work - singleton:
 var session1 = SessionAssetScope.Instance;
 var session2 = SessionAssetScope.Instance; // Same as session1!
+
+// Solution: Use ScopeManager for multiple sessions
 ```
 
 ---

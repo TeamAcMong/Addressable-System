@@ -5,11 +5,15 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using AddressableManager.Core;
+#if UNITY_EDITOR
+using AddressableManager.Monitoring;
+#endif
 
 namespace AddressableManager.Loaders
 {
     /// <summary>
     /// Core asset loader with caching, reference counting, and lifecycle management
+    /// Automatically monitors all operations in Editor for Dashboard tracking
     /// </summary>
     public class AssetLoader : IDisposable
     {
@@ -22,10 +26,23 @@ namespace AddressableManager.Loaders
 
         private bool _disposed;
 
+        // Scope name for monitoring (Editor-only, zero overhead in builds)
+        private readonly string _scopeName;
+
+        /// <summary>
+        /// Create AssetLoader with optional scope name for monitoring
+        /// </summary>
+        /// <param name="scopeName">Scope name for Dashboard tracking (Editor-only)</param>
+        public AssetLoader(string scopeName = "Unknown")
+        {
+            _scopeName = scopeName;
+        }
+
         #region Load by Address
 
         /// <summary>
         /// Load asset asynchronously by address
+        /// Automatically monitored in Editor for Dashboard tracking
         /// </summary>
         public async Task<IAssetHandle<T>> LoadAssetAsync<T>(string address)
         {
@@ -41,8 +58,13 @@ namespace AddressableManager.Loaders
                 return null;
             }
 
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
             // Create cache key with type to allow different types for same address
             string cacheKey = $"{address}_{typeof(T).Name}";
+            bool fromCache = false;
 
             // Check cache first
             if (_assetCache.TryGetValue(cacheKey, out var cachedObj))
@@ -52,6 +74,20 @@ namespace AddressableManager.Loaders
                 {
                     Debug.Log($"[AssetLoader] Cache hit for: {address}");
                     cachedHandle.Retain();
+                    fromCache = true;
+
+#if UNITY_EDITOR
+                    // Report cache hit to monitoring
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        true // from cache
+                    );
+#endif
+
                     return cachedHandle;
                 }
                 else
@@ -80,6 +116,19 @@ namespace AddressableManager.Loaders
                     _activeHandles.Add(handle);
 
                     Debug.Log($"[AssetLoader] Successfully loaded: {address}");
+
+#if UNITY_EDITOR
+                    // Report successful load to monitoring
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        false // not from cache
+                    );
+#endif
+
                     return handle;
                 }
                 else
@@ -101,6 +150,7 @@ namespace AddressableManager.Loaders
 
         /// <summary>
         /// Load asset by AssetReference
+        /// Automatically monitored in Editor for Dashboard tracking
         /// </summary>
         public async Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
         {
@@ -116,6 +166,10 @@ namespace AddressableManager.Loaders
                 return null;
             }
 
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
             var address = assetReference.AssetGUID;
             string cacheKey = $"{address}_{typeof(T).Name}";
 
@@ -126,6 +180,18 @@ namespace AddressableManager.Loaders
                 if (cachedHandle != null && cachedHandle.IsValid)
                 {
                     cachedHandle.Retain();
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        true // from cache
+                    );
+#endif
+
                     return cachedHandle;
                 }
                 else
@@ -150,6 +216,17 @@ namespace AddressableManager.Loaders
                     _assetCache[cacheKey] = handle;
                     _activeHandles.Add(handle);
 
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        false // not from cache
+                    );
+#endif
+
                     return handle;
                 }
                 else
@@ -171,6 +248,7 @@ namespace AddressableManager.Loaders
 
         /// <summary>
         /// Load multiple assets by label
+        /// Automatically monitored in Editor for Dashboard tracking
         /// </summary>
         public async Task<List<IAssetHandle<T>>> LoadAssetsByLabelAsync<T>(string label)
         {
@@ -185,6 +263,10 @@ namespace AddressableManager.Loaders
                 Debug.LogError("[AssetLoader] Label cannot be null or empty");
                 return null;
             }
+
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
 
             try
             {
@@ -209,6 +291,24 @@ namespace AddressableManager.Loaders
                     }
 
                     Debug.Log($"[AssetLoader] Loaded {handles.Count} assets with label: {label}");
+
+#if UNITY_EDITOR
+                    // Report each asset loaded
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    var avgTimePerAsset = handles.Count > 0 ? loadDuration / handles.Count : loadDuration;
+
+                    foreach (var handle in handles)
+                    {
+                        AssetMonitorBridge.ReportAssetLoaded(
+                            $"{label}/*",
+                            typeof(T).Name,
+                            _scopeName,
+                            avgTimePerAsset,
+                            false // not from cache
+                        );
+                    }
+#endif
+
                     return handles;
                 }
                 else

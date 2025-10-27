@@ -8,109 +8,68 @@ using AddressableManager.Monitoring;
 namespace AddressableManager.Loaders
 {
     /// <summary>
-    /// Extension methods for AssetLoader with automatic monitoring
-    /// These wrap the standard calls with performance tracking
+    /// [DEPRECATED] Extension methods for AssetLoader with automatic monitoring
+    ///
+    /// These extensions are NO LONGER NEEDED - AssetLoader now has built-in monitoring!
+    ///
+    /// OLD WAY (no longer required):
+    ///   await loader.LoadAssetAsyncMonitored<T>(address, scopeName);
+    ///
+    /// NEW WAY (automatic):
+    ///   await loader.LoadAssetAsync<T>(address); // Automatically monitored!
+    ///
+    /// These methods are kept for backward compatibility only.
     /// </summary>
+    [System.Obsolete("AssetLoaderExtensions are deprecated. AssetLoader now has built-in monitoring. Use LoadAssetAsync() directly.", false)]
     public static class AssetLoaderExtensions
     {
         /// <summary>
-        /// Load asset async with monitoring (use this helper for automatic tracking)
+        /// [DEPRECATED] Use loader.LoadAssetAsync() directly - monitoring is now automatic
         /// </summary>
+        [System.Obsolete("Use LoadAssetAsync() directly - monitoring is now built-in", false)]
         public static async Task<IAssetHandle<T>> LoadAssetAsyncMonitored<T>(
             this AssetLoader loader,
             string address,
             string scopeName = "Unknown")
         {
-            var startTime = Time.realtimeSinceStartup;
-            bool fromCache = false;
-
-            // TODO: We can't check cache directly, so we'll detect based on load time
-            var handle = await loader.LoadAssetAsync<T>(address);
-
-            if (handle != null)
-            {
-                var loadDuration = Time.realtimeSinceStartup - startTime;
-
-                // If load was very fast (<1ms), it was likely from cache
-                fromCache = loadDuration < 0.001f;
-
-                // Report to monitors
-                AssetMonitorBridge.ReportAssetLoaded(
-                    address,
-                    typeof(T).Name,
-                    scopeName,
-                    loadDuration,
-                    fromCache
-                );
-            }
-
-            return handle;
+            // Just forward to the standard method - it now has monitoring built-in
+            return await loader.LoadAssetAsync<T>(address);
         }
 
         /// <summary>
-        /// Load asset by AssetReference with monitoring
+        /// [DEPRECATED] Use loader.LoadAssetAsync() directly - monitoring is now automatic
         /// </summary>
+        [System.Obsolete("Use LoadAssetAsync(AssetReference) directly - monitoring is now built-in", false)]
         public static async Task<IAssetHandle<T>> LoadAssetAsyncMonitored<T>(
             this AssetLoader loader,
             AssetReference assetReference,
             string scopeName = "Unknown")
         {
-            if (assetReference == null || !assetReference.RuntimeKeyIsValid())
-            {
-                Debug.LogError("[AssetLoader] Invalid AssetReference");
-                return null;
-            }
-
-            var address = assetReference.AssetGUID;
-            return await loader.LoadAssetAsyncMonitored<T>(address, scopeName);
+            // Just forward to the standard method - it now has monitoring built-in
+            return await loader.LoadAssetAsync<T>(assetReference);
         }
 
         /// <summary>
-        /// Load multiple assets by label with monitoring
+        /// [DEPRECATED] Use loader.LoadAssetsByLabelAsync() directly - monitoring is now automatic
         /// </summary>
+        [System.Obsolete("Use LoadAssetsByLabelAsync() directly - monitoring is now built-in", false)]
         public static async Task<List<IAssetHandle<T>>> LoadAssetsByLabelAsyncMonitored<T>(
             this AssetLoader loader,
             string label,
             string scopeName = "Unknown")
         {
-            var startTime = Time.realtimeSinceStartup;
-
-            var handles = await loader.LoadAssetsByLabelAsync<T>(label);
-
-            if (handles != null && handles.Count > 0)
-            {
-                var loadDuration = Time.realtimeSinceStartup - startTime;
-
-                // Report each asset
-                foreach (var handle in handles)
-                {
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        $"{label}/*",
-                        typeof(T).Name,
-                        scopeName,
-                        loadDuration / handles.Count, // Avg time per asset
-                        false
-                    );
-                }
-            }
-
-            return handles;
+            // Just forward to the standard method - it now has monitoring built-in
+            return await loader.LoadAssetsByLabelAsync<T>(label);
         }
 
         /// <summary>
-        /// Release asset handle with monitoring
+        /// [DEPRECATED] Use handle.Release() directly - monitoring handles this automatically
         /// </summary>
+        [System.Obsolete("Use handle.Release() directly - no need for monitored version", false)]
         public static void ReleaseMonitored<T>(this IAssetHandle<T> handle, string address)
         {
             if (handle == null) return;
-
             handle.Release();
-
-            // Report release
-            if (!string.IsNullOrEmpty(address))
-            {
-                AssetMonitorBridge.ReportAssetReleased(address, typeof(T).Name);
-            }
         }
     }
 }
