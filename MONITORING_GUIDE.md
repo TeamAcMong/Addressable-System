@@ -502,7 +502,6 @@ var cacheRatio = tracker.CacheHitRatio;
 
 **For more info:**
 - [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md) - Complete Editor features guide
-- [README.md](README.md) - Package overview
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - API reference
+- [README.md](README.md) - Package overview with comprehensive guide
 
 Happy monitoring! 🎉

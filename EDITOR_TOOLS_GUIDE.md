@@ -531,6 +531,533 @@ Memory warnings:
 
 ---
 
+---
+
+# ScopeManager for Complex Apps
+
+## 🎯 When To Use ScopeManager
+
+Use `ScopeManager` instead of built-in singleton scopes when you need:
+
+- ✅ Multiple independent sessions (PlayerSession, GameSession, MatchSession)
+- ✅ Fine-grained control over scope lifecycle
+- ✅ Custom scope naming and organization
+- ✅ Flexible scope creation/destruction
+
+Use built-in scopes (`GlobalAssetScope.Instance`, etc.) when:
+
+- ✅ Simple single-player game
+- ✅ Only need 1 global + 1 session + scene scopes
+- ✅ Beginner-friendly API
+
+---
+
+## 📝 Basic Usage
+
+### 1. Simple Multi-Session Example
+
+```csharp
+using UnityEngine;
+using AddressableManager.Managers;
+using AddressableManager.Loaders;
+
+public class GameController : MonoBehaviour
+{
+    private ScopeManager _scopes;
+
+    async void Start()
+    {
+        _scopes = ScopeManager.Instance;
+
+        // Create different scopes for different purposes
+        var globalLoader = _scopes.GetOrCreateScope("Global");
+        var playerLoader = _scopes.GetOrCreateScope("PlayerSession");
+        var gameLoader = _scopes.GetOrCreateScope("GameSession");
+
+        // Load into specific scopes WITH monitoring
+        var uiAtlas = await globalLoader.LoadAssetAsyncMonitored<Texture2D>(
+            "UI/Atlas",
+            "Global" // Shows in Dashboard under "Global"
+        );
+
+        var playerProfile = await playerLoader.LoadAssetAsyncMonitored<PlayerData>(
+            "Data/PlayerProfile",
+            "PlayerSession" // Shows under "PlayerSession"
+        );
+
+        var levelData = await gameLoader.LoadAssetAsyncMonitored<LevelData>(
+            "Levels/Level1",
+            "GameSession" // Shows under "GameSession"
+        );
+
+        // Open Dashboard (Ctrl+Alt+A) to see all 3 scopes!
+    }
+
+    void OnApplicationQuit()
+    {
+        // Keep global, clear everything else
+        _scopes.ClearAllExceptGlobal();
+    }
+}
+```
+
+**Dashboard will show**:
+```
+Scopes Tab:
+├─ Global (1 asset, 5.2 MB)
+│  └─ UI/Atlas
+├─ PlayerSession (1 asset, 0.5 MB)
+│  └─ Data/PlayerProfile
+└─ GameSession (1 asset, 2.1 MB)
+   └─ Levels/Level1
+```
+
+---
+
+### 2. Multiplayer Match Example
+
+```csharp
+using UnityEngine;
+using AddressableManager.Managers;
+using AddressableManager.Loaders;
+
+public class MultiplayerManager : MonoBehaviour
+{
+    private ScopeManager _scopes;
+    private string _currentMatchId;
+
+    public async void StartMatch(string matchId)
+    {
+        _scopes = ScopeManager.Instance;
+        _currentMatchId = $"Match_{matchId}";
+
+        // Create scope for this specific match
+        var matchLoader = _scopes.GetOrCreateScope(_currentMatchId);
+
+        // Load match-specific assets
+        var mapData = await matchLoader.LoadAssetAsyncMonitored<MapData>(
+            $"Maps/{matchId}",
+            _currentMatchId
+        );
+
+        var playerModels = await matchLoader.LoadAssetsByLabelAsyncMonitored<GameObject>(
+            $"Characters_{matchId}",
+            _currentMatchId
+        );
+
+        Debug.Log($"Match {matchId} started with {playerModels.Count} characters");
+    }
+
+    public void EndMatch()
+    {
+        if (!string.IsNullOrEmpty(_currentMatchId))
+        {
+            // Clear only this match's assets
+            _scopes.ClearScope(_currentMatchId);
+            Debug.Log($"Cleared match scope: {_currentMatchId}");
+
+            _currentMatchId = null;
+        }
+    }
+
+    void OnApplicationQuit()
+    {
+        // Clear all match scopes, keep global
+        _scopes.ClearAllExceptGlobal();
+    }
+}
+```
+
+**Use case**: Each multiplayer match gets its own scope. When match ends, only that match's assets are cleared!
+
+---
+
+### 3. Complex RPG Example
+
+```csharp
+using UnityEngine;
+using AddressableManager.Managers;
+using AddressableManager.Loaders;
+using System.Collections.Generic;
+
+public class RPGGameManager : MonoBehaviour
+{
+    private ScopeManager _scopes;
+
+    // Different loaders for different systems
+    private AssetLoader _globalLoader;      // UI, fonts, shared assets
+    private AssetLoader _playerLoader;      // Player inventory, skills, stats
+    private AssetLoader _worldLoader;       // Current world/zone assets
+    private AssetLoader _questLoader;       // Active quests
+    private AssetLoader _partyLoader;       // Party members
+
+    async void Start()
+    {
+        _scopes = ScopeManager.Instance;
+
+        // Initialize all scopes
+        _globalLoader = _scopes.GetOrCreateScope("Global");
+        _playerLoader = _scopes.GetOrCreateScope("Player");
+        _worldLoader = _scopes.GetOrCreateScope("World");
+        _questLoader = _scopes.GetOrCreateScope("Quests");
+        _partyLoader = _scopes.GetOrCreateScope("Party");
+
+        await LoadGlobalAssets();
+        await LoadPlayerData();
+    }
+
+    async Task LoadGlobalAssets()
+    {
+        var uiAtlas = await _globalLoader.LoadAssetAsyncMonitored<Texture2D>(
+            "UI/Atlas",
+            "Global"
+        );
+
+        var itemDatabase = await _globalLoader.LoadAssetAsyncMonitored<ItemDatabase>(
+            "Data/Items",
+            "Global"
+        );
+
+        Debug.Log("Global assets loaded");
+    }
+
+    async Task LoadPlayerData()
+    {
+        var playerProfile = await _playerLoader.LoadAssetAsyncMonitored<PlayerProfile>(
+            "Save/PlayerProfile",
+            "Player"
+        );
+
+        var inventory = await _playerLoader.LoadAssetAsyncMonitored<InventoryData>(
+            "Save/Inventory",
+            "Player"
+        );
+
+        Debug.Log("Player data loaded");
+    }
+
+    public async void EnterZone(string zoneName)
+    {
+        // Clear previous world assets
+        _scopes.ClearScope("World");
+
+        // Reload with new zone
+        _worldLoader = _scopes.GetOrCreateScope("World");
+
+        var zoneData = await _worldLoader.LoadAssetAsyncMonitored<ZoneData>(
+            $"Zones/{zoneName}",
+            "World"
+        );
+
+        var enemies = await _worldLoader.LoadAssetsByLabelAsyncMonitored<GameObject>(
+            $"Enemies_{zoneName}",
+            "World"
+        );
+
+        Debug.Log($"Entered zone: {zoneName} with {enemies.Count} enemy types");
+    }
+
+    public async void StartQuest(int questId)
+    {
+        var questData = await _questLoader.LoadAssetAsyncMonitored<QuestData>(
+            $"Quests/Quest_{questId}",
+            "Quests"
+        );
+
+        Debug.Log($"Started quest: {questData.name}");
+    }
+
+    public void ExitToMainMenu()
+    {
+        // Clear everything except Global
+        _scopes.ClearAllExcept("Global");
+
+        Debug.Log("Returned to main menu");
+    }
+
+    void OnApplicationQuit()
+    {
+        _scopes.ClearAll();
+    }
+}
+```
+
+**Dashboard shows**:
+```
+Scopes:
+├─ Global (UI, databases) - 15 MB
+├─ Player (save data) - 2 MB
+├─ World (current zone) - 50 MB
+├─ Quests (active quests) - 5 MB
+└─ Party (party members) - 10 MB
+
+Total: 82 MB across 5 scopes
+```
+
+---
+
+## 🔧 Advanced Patterns
+
+### Pattern 1: Scope Groups
+
+```csharp
+public class ScopeGroups
+{
+    private ScopeManager _scopes = ScopeManager.Instance;
+
+    // Group related scopes
+    private readonly string[] _gameplayScopes = {
+        "World",
+        "Quests",
+        "Combat",
+        "Dialogue"
+    };
+
+    private readonly string[] _persistentScopes = {
+        "Global",
+        "Player"
+    };
+
+    public void ClearGameplay()
+    {
+        foreach (var scope in _gameplayScopes)
+        {
+            _scopes.ClearScope(scope);
+        }
+    }
+
+    public void ClearAllExceptPersistent()
+    {
+        _scopes.ClearAllExcept(_persistentScopes);
+    }
+}
+```
+
+### Pattern 2: Lazy Scope Creation
+
+```csharp
+public class LazyScopes
+{
+    private ScopeManager _scopes = ScopeManager.Instance;
+    private Dictionary<string, AssetLoader> _cache = new();
+
+    public AssetLoader GetWorldScope()
+    {
+        if (!_cache.ContainsKey("World"))
+        {
+            _cache["World"] = _scopes.GetOrCreateScope("World");
+        }
+        return _cache["World"];
+    }
+
+    // Similar for other scopes...
+}
+```
+
+### Pattern 3: Scope Prefixes
+
+```csharp
+public class PrefixedScopes
+{
+    private ScopeManager _scopes = ScopeManager.Instance;
+
+    public AssetLoader GetLevelScope(int levelId)
+    {
+        return _scopes.GetOrCreateScope($"Level_{levelId}");
+    }
+
+    public AssetLoader GetPlayerScope(string playerId)
+    {
+        return _scopes.GetOrCreateScope($"Player_{playerId}");
+    }
+
+    public void ClearAllLevels()
+    {
+        var levelScopes = _scopes.ActiveScopes
+            .Where(s => s.StartsWith("Level_"))
+            .ToList();
+
+        foreach (var scope in levelScopes)
+        {
+            _scopes.ClearScope(scope);
+        }
+    }
+}
+```
+
+---
+
+## 📊 Monitoring With ScopeManager
+
+### View In Dashboard
+
+1. Enter Play Mode
+2. Open Dashboard (`Ctrl+Alt+A`)
+3. Go to **Scopes** tab
+4. You'll see ALL your custom scopes!
+
+```
+Scopes Tab:
+├─ Global
+├─ PlayerSession
+├─ GameSession
+├─ Match_12345
+├─ World
+├─ Quests
+└─ Party
+```
+
+Each scope shows:
+- Asset count
+- Memory usage
+- Individual assets
+
+### Track Asset Loads
+
+Always use `.LoadAssetAsyncMonitored()`:
+
+```csharp
+var loader = _scopes.GetOrCreateScope("MyScope");
+
+// ✅ Tracked - shows in Dashboard
+var handle = await loader.LoadAssetAsyncMonitored<T>(
+    address,
+    "MyScope" // Must match scope ID!
+);
+
+// ❌ Not tracked - Dashboard won't see it
+var handle2 = await loader.LoadAssetAsync<T>(address);
+```
+
+---
+
+## ⚙️ Best Practices
+
+### 1. Consistent Naming
+
+```csharp
+// ✅ Good - clear naming
+"Global"
+"PlayerSession"
+"GameSession"
+"World_Overworld"
+"World_Dungeon1"
+
+// ❌ Bad - unclear
+"Scope1"
+"temp"
+"stuff"
+```
+
+### 2. Match Scope ID With Monitoring
+
+```csharp
+var scopeId = "PlayerSession";
+var loader = _scopes.GetOrCreateScope(scopeId);
+
+// ✅ Good - consistent
+await loader.LoadAssetAsyncMonitored<T>(address, scopeId);
+
+// ❌ Bad - mismatch
+await loader.LoadAssetAsyncMonitored<T>(address, "Session"); // Different name!
+```
+
+### 3. Clear At Appropriate Times
+
+```csharp
+// ✅ Good timing
+void OnSceneUnload() => _scopes.ClearScope("Scene");
+void OnMatchEnd() => _scopes.ClearScope($"Match_{matchId}");
+void OnLogout() => _scopes.ClearAllExceptGlobal();
+
+// ❌ Bad timing
+void Update() => _scopes.ClearAll(); // Too aggressive!
+```
+
+### 4. Document Your Scopes
+
+```csharp
+/// <summary>
+/// Scope Organization:
+/// - Global: UI, audio, persistent data (never cleared)
+/// - Player: Player profile, inventory (cleared on logout)
+/// - World: Current zone/level (cleared on zone change)
+/// - Match_*: Match-specific (cleared on match end)
+/// </summary>
+public class ScopeDocumentation { }
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue: Scope Not Showing In Dashboard
+
+**Cause**: Forgot to use `.LoadAssetAsyncMonitored()`
+
+**Fix**:
+```csharp
+// ❌ Not monitored
+await loader.LoadAssetAsync<T>(address);
+
+// ✅ Monitored
+await loader.LoadAssetAsyncMonitored<T>(address, scopeId);
+```
+
+### Issue: Assets Not Clearing
+
+**Cause**: Wrong scope ID or still holding references
+
+**Fix**:
+```csharp
+// Verify scope ID
+Debug.Log($"Active scopes: {string.Join(", ", _scopes.ActiveScopes)}");
+
+// Clear specific scope
+_scopes.ClearScope("MyScope");
+
+// Or clear all except important ones
+_scopes.ClearAllExcept("Global", "Player");
+```
+
+### Issue: Memory Still High After Clear
+
+**Cause**: Unity hasn't run GC yet
+
+**Fix**:
+```csharp
+_scopes.ClearScope("MyScope");
+
+// Force GC (Editor only, for testing)
+#if UNITY_EDITOR
+System.GC.Collect();
+Resources.UnloadUnusedAssets();
+#endif
+```
+
+---
+
+## ✅ Summary
+
+**ScopeManager provides**:
+- ✅ Multiple named scopes (not singletons)
+- ✅ Fine-grained control
+- ✅ Dashboard integration (with `.Monitored()`)
+- ✅ Flexible lifecycle management
+
+**Use it when**:
+- You need multiple sessions/scopes
+- Built-in singletons are too limiting
+- You want full control
+
+**Remember**:
+- Always use `.LoadAssetAsyncMonitored()` for Dashboard tracking
+- Match scope ID between `GetOrCreateScope()` and monitoring
+- Clear scopes at appropriate times
+- Document your scope organization
+
+---
+
 ## 🚀 What's Next?
 
 This is version 2.0 with Editor Tools Phase 1 implemented. Future updates may include:
@@ -548,9 +1075,8 @@ Stay tuned! 🎉
 ---
 
 **For more information, see:**
-- [README.md](README.md) - Package overview
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - API reference
+- [README.md](README.md) - Package overview and comprehensive guide
+- [MONITORING_GUIDE.md](MONITORING_GUIDE.md) - Complete monitoring guide
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 
 **Need help?** Check the documentation or inspect existing components to see how they work!
