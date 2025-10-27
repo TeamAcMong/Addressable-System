@@ -1,0 +1,24 @@
+{
+  "name": "com.game.addressables",
+  "version": "2.0.0",
+  "displayName": "Addressable Manager",
+  "description": "Professional Addressable Asset Management System with comprehensive Editor tools, real-time monitoring dashboard, scope-based lifecycle, object pooling, progress tracking, and visual debugging. No more hardcoded addresses!",
+  "unity": "2021.3",
+  "keywords": [
+    "addressables",
+    "asset management",
+    "resource management",
+    "pooling",
+    "editor tools",
+    "dashboard",
+    "profiling",
+    "debugging"
+  ],
+  "author": {
+    "name": "Game Team"
+  },
+  "dependencies": {
+    "com.unity.addressables": "2.3.1",
+    "com.unity.textmeshpro": "3.0.6"
+  }
+}
