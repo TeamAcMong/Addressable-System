@@ -269,3 +269,864 @@ await Assets.Load<Sprite>("Icon2", info => tracker2.UpdateProgress(info));
 ## License
 
 MIT License - Feel free to use in your projects!
+
+---
+
+# 📚 Comprehensive Guide
+
+## Table of Contents
+
+1. [System Architecture](#system-architecture)
+2. [API Reference](#api-reference)
+3. [Design Decisions & Limitations](#design-decisions--limitations)
+4. [Performance & Memory](#performance--memory)
+5. [Extension Points](#extension-points)
+
+---
+
+# System Architecture
+
+## Architectural Layers
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Presentation Layer                         │
+│              (Facade Pattern - Simple API)                    │
+│                                                                │
+│  Assets (Static API)  ─────►  AddressablesFacade             │
+│  • One-liner operations      • Unified interface              │
+│  • Zero boilerplate          • High-level orchestration       │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  Business Logic Layer                         │
+│              (Scope-Based Lifecycle Management)               │
+│                                                                │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │  Global    │  │  Session   │  │   Scene    │             │
+│  │  Scope     │  │  Scope     │  │   Scope    │             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+│         │              │              │                       │
+│         └──────────────┼──────────────┘                       │
+│                        │                                      │
+│                  ┌────────────┐                               │
+│                  │ Hierarchy  │                               │
+│                  │   Scope    │                               │
+│                  └────────────┘                               │
+│                                                                │
+│  Each scope has its own AssetLoader with isolated cache       │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    Data Access Layer                          │
+│             (Core Loading & Cache Management)                 │
+│                                                                │
+│  AssetLoader                                                  │
+│  ├─ Load by Address/Reference/Label                          │
+│  ├─ Instantiate GameObjects                                  │
+│  ├─ Download Dependencies                                    │
+│  └─ Cache Management with Reference Counting                 │
+│                                                                │
+│  IAssetHandle<T>                                              │
+│  ├─ Wraps AsyncOperationHandle                               │
+│  ├─ Reference Counting (Retain/Release)                      │
+│  └─ Automatic Cleanup                                        │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  Cross-Cutting Concerns                       │
+│                                                                │
+│  ┌─────────────────────┐      ┌──────────────────────────┐  │
+│  │  Pooling System     │      │  Progress Tracking       │  │
+│  │  (Factory Pattern)  │      │  (Observer Pattern)      │  │
+│  │                     │      │                          │  │
+│  │  IPoolFactory       │      │  IProgressTracker        │  │
+│  │  ├─ Unity Adapter   │      │  ├─ ProgressTracker      │  │
+│  │  ├─ Custom Adapter  │      │  └─ CompositeTracker     │  │
+│  │  └─ Your Adapter    │      │                          │  │
+│  └─────────────────────┘      └──────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│               Infrastructure Layer                            │
+│            (Unity Addressables API)                           │
+│                                                                │
+│  Addressables.LoadAssetAsync<T>()                            │
+│  Addressables.InstantiateAsync()                             │
+│  Addressables.DownloadDependenciesAsync()                    │
+│  Addressables.Release()                                      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Component Responsibilities
+
+### Core Components
+
+#### `IAssetHandle<T>`
+- **Responsibility**: Wrapper for `AsyncOperationHandle<T>` with lifecycle management
+- **Key Features**:
+  - Reference counting (Retain/Release)
+  - Safe disposal
+  - Status tracking
+- **Dependencies**: Unity Addressables
+
+#### `AssetLoader`
+- **Responsibility**: Core asset loading and cache management
+- **Key Features**:
+  - Load by address/reference/label
+  - Instantiate GameObjects
+  - Download dependencies
+  - Cache with deduplication
+  - Reference counting
+- **Dependencies**: Unity Addressables, `IAssetHandle<T>`
+
+### Scope Management
+
+#### `IAssetScope`
+- **Responsibility**: Define lifecycle contract for scoped asset management
+- **Implementations**:
+  - `GlobalAssetScope`: App lifetime (DontDestroyOnLoad)
+  - `SessionAssetScope`: Gameplay session
+  - `SceneAssetScope`: Scene lifetime
+  - `HierarchyAssetScope`: GameObject lifetime
+
+#### Scope Lifecycle Comparison
+
+| Scope | Created | Destroyed | Use Case |
+|-------|---------|-----------|----------|
+| Global | On first access | Never (app lifetime) | UI atlases, shaders, sounds |
+| Session | `StartSession()` | `EndSession()` | Character data, level configs |
+| Scene | Scene load | Scene unload | Scene-specific prefabs |
+| Hierarchy | Added to GameObject | GameObject destroyed | Per-character weapons, effects |
+
+### Data Flow Example: Simple Load
+
+```
+User Code
+   │
+   └─► Assets.Load<Sprite>("UI/Icon")
+         │
+         └─► AddressablesFacade.LoadGlobalAsync()
+               │
+               └─► GlobalAssetScope.Loader.LoadAssetAsync()
+                     │
+                     ├─► Check cache (hit) ──► Return cached handle (Retain)
+                     │
+                     └─► Check cache (miss)
+                           │
+                           └─► Addressables.LoadAssetAsync()
+                                 │
+                                 └─► Wrap in AssetHandle
+                                       │
+                                       └─► Store in cache
+                                             │
+                                             └─► Return handle
+```
+
+---
+
+# API Reference
+
+## 🚀 Common Operations
+
+### Load Asset
+
+```csharp
+// Global scope (persistent)
+var sprite = await Assets.Load<Sprite>("UI/Icon");
+
+// Session scope (until session ends)
+var config = await Assets.LoadSession<Config>("Data/Config");
+
+// Scene scope (until scene unloads)
+var material = await Assets.LoadScene<Material>("Materials/Special");
+```
+
+### Load with Progress
+
+```csharp
+var texture = await Assets.Load<Texture2D>("Textures/Large", progress =>
+{
+    progressBar.value = progress.Progress;
+    statusText.text = progress.CurrentOperation;
+});
+```
+
+### Object Pooling
+
+```csharp
+// Create pool
+await Assets.CreatePool("Enemies/Zombie", preloadCount: 10, maxSize: 50);
+
+// Spawn
+var zombie = Assets.Spawn("Enemies/Zombie", position, rotation);
+
+// Despawn
+Assets.Despawn("Enemies/Zombie", zombie);
+```
+
+### Session Management
+
+```csharp
+// Start session
+Assets.StartSession();
+
+// Load session assets
+var levelData = await Assets.LoadSession<LevelData>("Levels/Level1");
+
+// End session (auto-cleanup)
+Assets.EndSession();
+```
+
+### Hierarchy-Scoped Assets
+
+```csharp
+// Add to GameObject - auto-cleanup when destroyed
+var scope = HierarchyAssetScope.AddTo(characterGameObject);
+var weapon = await scope.Loader.LoadAssetAsync<GameObject>("Weapons/Sword");
+```
+
+## 📦 Scope Comparison
+
+| Scope | Lifetime | Use Cases |
+|-------|----------|-----------|
+| **Global** | App lifetime (DontDestroyOnLoad) | UI atlases, sound effects, shaders |
+| **Session** | Gameplay session | Character data, level configs |
+| **Scene** | Current scene | Scene-specific prefabs, materials |
+| **Hierarchy** | GameObject lifetime | Per-character weapons, effects |
+
+## 🛠️ Advanced API
+
+### Direct AssetLoader
+
+```csharp
+using AddressableManager.Loaders;
+
+var loader = new AssetLoader();
+
+// Load by address
+var handle = await loader.LoadAssetAsync<Sprite>("UI/Icon");
+
+// Load by AssetReference
+var handle2 = await loader.LoadAssetAsync<GameObject>(assetRef);
+
+// Load multiple by label
+var handles = await loader.LoadAssetsByLabelAsync<AudioClip>("Music");
+
+// Instantiate
+var instance = await loader.InstantiateAsync("Prefabs/Player");
+
+// Cleanup
+loader.Dispose();
+```
+
+### Custom Pool Factory
+
+```csharp
+using AddressableManager.Pooling;
+
+public class MyPoolFactory : IPoolFactory
+{
+    public IObjectPool<T> CreatePool<T>(
+        Func<T> createFunc,
+        Action<T> onGet,
+        Action<T> onRelease,
+        Action<T> onDestroy,
+        int maxSize) where T : class
+    {
+        // Your implementation
+    }
+}
+
+// Set factory
+AddressablesFacade.Instance.SetPoolFactory(new MyPoolFactory());
+```
+
+### Composite Progress Tracking
+
+```csharp
+using AddressableManager.Progress;
+
+var composite = new CompositeProgressTracker();
+composite.OnProgressChanged += info => Debug.Log($"Progress: {info.Progress}");
+
+var tracker1 = new ProgressTracker();
+var tracker2 = new ProgressTracker();
+
+composite.AddTracker(tracker1, weight: 1f);
+composite.AddTracker(tracker2, weight: 2f);
+
+// Trackers automatically update composite
+```
+
+## 🎯 Best Practices
+
+### 1. Choose the Right Scope
+
+```csharp
+// ❌ Bad - Loading UI atlas in session scope
+var atlas = await Assets.LoadSession<Sprite>("UI/Atlas");
+
+// ✅ Good - UI atlas in global scope
+var atlas = await Assets.Load<Sprite>("UI/Atlas");
+
+// ❌ Bad - Scene material in global scope
+var material = await Assets.Load<Material>("Scene1/Floor");
+
+// ✅ Good - Scene material in scene scope
+var material = await Assets.LoadScene<Material>("Scene1/Floor");
+```
+
+### 2. Use Pooling for Frequently Spawned Objects
+
+```csharp
+// ❌ Bad - Instantiating bullets without pooling
+for (int i = 0; i < 100; i++)
+{
+    var bullet = await loader.InstantiateAsync("Projectiles/Bullet");
+}
+
+// ✅ Good - Pool bullets
+await Assets.CreatePool("Projectiles/Bullet", preloadCount: 20);
+for (int i = 0; i < 100; i++)
+{
+    var bullet = Assets.Spawn("Projectiles/Bullet", position);
+}
+```
+
+### 3. Show Progress for Large Downloads
+
+```csharp
+// ✅ Good - Show progress for better UX
+await Assets.Download("LargeAssetBundle", progress =>
+{
+    loadingBar.value = progress.Progress;
+    speedText.text = $"{progress.DownloadSpeed:F1} KB/s";
+    etaText.text = $"ETA: {progress.EstimatedTimeRemaining:F0}s";
+});
+```
+
+### 4. Cleanup When Needed
+
+```csharp
+// Manual cleanup (optional - scopes auto-cleanup)
+Assets.ClearCache();      // Clear global cache
+Assets.ClearPools();      // Clear all pools
+Assets.EndSession();      // End session and cleanup
+```
+
+## 🔧 Troubleshooting
+
+### Asset Not Loading?
+
+```csharp
+var handle = await Assets.Load<Sprite>("UI/Icon");
+if (handle == null || !handle.IsValid)
+{
+    Debug.LogError("Asset not found! Check:");
+    Debug.LogError("1. Address is correct");
+    Debug.LogError("2. Asset is marked as Addressable");
+    Debug.LogError("3. Addressable groups are built");
+}
+```
+
+### Pool Not Found?
+
+```csharp
+// Create pool before spawning
+await Assets.CreatePool("Prefabs/Enemy");
+
+// Then spawn
+var enemy = Assets.Spawn("Prefabs/Enemy", position);
+```
+
+### Session Assets Not Releasing?
+
+```csharp
+// Make sure to end session
+Assets.EndSession();
+
+// Or check if session is active
+if (SessionAssetScope.Instance != null)
+{
+    Debug.Log("Session is active");
+}
+```
+
+## 📊 Performance Tips
+
+1. **Preload pools during loading screens**
+   ```csharp
+   await Assets.CreatePool("Enemies/Zombie", preloadCount: 20);
+   ```
+
+2. **Download bundles before gameplay**
+   ```csharp
+   await Assets.Download("Level1Assets");
+   ```
+
+3. **Use labels for batch loading**
+   ```csharp
+   var handles = await loader.LoadAssetsByLabelAsync<Sprite>("UI");
+   ```
+
+4. **Monitor cache stats**
+   ```csharp
+   var stats = loader.GetCacheStats();
+   Debug.Log($"Cached: {stats.cachedAssets}, Active: {stats.activeHandles}");
+   ```
+
+---
+
+# Design Decisions & Limitations
+
+## ⚠️ Known Limitations & Workarounds
+
+### Issue 1: Facade Doesn't Auto-Monitor
+
+**Problem**:
+```csharp
+// This doesn't appear in Dashboard automatically:
+var sprite = await Assets.Load<Sprite>("UI/Logo");
+```
+
+**Why**:
+- Facade was designed before monitoring system
+- Adding monitoring would break existing API
+- Users might not want monitoring overhead for all loads
+
+**Workarounds**:
+
+**Option A: Use Scopes Directly (Recommended)**
+```csharp
+using AddressableManager.Scopes;
+using AddressableManager.Loaders;
+
+// Get scope
+var globalScope = GlobalAssetScope.Instance;
+
+// Load with monitoring
+var handle = await globalScope.Loader.LoadAssetAsyncMonitored<Sprite>(
+    "UI/Logo",
+    "Global"
+);
+
+// ✅ Now appears in Dashboard!
+```
+
+**Option B: Create Your Own Monitored Facade**
+```csharp
+public static class MonitoredAssets
+{
+    public static async Task<IAssetHandle<T>> Load<T>(string address)
+    {
+        var scope = GlobalAssetScope.Instance;
+        return await scope.Loader.LoadAssetAsyncMonitored<T>(address, "Global");
+    }
+}
+
+// Usage:
+var sprite = await MonitoredAssets.Load<Sprite>("UI/Logo");
+```
+
+---
+
+### Issue 2: Scopes Are Singletons - Not Flexible
+
+**Problem**:
+```csharp
+// Only 1 Session Scope possible:
+var session = SessionAssetScope.Instance;
+
+// But what if I want multiple sessions?
+// - PlayerSession (player inventory)
+// - GameSession (current game state)
+// - MatchSession (multiplayer match data)
+```
+
+**Why This Design**:
+- Original design assumed: 1 global, 1 session, 1 scene, multiple hierarchy
+- Simplicity for basic use cases
+- Singleton pattern prevents multiple global scopes
+
+**Current Limitations**:
+```csharp
+// ❌ Can't do this:
+var playerSession = new SessionAssetScope("PlayerSession");
+var gameSession = new SessionAssetScope("GameSession");
+
+// ❌ All SessionAssetScope share same loader!
+```
+
+**Solution: Use ScopeManager**
+
+For complex apps needing multiple scopes, use the custom `ScopeManager` class (see [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md#scopemanager-for-complex-apps) for full examples):
+
+```csharp
+using AddressableManager.Managers;
+using AddressableManager.Loaders;
+
+public class ScopeManager
+{
+    private static ScopeManager _instance;
+    public static ScopeManager Instance => _instance ??= new ScopeManager();
+
+    private Dictionary<string, AssetLoader> _loaders = new();
+
+    // Create custom scope with unique ID
+    public AssetLoader GetOrCreateScope(string scopeId)
+    {
+        if (!_loaders.ContainsKey(scopeId))
+        {
+            _loaders[scopeId] = new AssetLoader();
+            Debug.Log($"Created scope: {scopeId}");
+        }
+
+        return _loaders[scopeId];
+    }
+
+    // Clear specific scope
+    public void ClearScope(string scopeId)
+    {
+        if (_loaders.TryGetValue(scopeId, out var loader))
+        {
+            loader.ClearCache();
+            loader.Dispose();
+            _loaders.Remove(scopeId);
+        }
+    }
+
+    // Clear all except specific scopes
+    public void ClearAllExcept(params string[] keepScopes)
+    {
+        var toRemove = _loaders.Keys.Where(k => !keepScopes.Contains(k)).ToList();
+        foreach (var key in toRemove)
+        {
+            ClearScope(key);
+        }
+    }
+}
+
+// Usage:
+var scopeManager = ScopeManager.Instance;
+
+// Create multiple sessions
+var playerLoader = scopeManager.GetOrCreateScope("PlayerSession");
+var gameLoader = scopeManager.GetOrCreateScope("GameSession");
+var matchLoader = scopeManager.GetOrCreateScope("MatchSession");
+
+// Load into specific session WITH monitoring
+var playerData = await playerLoader.LoadAssetAsyncMonitored<PlayerData>(
+    "Data/PlayerProfile",
+    "PlayerSession" // Dashboard shows under this scope
+);
+
+// Clear specific session
+scopeManager.ClearScope("MatchSession");
+```
+
+**Benefits**:
+- ✅ Multiple sessions/scopes with unique IDs
+- ✅ Full control over lifecycle
+- ✅ Works with monitoring (use `.LoadAssetAsyncMonitored()`)
+- ✅ Dashboard shows each scope separately
+- ✅ No singleton limitations
+
+---
+
+## 🎯 Recommended Architecture
+
+### For Simple Apps (Use Built-in Scopes)
+
+```csharp
+using AddressableManager.Scopes;
+using AddressableManager.Loaders;
+
+public class SimpleGame : MonoBehaviour
+{
+    async void Start()
+    {
+        // Use singleton scopes
+        var global = GlobalAssetScope.Instance;
+        var session = SessionAssetScope.Instance;
+
+        // Load with monitoring
+        var logo = await global.Loader.LoadAssetAsyncMonitored<Sprite>(
+            "UI/Logo",
+            "Global"
+        );
+
+        var playerData = await session.Loader.LoadAssetAsyncMonitored<PlayerData>(
+            "Data/Player",
+            "Session"
+        );
+    }
+}
+```
+
+**Good for**:
+- Prototypes
+- Small games
+- Single-player games
+- Simple asset management
+
+---
+
+### For Complex Apps (Custom Scope Manager)
+
+```csharp
+public class ComplexGame : MonoBehaviour
+{
+    private ScopeManager _scopes;
+
+    async void Start()
+    {
+        _scopes = ScopeManager.Instance;
+
+        // Create multiple scopes
+        var globalLoader = _scopes.GetOrCreateScope("Global");
+        var playerLoader = _scopes.GetOrCreateScope("PlayerSession");
+        var gameLoader = _scopes.GetOrCreateScope("GameSession");
+        var matchLoader = _scopes.GetOrCreateScope("MatchSession");
+
+        // Load into specific scopes WITH monitoring
+        var logo = await globalLoader.LoadAssetAsyncMonitored<Sprite>(
+            "UI/Logo",
+            "Global"
+        );
+
+        var inventory = await playerLoader.LoadAssetAsyncMonitored<InventoryData>(
+            "Data/Inventory",
+            "PlayerSession"
+        );
+    }
+
+    void OnApplicationQuit()
+    {
+        // Cleanup
+        _scopes.ClearAllExcept("Global");
+    }
+
+    void OnMatchEnd()
+    {
+        // Clear only match data
+        _scopes.ClearScope("MatchSession");
+    }
+}
+```
+
+**Good for**:
+- Large games
+- Multiplayer games
+- Multiple independent systems
+- Fine-grained control
+
+---
+
+## 🔧 Why These Design Choices?
+
+### Monitoring Is Opt-In (Not Automatic)
+
+**Reasons**:
+1. **Performance**: Not all assets need tracking
+2. **Flexibility**: Users choose what to monitor
+3. **Backward Compatibility**: Existing code doesn't break
+4. **Zero Overhead in Builds**: Monitoring is Editor-only
+
+**Trade-off**:
+- ❌ Users must use `.LoadAssetAsyncMonitored()` explicitly
+- ✅ No performance overhead for untracked assets
+- ✅ Clear which assets are being monitored
+
+### Scopes Are Singletons (By Default)
+
+**Reasons**:
+1. **Simplicity**: Easy to use for beginners
+2. **Prevent Mistakes**: Can't accidentally create multiple global scopes
+3. **Common Case**: Most games need 1 global, 1 session
+
+**Trade-off**:
+- ❌ Not flexible for complex apps
+- ✅ Simple API for 80% of use cases
+- ✅ Users can create custom managers for advanced needs
+
+---
+
+## ✅ Summary
+
+### Current State (v2.0)
+
+**Monitoring**:
+- ⚠️ Manual opt-in via `.LoadAssetAsyncMonitored()`
+- ✅ Scopes auto-tracked
+- ⚠️ Facade doesn't auto-monitor
+
+**Scopes**:
+- ⚠️ Singletons (not flexible for complex apps)
+- ✅ Simple API for basic cases
+- ✅ Can create custom managers for advanced needs
+
+### Recommended Approach
+
+**For Most Projects**:
+```csharp
+// Use scopes directly with monitoring extensions
+var handle = await GlobalAssetScope.Instance.Loader
+    .LoadAssetAsyncMonitored<T>(address, "Global");
+```
+
+**For Complex Projects**:
+```csharp
+// Create custom ScopeManager
+var loader = ScopeManager.Instance.GetOrCreateScope("PlayerSession");
+var handle = await loader.LoadAssetAsyncMonitored<T>(address, "PlayerSession");
+```
+
+### What To Avoid
+
+❌ **Don't use Facade if you want monitoring**
+```csharp
+// This won't show in Dashboard:
+var sprite = await Assets.Load<Sprite>("UI/Logo");
+```
+
+❌ **Don't expect multiple sessions from built-in scopes**
+```csharp
+// Won't work - singleton:
+var session1 = SessionAssetScope.Instance;
+var session2 = SessionAssetScope.Instance; // Same as session1!
+```
+
+---
+
+# Performance & Memory
+
+## Performance Considerations
+
+### 1. Caching Strategy
+- **Scope-level caching**: Each scope has isolated cache
+- **Reference counting**: Prevents premature unloading
+- **Automatic cleanup**: Scopes auto-release on lifecycle end
+
+### 2. Pooling Benefits
+- **Reduces GC pressure**: Reuses objects instead of creating/destroying
+- **Faster spawning**: Pre-instantiated objects
+- **Configurable limits**: Max pool size prevents memory bloat
+
+### 3. Async/Await
+- **Non-blocking**: UI remains responsive during loads
+- **Efficient**: Uses Unity's async system
+- **Cancellable**: Can be cancelled if needed
+
+## Memory Management
+
+### Reference Counting Flow
+
+```
+Load Asset
+   │
+   └─► AssetHandle created (refCount = 1)
+         │
+         ├─► User calls Retain() ──► refCount++
+         │
+         ├─► User calls Release() ──► refCount--
+         │     │
+         │     └─► refCount == 0 ──► Dispose handle
+         │                             │
+         │                             └─► Addressables.Release()
+         │
+         └─► Scope disposed ──► Force release all handles
+```
+
+### Automatic Cleanup Triggers
+
+1. **Scope disposal** (Scene/Session/Hierarchy)
+2. **Manual `ClearCache()` call**
+3. **Reference count reaches 0**
+4. **Application quit**
+
+## Thread Safety
+
+- **AssetLoader**: Not thread-safe, use from main thread
+- **Progress events**: Fired on main thread
+- **Pooling**: Spawn/Despawn from main thread only
+- **Async operations**: Unity's async system is thread-safe
+
+---
+
+# Extension Points
+
+The system is designed for easy extension:
+
+## 1. Custom Pool Implementation
+
+Implement `IPoolFactory` and `IObjectPool<T>`:
+
+```csharp
+public class MyPoolFactory : IPoolFactory
+{
+    public IObjectPool<T> CreatePool<T>(/*...*/) where T : class
+    {
+        return new MyPoolAdapter<T>(/*...*/);
+    }
+}
+
+public class MyPoolAdapter<T> : IObjectPool<T>
+{
+    public T Get() { /* ... */ }
+    public void Release(T item) { /* ... */ }
+    // ...
+}
+
+// Use it:
+AddressablesFacade.Instance.SetPoolFactory(new MyPoolFactory());
+```
+
+## 2. Custom Scope
+
+Extend `BaseAssetScope` or implement `IAssetScope`:
+
+```csharp
+public class MyCustomScope : BaseAssetScope
+{
+    public MyCustomScope() : base("Custom") { }
+
+    // Override lifecycle methods as needed
+}
+```
+
+## 3. Custom Progress Tracker
+
+Implement `IProgressTracker`:
+
+```csharp
+public class MyProgressTracker : IProgressTracker
+{
+    public event Action<ProgressInfo> OnProgressChanged;
+
+    public void UpdateProgress(float progress, string operation)
+    {
+        var info = new ProgressInfo { Progress = progress, CurrentOperation = operation };
+        OnProgressChanged?.Invoke(info);
+    }
+}
+```
+
+---
+
+## 📚 Additional Documentation
+
+- [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md) - Dashboard, Inspectors, Configs, and UI components
+- [MONITORING_GUIDE.md](MONITORING_GUIDE.md) - Complete monitoring guide with integration details
+- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+
+---
+
+**Version**: 2.0.0
+**Last Updated**: January 2025
+
+For issues or questions, please refer to the documentation or examine existing components to see how they work!
