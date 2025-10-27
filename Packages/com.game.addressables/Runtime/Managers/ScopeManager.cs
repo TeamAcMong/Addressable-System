@@ -46,7 +46,8 @@ namespace AddressableManager.Managers
 
             if (!_loaders.ContainsKey(scopeId))
             {
-                var loader = new AssetLoader();
+                // Pass scope ID to AssetLoader for automatic monitoring
+                var loader = new AssetLoader(scopeId);
                 _loaders[scopeId] = loader;
 
                 Debug.Log($"[ScopeManager] Created scope: {scopeId}");

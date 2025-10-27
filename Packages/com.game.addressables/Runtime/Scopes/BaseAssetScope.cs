@@ -22,7 +22,8 @@ namespace AddressableManager.Scopes
         protected BaseAssetScope(string scopeName)
         {
             _scopeName = scopeName;
-            _loader = new AssetLoader();
+            // Pass scope name to AssetLoader for automatic monitoring
+            _loader = new AssetLoader(scopeName);
             _isActive = false;
 
             // Report scope registration
