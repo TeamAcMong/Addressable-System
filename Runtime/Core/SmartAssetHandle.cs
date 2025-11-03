@@ -41,7 +41,7 @@ namespace AddressableManager.Core
 
         #region IAssetHandle Implementation
 
-        public T Asset => _innerHandle?.Asset;
+        public T Asset => _innerHandle != null ? _innerHandle.Asset : default;
 
         public bool IsValid => _innerHandle?.IsValid ?? false;
 
@@ -176,7 +176,7 @@ namespace AddressableManager.Core
         /// </summary>
         public static implicit operator T(SmartAssetHandle<T> handle)
         {
-            return handle?.Asset;
+            return handle != null ? handle.Asset : default;
         }
 
         /// <summary>

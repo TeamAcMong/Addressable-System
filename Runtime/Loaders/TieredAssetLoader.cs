@@ -84,7 +84,7 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Load asset asynchronously by address with tiered caching
         /// </summary>
-        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(string address)
+        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(string address) where T : class
         {
             if (_disposed)
             {
@@ -188,7 +188,7 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Load asset by AssetReference with tiered caching
         /// </summary>
-        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
+        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference) where T : class
         {
             if (_disposed)
             {

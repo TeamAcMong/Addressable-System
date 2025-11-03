@@ -6,6 +6,7 @@ using UnityEngine.AddressableAssets;
 using AddressableManager.Core;
 using AddressableManager.Facade;
 using AddressableManager.Pooling;
+using AddressableManager.Scopes;
 
 namespace AddressableManager.API
 {
@@ -43,7 +44,7 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<IAssetHandle<T>> LoadGlobal<T>(string address)
         {
-            return await Facade.LoadGlobal<T>(address);
+            return await Facade.LoadGlobalAsync<T>(address);
         }
 
         /// <summary>
@@ -51,7 +52,7 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<IAssetHandle<T>> LoadSession<T>(string address)
         {
-            return await Facade.LoadSession<T>(address);
+            return await Facade.LoadSessionAsync<T>(address);
         }
 
         /// <summary>
@@ -59,7 +60,7 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<IAssetHandle<T>> LoadScene<T>(string address)
         {
-            return await Facade.LoadScene<T>(address);
+            return await Facade.LoadSceneAsync<T>(address);
         }
 
         /// <summary>
@@ -67,7 +68,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<IAssetHandle<T>> Load<T>(AssetReference assetReference)
         {
-            return await Facade.LoadGlobal<T>(assetReference);
+            var loader = Facade.GetGlobalScope().Loader;
+            return await loader.LoadAssetAsync<T>(assetReference);
         }
 
         /// <summary>
@@ -130,7 +132,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> InstantiateGlobal(string address)
         {
-            return await Facade.InstantiateGlobal(address);
+            var loader = Facade.GetGlobalScope().Loader;
+            return await loader.InstantiateAsync(address);
         }
 
         /// <summary>
@@ -138,7 +141,13 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> InstantiateSession(string address)
         {
-            return await Facade.InstantiateSession(address);
+            var scope = Facade.GetSessionScope();
+            if (scope == null)
+            {
+                Debug.LogError("[Standard] No active session. Call StartSession() first!");
+                return null;
+            }
+            return await scope.Loader.InstantiateAsync(address);
         }
 
         /// <summary>
@@ -146,7 +155,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> Instantiate(string address, Vector3 position, Quaternion rotation)
         {
-            return await Facade.InstantiateGlobal(address, position, rotation);
+            var loader = Facade.GetGlobalScope().Loader;
+            return await loader.InstantiateAsync(address, position, rotation);
         }
 
         #endregion
@@ -158,7 +168,7 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<bool> CreatePool(string address, int preloadCount = 0, int maxSize = 50)
         {
-            return await Facade.CreatePool(address, preloadCount, maxSize);
+            return await Facade.CreatePoolAsync(address, preloadCount, maxSize);
         }
 
         /// <summary>

@@ -258,6 +258,16 @@ namespace AddressableManager.Scopes
         }
 
         /// <summary>
+        /// Name identifier for this scope (IAssetScope requirement)
+        /// </summary>
+        public string ScopeName => GetScopeName();
+
+        /// <summary>
+        /// Whether this scope is active (IAssetScope requirement)
+        /// </summary>
+        public bool IsActive => !_disposed;
+
+        /// <summary>
         /// Get the full scope name (includes instance name if any)
         /// </summary>
         public string GetScopeName()
@@ -265,6 +275,24 @@ namespace AddressableManager.Scopes
             return string.IsNullOrEmpty(_instanceName)
                 ? _scopeType
                 : $"{_scopeType}:{_instanceName}";
+        }
+
+        /// <summary>
+        /// Activate this scope (IAssetScope requirement)
+        /// For HybridScope, this is always active unless disposed
+        /// </summary>
+        public void Activate()
+        {
+            // HybridScope is always active when created
+            // No-op for compatibility
+        }
+
+        /// <summary>
+        /// Deactivate and cleanup this scope (IAssetScope requirement)
+        /// </summary>
+        public void Deactivate()
+        {
+            Dispose();
         }
 
         /// <summary>

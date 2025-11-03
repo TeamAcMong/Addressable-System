@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using AddressableManager.Core;
 using AddressableManager.Facade;
+using AddressableManager.Scopes;
 
 namespace AddressableManager.API
 {
@@ -41,7 +42,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<T> Load<T>(string address)
         {
-            var handle = await Facade.LoadGlobal<T>(address);
+            var scope = GlobalAssetScope.Instance;
+            var handle = await scope.Loader.LoadAssetAsync<T>(address);
             return handle != null && handle.IsValid ? handle.Asset : default;
         }
 
@@ -53,7 +55,8 @@ namespace AddressableManager.API
         {
             try
             {
-                var handle = await Facade.LoadGlobal<T>(address);
+                var scope = GlobalAssetScope.Instance;
+                var handle = await scope.Loader.LoadAssetAsync<T>(address);
                 if (handle != null && handle.IsValid)
                 {
                     return (handle.Asset, true);
@@ -89,7 +92,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> Spawn(string address)
         {
-            return await Facade.InstantiateGlobal(address);
+            var scope = GlobalAssetScope.Instance;
+            return await scope.Loader.InstantiateAsync(address);
         }
 
         /// <summary>
@@ -97,7 +101,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> Spawn(string address, Vector3 position)
         {
-            return await Facade.InstantiateGlobal(address, position, Quaternion.identity);
+            var scope = GlobalAssetScope.Instance;
+            return await scope.Loader.InstantiateAsync(address, position, Quaternion.identity);
         }
 
         /// <summary>
@@ -105,7 +110,8 @@ namespace AddressableManager.API
         /// </summary>
         public static async Task<GameObject> Spawn(string address, Vector3 position, Quaternion rotation)
         {
-            return await Facade.InstantiateGlobal(address, position, rotation);
+            var scope = GlobalAssetScope.Instance;
+            return await scope.Loader.InstantiateAsync(address, position, rotation);
         }
 
         /// <summary>
@@ -128,7 +134,7 @@ namespace AddressableManager.API
         /// </summary>
         public static GameObject Pool(string address)
         {
-            var poolManager = Facade.GetPoolManager();
+            var poolManager = AddressablesFacade.Instance.GetPoolManager();
 
             // Enable auto-create if not already enabled
             if (!poolManager.IsAutoCreateEnabled)
@@ -157,7 +163,7 @@ namespace AddressableManager.API
         /// </summary>
         public static void Recycle(string address, GameObject instance)
         {
-            var poolManager = Facade.GetPoolManager();
+            var poolManager = AddressablesFacade.Instance.GetPoolManager();
             poolManager.Despawn(address, instance);
         }
 
@@ -184,7 +190,7 @@ namespace AddressableManager.API
         /// </summary>
         public static void ClearAll()
         {
-            Facade.ClearGlobalCache();
+            AddressablesFacade.Instance.ClearGlobalCache();
         }
 
         #endregion

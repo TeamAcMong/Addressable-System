@@ -231,6 +231,46 @@ namespace AddressableManager.Facade
             _poolManager?.ClearAllPools();
         }
 
+        /// <summary>
+        /// Get pool manager for advanced operations
+        /// </summary>
+        public AddressablePoolManager GetPoolManager()
+        {
+            return _poolManager;
+        }
+
+        /// <summary>
+        /// Get global scope
+        /// </summary>
+        public GlobalAssetScope GetGlobalScope()
+        {
+            return _globalScope;
+        }
+
+        /// <summary>
+        /// Get session scope (if active)
+        /// </summary>
+        public SessionAssetScope GetSessionScope()
+        {
+            return _sessionScope;
+        }
+
+        /// <summary>
+        /// Check if session is active
+        /// </summary>
+        public bool IsSessionActive()
+        {
+            return _sessionScope != null && _sessionScope.IsActive;
+        }
+
+        /// <summary>
+        /// Clear session cache
+        /// </summary>
+        public void ClearSessionCache()
+        {
+            _sessionScope?.Loader?.ClearCache();
+        }
+
         #endregion
 
         private void OnDestroy()
