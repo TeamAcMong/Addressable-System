@@ -1016,10 +1016,180 @@ Load Asset
 
 ## Thread Safety
 
-- **AssetLoader**: Not thread-safe, use from main thread
+- **AssetLoader**: Not thread-safe, use from main thread (use ThreadSafeAssetLoader for background threads)
+- **ThreadSafeAssetLoader**: NEW v2.2 - Thread-safe wrapper that queues operations to main thread
 - **Progress events**: Fired on main thread
 - **Pooling**: Spawn/Despawn from main thread only
 - **Async operations**: Unity's async system is thread-safe
+
+---
+
+# NEW in v2.2: Enhanced Features
+
+## 1. Thread-Safe Loading
+
+Load assets from background threads with automatic main thread dispatch:
+
+```csharp
+using AddressableManager.Threading;
+
+// Works from any thread!
+var threadSafeLoader = new ThreadSafeAssetLoader("MyScope");
+
+// Load from background thread
+await Task.Run(async () =>
+{
+    var handle = await threadSafeLoader.LoadAssetAsync<Sprite>("UI/Icon");
+    // Automatically dispatched to main thread
+});
+
+// Also supports instantiation from background threads
+var instance = await threadSafeLoader.InstantiateAsync("Prefabs/Enemy");
+```
+
+Thread safety features:
+- **Zero overhead** on main thread (direct passthrough)
+- **Automatic queuing** for background threads
+- **Clear error messages** if using wrong loader on wrong thread
+- **Full AssetLoader API** supported
+
+## 2. SmartAssetHandle - Automatic Memory Management
+
+No more manual `Retain()/Release()` - use C# `using` statements:
+
+```csharp
+using AddressableManager.Core;
+
+// Old way (manual):
+var handle = await loader.LoadAssetAsync<Sprite>("UI/Icon");
+handle.Retain();
+// ... use sprite ...
+handle.Release(); // Easy to forget!
+
+// New way (automatic):
+using var handle = await loader.LoadAssetAsync<Sprite>("UI/Icon").ToSmart();
+// Automatically released when scope exits!
+
+// Or implicit conversion:
+Sprite sprite = await loader.LoadAssetAsync<Sprite>("UI/Icon").ToSmart();
+
+// Or load directly as smart:
+using var handle = await loader.LoadAssetSmartAsync<Sprite>("UI/Icon");
+```
+
+Features:
+- **IDisposable** pattern - works with `using` statements
+- **GC Finalizer** safety net if dispose is forgotten
+- **Optional auto-release** - can toggle at runtime
+- **Zero overhead** if not used - opt-in enhancement
+
+## 3. Result<T> Pattern - Explicit Error Handling
+
+Never deal with null returns again - explicit error information:
+
+```csharp
+using AddressableManager.Core;
+
+// Load with Result pattern
+var result = await loader.LoadAssetAsyncSafe<Sprite>("UI/Icon");
+
+// Pattern matching
+if (result.IsSuccess)
+{
+    using var handle = result.Value;
+    image.sprite = handle.Asset;
+}
+else
+{
+    Debug.LogError(result.Error); // Detailed error with hints!
+}
+
+// Or use Unwrap methods:
+var handle = result.Unwrap(); // Throws if error
+var handle = result.UnwrapOr(defaultHandle); // Fallback
+var handle = result.UnwrapOrElse(() => CreateFallback());
+
+// Pattern matching with actions:
+result.Match(
+    onSuccess: handle => image.sprite = handle.Asset,
+    onFailure: error => ShowErrorDialog(error.Message)
+);
+
+// LINQ-style operations:
+var spriteResult = result.Map(handle => handle.Asset);
+```
+
+Error codes provided:
+- `InvalidAddress` - Address is null/empty
+- `AssetNotFound` - Asset doesn't exist in Addressables
+- `InvalidAssetReference` - AssetReference is invalid
+- `InvalidLabel` - Label not found
+- `OperationFailed` - General load failure
+- `LoaderDisposed` - Loader was disposed
+- `ThreadSafetyViolation` - Called from wrong thread
+- `TypeMismatch` - Wrong type requested
+- `NetworkError` - Download/network issues
+
+Each error includes:
+- **Error code** - For programmatic handling
+- **Message** - Human-readable description
+- **Hint** - Troubleshooting suggestions
+- **Address** - What was being loaded
+- **Exception** - Original exception if any
+
+## 4. Dynamic Pools - Auto-Sizing
+
+Pools that automatically grow and shrink based on usage:
+
+```csharp
+using AddressableManager.Pooling;
+
+// Create dynamic pool with config
+var config = DynamicPoolConfig.Default; // Balanced preset
+// OR
+var config = DynamicPoolConfig.Aggressive; // Low memory
+// OR
+var config = DynamicPoolConfig.Conservative; // High performance
+// OR
+var config = new DynamicPoolConfig
+{
+    InitialCapacity = 10,
+    MinSize = 5,
+    MaxSize = 100,
+    GrowThreshold = 0.8f,    // Grow at 80% usage
+    ShrinkThreshold = 0.3f,  // Shrink below 30% usage
+    GrowFactor = 0.5f,       // Grow by 50%
+    ShrinkFactor = 0.25f,    // Shrink by 25%
+    ShrinkDelaySeconds = 30f // Wait 30s before shrinking
+};
+
+// Create dynamic pool (via facade)
+var poolManager = AddressablesFacade.Instance.GetPoolManager();
+await poolManager.CreateDynamicPoolAsync("Enemies/Zombie", config, preloadCount: 10);
+
+// Use normally - pool auto-resizes
+for (int i = 0; i < 50; i++)
+{
+    var zombie = Assets.Spawn("Enemies/Zombie"); // Pool grows automatically
+}
+
+// Get dynamic stats
+var stats = poolManager.GetDynamicPoolStats("Enemies/Zombie");
+Debug.Log($"Active: {stats.Value.ActiveCount}/{stats.Value.CurrentCapacity}");
+Debug.Log($"Usage: {stats.Value.UsageRatio:P0}");
+Debug.Log($"Peak: {stats.Value.PeakActiveCount}");
+
+// Manual resize if needed
+poolManager.ResizePool("Enemies/Zombie", 25);
+```
+
+Features:
+- **Automatic growth** when usage exceeds threshold
+- **Automatic shrinking** after sustained low usage
+- **Configurable behavior** - 3 presets + custom
+- **Min/Max limits** - Never shrink below min, never grow above max
+- **Smart shrinking** - Delays shrink to prevent thrashing
+- **Statistics tracking** - Peak usage, current capacity, etc.
 
 ---
 
@@ -1091,7 +1261,13 @@ public class MyProgressTracker : IProgressTracker
 
 ---
 
-**Version**: 2.0.0
+**Version**: 2.2.0
 **Last Updated**: January 2025
+
+## What's New in v2.2
+- Thread-safe loading with `ThreadSafeAssetLoader`
+- Automatic memory management with `SmartAssetHandle`
+- Explicit error handling with `Result<T>` pattern
+- Dynamic pools with auto-sizing capabilities
 
 For issues or questions, please refer to the documentation or examine existing components to see how they work!

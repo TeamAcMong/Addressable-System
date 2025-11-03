@@ -44,6 +44,96 @@ namespace AddressableManager.Pooling
         }
 
         /// <summary>
+        /// Create a dynamic pool for an addressable prefab with auto-sizing
+        /// </summary>
+        public async Task<bool> CreateDynamicPoolAsync(
+            string address,
+            DynamicPoolConfig config = null,
+            int preloadCount = 0,
+            Transform poolRoot = null)
+        {
+            if (_disposed)
+            {
+                Debug.LogError("[PoolManager] Cannot create pool on disposed manager");
+                return false;
+            }
+
+            if (_pools.ContainsKey(address))
+            {
+                Debug.LogWarning($"[PoolManager] Pool for {address} already exists");
+                return true;
+            }
+
+            // Use default config if none provided
+            config = config ?? DynamicPoolConfig.Default;
+
+            // Validate config
+            if (!config.Validate(out var error))
+            {
+                Debug.LogError($"[PoolManager] Invalid pool config for {address}: {error}");
+                return false;
+            }
+
+            // Load the prefab template first
+            var handle = await _loader.LoadAssetAsync<GameObject>(address);
+            if (handle == null || !handle.IsValid)
+            {
+                Debug.LogError($"[PoolManager] Failed to load prefab for pooling: {address}");
+                return false;
+            }
+
+            var prefab = handle.Asset;
+
+            // Create base pool using current factory
+            var basePool = _poolFactory.CreatePool<GameObject>(
+                createFunc: () => CreateInstance(prefab, poolRoot),
+                onGet: (obj) => obj.SetActive(true),
+                onRelease: (obj) =>
+                {
+                    if (obj != null)
+                    {
+                        obj.SetActive(false);
+                        if (poolRoot != null) obj.transform.SetParent(poolRoot);
+                    }
+                },
+                onDestroy: (obj) =>
+                {
+                    if (obj != null) UnityEngine.Object.Destroy(obj);
+                },
+                maxSize: config.MaxSize
+            );
+
+            // Wrap in dynamic pool
+            var dynamicPool = new DynamicPool<GameObject>(
+                basePool,
+                config,
+                createFunc: () => CreateInstance(prefab, poolRoot),
+                onDestroy: (obj) =>
+                {
+                    if (obj != null) UnityEngine.Object.Destroy(obj);
+                },
+                poolName: address
+            );
+
+            _pools[address] = dynamicPool;
+            Debug.Log($"[PoolManager] Dynamic pool created for {address} " +
+                     $"(capacity: {config.InitialCapacity}, range: [{config.MinSize}-{config.MaxSize}])");
+
+            // Preload instances
+            if (preloadCount > 0)
+            {
+                Debug.Log($"[PoolManager] Preloading {preloadCount} instances for {address}");
+                for (int i = 0; i < preloadCount; i++)
+                {
+                    var instance = dynamicPool.Get();
+                    dynamicPool.Release(instance);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Create a pool for an addressable prefab
         /// </summary>
         public async Task<bool> CreatePoolAsync(
@@ -191,6 +281,58 @@ namespace AddressableManager.Pooling
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Get dynamic pool statistics (if pool is dynamic)
+        /// Returns null if pool doesn't exist or is not a dynamic pool
+        /// </summary>
+        public DynamicPoolStats? GetDynamicPoolStats(string address)
+        {
+            if (_pools.TryGetValue(address, out var pool))
+            {
+                if (pool is DynamicPool<GameObject> dynamicPool)
+                {
+                    return dynamicPool.GetDynamicStats();
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Force a dynamic pool to resize to target capacity
+        /// No effect on non-dynamic pools
+        /// </summary>
+        public void ResizePool(string address, int targetCapacity)
+        {
+            if (_pools.TryGetValue(address, out var pool))
+            {
+                if (pool is DynamicPool<GameObject> dynamicPool)
+                {
+                    dynamicPool.ResizeTo(targetCapacity);
+                }
+                else
+                {
+                    Debug.LogWarning($"[PoolManager] Pool {address} is not a dynamic pool, cannot resize");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[PoolManager] Pool {address} not found");
+            }
+        }
+
+        /// <summary>
+        /// Check if pool is a dynamic pool
+        /// </summary>
+        public bool IsDynamicPool(string address)
+        {
+            if (_pools.TryGetValue(address, out var pool))
+            {
+                return pool is DynamicPool<GameObject>;
+            }
+            return false;
         }
 
         /// <summary>

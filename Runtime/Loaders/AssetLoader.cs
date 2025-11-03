@@ -361,6 +361,440 @@ namespace AddressableManager.Loaders
 
         #endregion
 
+        #region Safe Load Methods (Result Pattern)
+
+        /// <summary>
+        /// Load asset asynchronously with explicit error handling (Result pattern)
+        /// Returns LoadResult with detailed error information on failure
+        ///
+        /// Usage:
+        ///   var result = await loader.LoadAssetAsyncSafe<Sprite>("UI/Icon");
+        ///   if (result.IsSuccess)
+        ///   {
+        ///       using var handle = result.Value;
+        ///       // Use handle...
+        ///   }
+        ///   else
+        ///   {
+        ///       Debug.LogError(result.Error);
+        ///   }
+        /// </summary>
+        public async Task<LoadResult<IAssetHandle<T>>> LoadAssetAsyncSafe<T>(string address)
+        {
+            // Check if disposed
+            if (_disposed)
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.LoaderDisposed,
+                    "Cannot load from disposed loader",
+                    "Create a new loader instance or use an active scope's loader",
+                    address
+                );
+            }
+
+            // Validate address
+            if (string.IsNullOrEmpty(address))
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.InvalidAddress,
+                    "Address cannot be null or empty",
+                    null,
+                    address
+                );
+            }
+
+            // Check thread safety
+            try
+            {
+                AssertMainThread();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.ThreadSafetyViolation,
+                    ex.Message,
+                    "Use ThreadSafeAssetLoader for background thread loading",
+                    address,
+                    ex
+                );
+            }
+
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
+            // Create cache key
+            string cacheKey = $"{address}_{typeof(T).Name}";
+
+            // Check cache first
+            if (_assetCache.TryGetValue(cacheKey, out var cachedObj))
+            {
+                var cachedHandle = cachedObj as IAssetHandle<T>;
+                if (cachedHandle != null && cachedHandle.IsValid)
+                {
+                    Debug.Log($"[AssetLoader] Cache hit for: {address}");
+                    cachedHandle.Retain();
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        true // from cache
+                    );
+#endif
+
+                    return LoadResult<IAssetHandle<T>>.Success(cachedHandle);
+                }
+                else
+                {
+                    // Remove invalid cached handle
+                    _assetCache.Remove(cacheKey);
+                    if (cachedHandle != null)
+                    {
+                        _activeHandles.Remove(cachedHandle);
+                    }
+                }
+            }
+
+            // Perform actual load
+            try
+            {
+                Debug.Log($"[AssetLoader] Loading asset: {address}");
+                var operation = Addressables.LoadAssetAsync<T>(address);
+                await operation.Task;
+
+                if (operation.Status == AsyncOperationStatus.Succeeded)
+                {
+                    var handle = new AssetHandle<T>(operation);
+
+                    // Cache the handle
+                    _assetCache[cacheKey] = handle;
+                    _activeHandles.Add(handle);
+
+                    Debug.Log($"[AssetLoader] Successfully loaded: {address}");
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        false // not from cache
+                    );
+#endif
+
+                    return LoadResult<IAssetHandle<T>>.Success(handle);
+                }
+                else
+                {
+                    // Operation failed - determine error code
+                    var errorCode = DetermineErrorCode(operation);
+                    var errorMsg = operation.OperationException?.Message ?? "Load operation failed";
+
+                    return LoadResult<IAssetHandle<T>>.Failure(
+                        errorCode,
+                        $"Failed to load asset: {address}. {errorMsg}",
+                        null,
+                        address,
+                        operation.OperationException
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AssetLoader] Exception loading asset: {address}. Error: {ex.Message}");
+
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.OperationFailed,
+                    $"Exception loading asset: {address}",
+                    null,
+                    address,
+                    ex
+                );
+            }
+        }
+
+        /// <summary>
+        /// Load asset by AssetReference with explicit error handling (Result pattern)
+        /// </summary>
+        public async Task<LoadResult<IAssetHandle<T>>> LoadAssetAsyncSafe<T>(AssetReference assetReference)
+        {
+            // Check if disposed
+            if (_disposed)
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.LoaderDisposed,
+                    "Cannot load from disposed loader",
+                    "Create a new loader instance or use an active scope's loader",
+                    assetReference?.AssetGUID
+                );
+            }
+
+            // Validate AssetReference
+            if (assetReference == null || !assetReference.RuntimeKeyIsValid())
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.InvalidAssetReference,
+                    "Invalid AssetReference - null or runtime key not valid",
+                    null,
+                    assetReference?.AssetGUID
+                );
+            }
+
+            // Check thread safety
+            try
+            {
+                AssertMainThread();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.ThreadSafetyViolation,
+                    ex.Message,
+                    "Use ThreadSafeAssetLoader for background thread loading",
+                    assetReference.AssetGUID,
+                    ex
+                );
+            }
+
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
+            var address = assetReference.AssetGUID;
+            string cacheKey = $"{address}_{typeof(T).Name}";
+
+            // Check cache
+            if (_assetCache.TryGetValue(cacheKey, out var cachedObj))
+            {
+                var cachedHandle = cachedObj as IAssetHandle<T>;
+                if (cachedHandle != null && cachedHandle.IsValid)
+                {
+                    cachedHandle.Retain();
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        true // from cache
+                    );
+#endif
+
+                    return LoadResult<IAssetHandle<T>>.Success(cachedHandle);
+                }
+                else
+                {
+                    _assetCache.Remove(cacheKey);
+                    if (cachedHandle != null)
+                    {
+                        _activeHandles.Remove(cachedHandle);
+                    }
+                }
+            }
+
+            // Perform actual load
+            try
+            {
+                var operation = assetReference.LoadAssetAsync<T>();
+                await operation.Task;
+
+                if (operation.Status == AsyncOperationStatus.Succeeded)
+                {
+                    var handle = new AssetHandle<T>(operation);
+
+                    _assetCache[cacheKey] = handle;
+                    _activeHandles.Add(handle);
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        _scopeName,
+                        loadDuration,
+                        false // not from cache
+                    );
+#endif
+
+                    return LoadResult<IAssetHandle<T>>.Success(handle);
+                }
+                else
+                {
+                    var errorCode = DetermineErrorCode(operation);
+                    var errorMsg = operation.OperationException?.Message ?? "Load operation failed";
+
+                    return LoadResult<IAssetHandle<T>>.Failure(
+                        errorCode,
+                        $"Failed to load AssetReference. {errorMsg}",
+                        null,
+                        address,
+                        operation.OperationException
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                return LoadResult<IAssetHandle<T>>.Failure(
+                    LoadErrorCode.OperationFailed,
+                    $"Exception loading AssetReference",
+                    null,
+                    address,
+                    ex
+                );
+            }
+        }
+
+        /// <summary>
+        /// Load multiple assets by label with explicit error handling (Result pattern)
+        /// </summary>
+        public async Task<LoadResult<List<IAssetHandle<T>>>> LoadAssetsByLabelAsyncSafe<T>(string label)
+        {
+            // Check if disposed
+            if (_disposed)
+            {
+                return LoadResult<List<IAssetHandle<T>>>.Failure(
+                    LoadErrorCode.LoaderDisposed,
+                    "Cannot load from disposed loader",
+                    "Create a new loader instance or use an active scope's loader",
+                    label
+                );
+            }
+
+            // Validate label
+            if (string.IsNullOrEmpty(label))
+            {
+                return LoadResult<List<IAssetHandle<T>>>.Failure(
+                    LoadErrorCode.InvalidLabel,
+                    "Label cannot be null or empty",
+                    null,
+                    label
+                );
+            }
+
+            // Check thread safety
+            try
+            {
+                AssertMainThread();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return LoadResult<List<IAssetHandle<T>>>.Failure(
+                    LoadErrorCode.ThreadSafetyViolation,
+                    ex.Message,
+                    "Use ThreadSafeAssetLoader for background thread loading",
+                    label,
+                    ex
+                );
+            }
+
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
+            // Perform actual load
+            try
+            {
+                Debug.Log($"[AssetLoader] Loading assets with label: {label}");
+                var operation = Addressables.LoadAssetsAsync<T>(label, null);
+                await operation.Task;
+
+                if (operation.Status == AsyncOperationStatus.Succeeded)
+                {
+                    var handles = new List<IAssetHandle<T>>();
+
+                    // Create a shared tracker for the list operation
+                    var sharedTracker = new SharedListOperationTracker<T>(operation);
+                    _activeHandles.Add(sharedTracker);
+
+                    // For each loaded asset, create a wrapper handle
+                    foreach (var asset in operation.Result)
+                    {
+                        var wrapper = new ListItemHandle<T>(sharedTracker, asset);
+                        handles.Add(wrapper);
+                        _activeHandles.Add(wrapper);
+                    }
+
+                    Debug.Log($"[AssetLoader] Loaded {handles.Count} assets with label: {label}");
+
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    var avgTimePerAsset = handles.Count > 0 ? loadDuration / handles.Count : loadDuration;
+
+                    foreach (var handle in handles)
+                    {
+                        AssetMonitorBridge.ReportAssetLoaded(
+                            $"{label}/*",
+                            typeof(T).Name,
+                            _scopeName,
+                            avgTimePerAsset,
+                            false // not from cache
+                        );
+                    }
+#endif
+
+                    return LoadResult<List<IAssetHandle<T>>>.Success(handles);
+                }
+                else
+                {
+                    var errorCode = DetermineErrorCode(operation);
+                    var errorMsg = operation.OperationException?.Message ?? "Load operation failed";
+
+                    return LoadResult<List<IAssetHandle<T>>>.Failure(
+                        errorCode,
+                        $"Failed to load assets by label: {label}. {errorMsg}",
+                        null,
+                        label,
+                        operation.OperationException
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                return LoadResult<List<IAssetHandle<T>>>.Failure(
+                    LoadErrorCode.OperationFailed,
+                    $"Exception loading by label: {label}",
+                    null,
+                    label,
+                    ex
+                );
+            }
+        }
+
+        /// <summary>
+        /// Determine specific error code from operation exception
+        /// </summary>
+        private LoadErrorCode DetermineErrorCode<T>(AsyncOperationHandle<T> operation)
+        {
+            if (operation.OperationException == null)
+                return LoadErrorCode.OperationFailed;
+
+            var exceptionMsg = operation.OperationException.Message.ToLower();
+
+            // Check for specific error patterns
+            if (exceptionMsg.Contains("not found") || exceptionMsg.Contains("no location"))
+                return LoadErrorCode.AssetNotFound;
+
+            if (exceptionMsg.Contains("invalid key") || exceptionMsg.Contains("invalid address"))
+                return LoadErrorCode.InvalidAddress;
+
+            if (exceptionMsg.Contains("type") && exceptionMsg.Contains("mismatch"))
+                return LoadErrorCode.TypeMismatch;
+
+            if (exceptionMsg.Contains("network") || exceptionMsg.Contains("connection") || exceptionMsg.Contains("download"))
+                return LoadErrorCode.NetworkError;
+
+            return LoadErrorCode.OperationFailed;
+        }
+
+        #endregion
+
         #region Instantiate
 
         /// <summary>
