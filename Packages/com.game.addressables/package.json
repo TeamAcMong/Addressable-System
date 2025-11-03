@@ -1,8 +1,8 @@
 {
   "name": "com.game.addressables",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "displayName": "Addressable Manager",
-  "description": "Professional Addressable Asset Management System with automatic monitoring, comprehensive Editor tools, real-time dashboard, scope-based lifecycle, object pooling, and visual debugging. All loads automatically tracked!",
+  "description": "Professional Addressable Asset Management System with thread-safe loading, automatic memory management, explicit error handling, dynamic pooling, automatic monitoring, comprehensive Editor tools, real-time dashboard, scope-based lifecycle, and visual debugging.",
   "unity": "2021.3",
   "keywords": [
     "addressables",
