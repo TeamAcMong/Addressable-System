@@ -14,6 +14,10 @@ namespace AddressableManager.Loaders
     /// <summary>
     /// Core asset loader with caching, reference counting, and lifecycle management
     /// Automatically monitors all operations in Editor for Dashboard tracking
+    ///
+    /// ⚠️ THREAD SAFETY WARNING:
+    /// AssetLoader is NOT thread-safe and must be called from Unity's main thread only.
+    /// For thread-safe loading, use ThreadSafeAssetLoader wrapper instead.
     /// </summary>
     public class AssetLoader : IDisposable
     {
@@ -29,6 +33,9 @@ namespace AddressableManager.Loaders
         // Scope name for monitoring (Editor-only, zero overhead in builds)
         private readonly string _scopeName;
 
+        // Main thread ID for thread safety checks
+        private static int? _mainThreadId;
+
         /// <summary>
         /// Create AssetLoader with optional scope name for monitoring
         /// </summary>
@@ -36,6 +43,34 @@ namespace AddressableManager.Loaders
         public AssetLoader(string scopeName = "Unknown")
         {
             _scopeName = scopeName;
+
+            // Capture main thread ID on first creation
+            if (_mainThreadId == null)
+            {
+                _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            }
+        }
+
+        /// <summary>
+        /// Check if current thread is Unity's main thread
+        /// Throws exception if called from background thread
+        /// </summary>
+        private void AssertMainThread()
+        {
+            if (_mainThreadId.HasValue && System.Threading.Thread.CurrentThread.ManagedThreadId != _mainThreadId.Value)
+            {
+                throw new InvalidOperationException(
+                    $"[AssetLoader] Thread safety violation detected!\n\n" +
+                    $"AssetLoader must be called from Unity's main thread only.\n" +
+                    $"Current thread ID: {System.Threading.Thread.CurrentThread.ManagedThreadId}\n" +
+                    $"Expected thread ID: {_mainThreadId.Value}\n\n" +
+                    $"SOLUTION: Use ThreadSafeAssetLoader instead:\n" +
+                    $"  var loader = new ThreadSafeAssetLoader(\"{_scopeName}\");\n" +
+                    $"  var handle = await loader.LoadAssetAsync<T>(address);\n\n" +
+                    $"Or dispatch to main thread manually:\n" +
+                    $"  UnityMainThreadDispatcher.Enqueue(() => /* your code */);\n"
+                );
+            }
         }
 
         #region Load by Address
