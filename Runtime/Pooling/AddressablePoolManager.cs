@@ -19,12 +19,42 @@ namespace AddressableManager.Pooling
         private IPoolFactory _poolFactory;
         private bool _disposed;
 
+        // Auto-create pool settings
+        private bool _autoCreatePoolsEnabled = false;
+        private DynamicPoolConfig _autoCreateDefaultConfig = null;
+
         public AddressablePoolManager(AssetLoader loader, IPoolFactory poolFactory = null)
         {
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
             _poolFactory = poolFactory ?? new UnityPoolFactory(); // Default to Unity's pool
             _pools = new Dictionary<string, IObjectPool<GameObject>>();
         }
+
+        /// <summary>
+        /// Enable automatic pool creation when Spawn() is called on non-existent pool
+        /// </summary>
+        /// <param name="defaultConfig">Default config for auto-created pools (null = use static config)</param>
+        public void EnableAutoCreatePools(DynamicPoolConfig defaultConfig = null)
+        {
+            _autoCreatePoolsEnabled = true;
+            _autoCreateDefaultConfig = defaultConfig;
+            Debug.Log("[PoolManager] Auto-create pools enabled");
+        }
+
+        /// <summary>
+        /// Disable automatic pool creation
+        /// </summary>
+        public void DisableAutoCreatePools()
+        {
+            _autoCreatePoolsEnabled = false;
+            _autoCreateDefaultConfig = null;
+            Debug.Log("[PoolManager] Auto-create pools disabled");
+        }
+
+        /// <summary>
+        /// Check if auto-create is enabled
+        /// </summary>
+        public bool IsAutoCreateEnabled => _autoCreatePoolsEnabled;
 
         /// <summary>
         /// Switch pool factory at runtime (e.g., from Unity pool to Zenject pool)
@@ -202,6 +232,7 @@ namespace AddressableManager.Pooling
 
         /// <summary>
         /// Spawn object from pool
+        /// If auto-create is enabled and pool doesn't exist, creates it automatically
         /// </summary>
         public GameObject Spawn(string address, Vector3 position, Quaternion rotation, Transform parent = null)
         {
@@ -211,10 +242,39 @@ namespace AddressableManager.Pooling
                 return null;
             }
 
+            // Check if pool exists
             if (!_pools.TryGetValue(address, out var pool))
             {
-                Debug.LogError($"[PoolManager] No pool found for {address}. Create pool first!");
-                return null;
+                // Auto-create pool if enabled
+                if (_autoCreatePoolsEnabled)
+                {
+                    Debug.LogWarning($"[PoolManager] Auto-creating pool for {address}");
+
+                    // Create pool synchronously (blocking)
+                    var task = _autoCreateDefaultConfig != null
+                        ? CreateDynamicPoolAsync(address, _autoCreateDefaultConfig, preloadCount: 0)
+                        : CreatePoolAsync(address, preloadCount: 0, maxSize: 50);
+
+                    task.Wait(); // Block until pool is created
+
+                    if (!task.Result)
+                    {
+                        Debug.LogError($"[PoolManager] Failed to auto-create pool for {address}");
+                        return null;
+                    }
+
+                    // Get the newly created pool
+                    if (!_pools.TryGetValue(address, out pool))
+                    {
+                        Debug.LogError($"[PoolManager] Pool was created but not found in dictionary: {address}");
+                        return null;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[PoolManager] No pool found for {address}. Create pool first or enable auto-create!");
+                    return null;
+                }
             }
 
             var instance = pool.Get();
