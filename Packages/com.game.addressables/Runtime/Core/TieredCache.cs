@@ -312,9 +312,9 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Get entries by tier
+        /// Get entries by tier (internal use only)
         /// </summary>
-        public IEnumerable<CacheEntry<T>> GetEntriesByTier(CacheTier tier)
+        internal IEnumerable<CacheEntry<T>> GetEntriesByTier(CacheTier tier)
         {
             return _cache.Values.Where(e => e.Tier == tier);
         }
