@@ -1,0 +1,87 @@
+{
+  "version": "1.0",
+  "description": "Versioned assets rules - Automatically version assets for content updates",
+  "autoApplyOnImport": true,
+  "autoApplyOnModified": true,
+  "verboseLogging": true,
+  "versionExpression": "[1.0.0,2.0.0)",
+  "excludeUnversioned": false,
+  "addressRules": [
+    {
+      "ruleName": "Core Game Assets",
+      "description": "Core assets that rarely change",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "targetGroupName": "CoreAssets",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "DLC Content",
+      "description": "Downloadable content assets",
+      "enabled": true,
+      "priority": 90,
+      "skipExisting": false,
+      "targetGroupName": "DLC",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    }
+  ],
+  "labelRules": [
+    {
+      "ruleName": "Static Content Label",
+      "description": "Mark static content for build-time inclusion",
+      "enabled": true,
+      "priority": 100,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Dynamic Content Label",
+      "description": "Mark dynamic content for remote updates",
+      "enabled": true,
+      "priority": 90,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    }
+  ],
+  "versionRules": [
+    {
+      "ruleName": "Build Version",
+      "description": "Apply build version to all assets",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "BuildNumberVersionProvider",
+      "versionProviderPath": ""
+    },
+    {
+      "ruleName": "Git Commit Version",
+      "description": "Apply git commit hash for tracking",
+      "enabled": false,
+      "priority": 90,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "GitCommitVersionProvider",
+      "versionProviderPath": ""
+    },
+    {
+      "ruleName": "Date Version",
+      "description": "Apply timestamp version",
+      "enabled": false,
+      "priority": 80,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "DateVersionProvider",
+      "versionProviderPath": ""
+    }
+  ]
+}

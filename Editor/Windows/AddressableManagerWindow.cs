@@ -43,6 +43,8 @@ namespace AddressableManager.Editor.Windows
         private Label _statLoadValue;
         private ListView _slowestAssetsList;
         private Button _exportBtn;
+        private MemoryGraphView _memoryGraph;
+        private Label _memoryGraphSummary;
 
         // UI Elements - Scopes Tab
         private Dictionary<string, (Foldout foldout, Label stats, ListView list, Button cleanup)> _scopeElements;
@@ -164,6 +166,9 @@ namespace AddressableManager.Editor.Windows
             _slowestAssetsList = _root.Q<ListView>("slowest-assets-list");
             _exportBtn = _root.Q<Button>("export-btn");
 
+            // Initialize Memory Graph
+            InitializeMemoryGraph();
+
             // Scopes Tab
             InitializeScopeElements();
 
@@ -250,6 +255,41 @@ namespace AddressableManager.Editor.Windows
                         RefreshScopesTab();
                     }
                 };
+            }
+        }
+
+        private void InitializeMemoryGraph()
+        {
+            // Create memory graph visual element
+            _memoryGraph = new MemoryGraphView();
+            _memoryGraph.name = "memory-graph";
+            _memoryGraph.style.marginTop = 10;
+            _memoryGraph.style.marginBottom = 10;
+            _memoryGraph.style.marginLeft = 5;
+            _memoryGraph.style.marginRight = 5;
+
+            // Create summary label
+            _memoryGraphSummary = new Label("Memory Graph - No data yet");
+            _memoryGraphSummary.name = "memory-graph-summary";
+            _memoryGraphSummary.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _memoryGraphSummary.style.marginTop = 5;
+            _memoryGraphSummary.style.marginBottom = 5;
+
+            // Find performance tab and add graph
+            // Try to insert after stats section or before slowest assets list
+            if (_tabPerformance != null)
+            {
+                // Find a good container to add it to
+                var container = _tabPerformance.Q<VisualElement>("performance-content");
+                if (container == null)
+                {
+                    // Fallback: add directly to performance tab
+                    container = _tabPerformance;
+                }
+
+                // Add to container
+                container.Add(_memoryGraphSummary);
+                container.Add(_memoryGraph);
             }
         }
 
@@ -424,7 +464,19 @@ namespace AddressableManager.Editor.Windows
             _slowestAssetsList.fixedItemHeight = 40;
             _slowestAssetsList.Rebuild();
 
-            // TODO: Implement memory graph rendering
+            // Update memory graph summary
+            if (_memoryGraph != null && _memoryGraphSummary != null)
+            {
+                _memoryGraphSummary.text = _memoryGraph.GetSummary();
+
+                // Show peak and average stats
+                var peak = _memoryGraph.GetPeakMemory() / (1024f * 1024f);
+                var avg = _memoryGraph.GetAverageMemory() / (1024f * 1024f);
+                if (peak > 0)
+                {
+                    _memoryGraphSummary.text += $" | Peak: {peak:F1} MB | Avg: {avg:F1} MB";
+                }
+            }
         }
 
         private void RefreshScopesTab()
@@ -613,6 +665,26 @@ namespace AddressableManager.Editor.Windows
         private void CollectMetrics()
         {
             _metrics.RecordSnapshot();
+
+            // Add memory sample to graph
+            if (_memoryGraph != null && _tracker != null)
+            {
+                var allAssets = _tracker.TrackedAssets.Values.Where(a => a.IsValid).ToList();
+                var totalMemory = allAssets.Sum(a => a.MemorySize);
+                var cachedMemory = allAssets.Where(a => a.InitialRefCount > 0).Sum(a => a.MemorySize);
+                var activeMemory = allAssets.Where(a => a.ReferenceCount > 0).Sum(a => a.MemorySize);
+
+                var sample = new MemoryGraphView.MemorySample
+                {
+                    Timestamp = DateTime.Now,
+                    TotalMemory = totalMemory,
+                    CachedMemory = cachedMemory,
+                    ActiveMemory = activeMemory,
+                    AssetCount = allAssets.Count
+                };
+
+                _memoryGraph.AddSample(sample);
+            }
         }
 
         #endregion

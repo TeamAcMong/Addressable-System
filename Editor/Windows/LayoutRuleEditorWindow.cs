@@ -33,6 +33,21 @@ namespace AddressableManager.Editor.Windows
         private GUIStyle _normalItemStyle;
         private bool _stylesInitialized;
 
+        // Preview data
+        private List<PreviewItem> _previewItems = new List<PreviewItem>();
+        private bool _previewNeedsRefresh = true;
+        private int _previewLimit = 50;
+        private int _totalMatchCount = 0;
+        private bool _isGeneratingPreview = false;
+
+        private class PreviewItem
+        {
+            public string AssetPath;
+            public string GeneratedValue; // Address, Label, or Version
+            public bool IsValid;
+            public string ErrorMessage;
+        }
+
         [MenuItem("Window/Addressable Manager/Layout Rule Editor", priority = 201)]
         public static void ShowWindow()
         {
@@ -244,7 +259,11 @@ namespace AddressableManager.Editor.Windows
                 EditorGUILayout.BeginVertical(style);
                 if (GUILayout.Button(rule.RuleName, EditorStyles.label, GUILayout.Height(30)))
                 {
-                    _selectedRuleIndex = i;
+                    if (_selectedRuleIndex != i)
+                    {
+                        _selectedRuleIndex = i;
+                        _previewNeedsRefresh = true;
+                    }
                 }
 
                 // Mini info
@@ -267,7 +286,11 @@ namespace AddressableManager.Editor.Windows
                 EditorGUILayout.BeginVertical(style);
                 if (GUILayout.Button(rule.RuleName, EditorStyles.label, GUILayout.Height(30)))
                 {
-                    _selectedRuleIndex = i;
+                    if (_selectedRuleIndex != i)
+                    {
+                        _selectedRuleIndex = i;
+                        _previewNeedsRefresh = true;
+                    }
                 }
 
                 EditorGUILayout.LabelField($"Filters: {rule.Filters.Count} | Priority: {rule.Priority}", EditorStyles.miniLabel);
@@ -289,7 +312,11 @@ namespace AddressableManager.Editor.Windows
                 EditorGUILayout.BeginVertical(style);
                 if (GUILayout.Button(rule.RuleName, EditorStyles.label, GUILayout.Height(30)))
                 {
-                    _selectedRuleIndex = i;
+                    if (_selectedRuleIndex != i)
+                    {
+                        _selectedRuleIndex = i;
+                        _previewNeedsRefresh = true;
+                    }
                 }
 
                 EditorGUILayout.LabelField($"Filters: {rule.Filters.Count} | Priority: {rule.Priority}", EditorStyles.miniLabel);
@@ -489,22 +516,315 @@ namespace AddressableManager.Editor.Windows
 
         private void DrawPreviewPanel()
         {
-            EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(300));
+            EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(350));
 
             EditorGUILayout.LabelField("Preview", _headerStyle);
-            EditorGUILayout.HelpBox("Preview panel - Shows matched assets for selected rule", MessageType.Info);
 
+            if (_selectedRuleIndex < 0)
+            {
+                EditorGUILayout.HelpBox("Select a rule to see preview of matched assets", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            // Preview controls
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Preview Limit:", GUILayout.Width(90));
+            _previewLimit = EditorGUILayout.IntSlider(_previewLimit, 10, 200);
+            EditorGUILayout.EndHorizontal();
+
+            if (GUILayout.Button(_isGeneratingPreview ? "Generating..." : "Refresh Preview", GUILayout.Height(25)))
+            {
+                if (!_isGeneratingPreview)
+                {
+                    GeneratePreview();
+                }
+            }
+
+            EditorGUILayout.Space(5);
+
+            // Statistics
+            if (_totalMatchCount > 0)
+            {
+                string stats = $"Showing {_previewItems.Count} of {_totalMatchCount} matched assets";
+                EditorGUILayout.LabelField(stats, EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.Space(3);
+
+            // Preview list
             _rightScrollPos = EditorGUILayout.BeginScrollView(_rightScrollPos);
 
-            if (_selectedRuleIndex >= 0)
+            if (_previewNeedsRefresh)
             {
-                EditorGUILayout.LabelField("Matched Assets:", EditorStyles.boldLabel);
-                EditorGUILayout.LabelField("(Preview coming soon)", EditorStyles.miniLabel);
+                EditorGUILayout.HelpBox("Click 'Refresh Preview' to see matched assets", MessageType.Info);
+            }
+            else if (_isGeneratingPreview)
+            {
+                EditorGUILayout.HelpBox("Generating preview...", MessageType.Info);
+            }
+            else if (_previewItems.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No assets match this rule", MessageType.Warning);
+            }
+            else
+            {
+                foreach (var item in _previewItems)
+                {
+                    DrawPreviewItem(item);
+                    EditorGUILayout.Space(2);
+                }
             }
 
             EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawPreviewItem(PreviewItem item)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            // Asset path (clickable)
+            if (GUILayout.Button(System.IO.Path.GetFileName(item.AssetPath), EditorStyles.label))
+            {
+                var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.AssetPath);
+                if (obj != null)
+                {
+                    EditorGUIUtility.PingObject(obj);
+                    Selection.activeObject = obj;
+                }
+            }
+
+            EditorGUILayout.LabelField(item.AssetPath, EditorStyles.miniLabel);
+
+            // Generated value
+            if (item.IsValid)
+            {
+                string label = _selectedRuleType switch
+                {
+                    RuleType.Address => "Address:",
+                    RuleType.Label => "Labels:",
+                    RuleType.Version => "Version:",
+                    _ => "Value:"
+                };
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(label, GUILayout.Width(60));
+                EditorGUILayout.SelectableLabel(item.GeneratedValue, EditorStyles.miniLabel, GUILayout.Height(15));
+                EditorGUILayout.EndHorizontal();
+            }
+            else
+            {
+                EditorGUILayout.HelpBox($"Error: {item.ErrorMessage}", MessageType.Error);
+            }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void GeneratePreview()
+        {
+            if (_selectedRuleIndex < 0 || _selectedRuleData == null) return;
+
+            _isGeneratingPreview = true;
+            _previewItems.Clear();
+            _totalMatchCount = 0;
+
+            try
+            {
+                // Get the selected rule
+                object selectedRule = null;
+                switch (_selectedRuleType)
+                {
+                    case RuleType.Address:
+                        if (_selectedRuleIndex < _selectedRuleData.AddressRules.Count)
+                            selectedRule = _selectedRuleData.AddressRules[_selectedRuleIndex];
+                        break;
+                    case RuleType.Label:
+                        if (_selectedRuleIndex < _selectedRuleData.LabelRules.Count)
+                            selectedRule = _selectedRuleData.LabelRules[_selectedRuleIndex];
+                        break;
+                    case RuleType.Version:
+                        if (_selectedRuleIndex < _selectedRuleData.VersionRules.Count)
+                            selectedRule = _selectedRuleData.VersionRules[_selectedRuleIndex];
+                        break;
+                }
+
+                if (selectedRule == null)
+                {
+                    _isGeneratingPreview = false;
+                    _previewNeedsRefresh = false;
+                    return;
+                }
+
+                // Setup the rule
+                switch (selectedRule)
+                {
+                    case AddressRule ar:
+                        ar.Setup();
+                        GenerateAddressPreview(ar);
+                        break;
+                    case LabelRule lr:
+                        lr.Setup();
+                        GenerateLabelPreview(lr);
+                        break;
+                    case VersionRule vr:
+                        vr.Setup();
+                        GenerateVersionPreview(vr);
+                        break;
+                }
+
+                _previewNeedsRefresh = false;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Error generating preview: {ex.Message}");
+            }
+            finally
+            {
+                _isGeneratingPreview = false;
+                Repaint();
+            }
+        }
+
+        private void GenerateAddressPreview(AddressRule rule)
+        {
+            var allAssets = GetAllAssetPaths();
+            int matchCount = 0;
+
+            foreach (var assetPath in allAssets)
+            {
+                if (rule.IsMatch(assetPath))
+                {
+                    matchCount++;
+
+                    if (_previewItems.Count < _previewLimit)
+                    {
+                        try
+                        {
+                            string address = rule.GenerateAddress(assetPath);
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = address,
+                                IsValid = !string.IsNullOrEmpty(address),
+                                ErrorMessage = string.IsNullOrEmpty(address) ? "Empty address generated" : ""
+                            });
+                        }
+                        catch (System.Exception ex)
+                        {
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = "",
+                                IsValid = false,
+                                ErrorMessage = ex.Message
+                            });
+                        }
+                    }
+                }
+            }
+
+            _totalMatchCount = matchCount;
+        }
+
+        private void GenerateLabelPreview(LabelRule rule)
+        {
+            var allAssets = GetAllAssetPaths();
+            int matchCount = 0;
+
+            foreach (var assetPath in allAssets)
+            {
+                if (rule.IsMatch(assetPath))
+                {
+                    matchCount++;
+
+                    if (_previewItems.Count < _previewLimit)
+                    {
+                        try
+                        {
+                            var labels = rule.GenerateLabels(assetPath);
+                            string labelsStr = labels != null ? string.Join(", ", labels) : "";
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = labelsStr,
+                                IsValid = labels != null && labels.Count > 0,
+                                ErrorMessage = (labels == null || labels.Count == 0) ? "No labels generated" : ""
+                            });
+                        }
+                        catch (System.Exception ex)
+                        {
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = "",
+                                IsValid = false,
+                                ErrorMessage = ex.Message
+                            });
+                        }
+                    }
+                }
+            }
+
+            _totalMatchCount = matchCount;
+        }
+
+        private void GenerateVersionPreview(VersionRule rule)
+        {
+            var allAssets = GetAllAssetPaths();
+            int matchCount = 0;
+
+            foreach (var assetPath in allAssets)
+            {
+                if (rule.IsMatch(assetPath))
+                {
+                    matchCount++;
+
+                    if (_previewItems.Count < _previewLimit)
+                    {
+                        try
+                        {
+                            string version = rule.GenerateVersion(assetPath);
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = $"version:{version}",
+                                IsValid = !string.IsNullOrEmpty(version),
+                                ErrorMessage = string.IsNullOrEmpty(version) ? "Empty version generated" : ""
+                            });
+                        }
+                        catch (System.Exception ex)
+                        {
+                            _previewItems.Add(new PreviewItem
+                            {
+                                AssetPath = assetPath,
+                                GeneratedValue = "",
+                                IsValid = false,
+                                ErrorMessage = ex.Message
+                            });
+                        }
+                    }
+                }
+            }
+
+            _totalMatchCount = matchCount;
+        }
+
+        private List<string> GetAllAssetPaths()
+        {
+            var paths = new List<string>();
+            var allGuids = AssetDatabase.FindAssets("");
+
+            foreach (var guid in allGuids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
+                {
+                    paths.Add(path);
+                }
+            }
+
+            return paths;
         }
 
         private void AddNewRule()
@@ -642,12 +962,89 @@ namespace AddressableManager.Editor.Windows
 
         private void ImportRules()
         {
-            EditorUtility.DisplayDialog("Import", "Import functionality coming soon!", "OK");
+            if (_selectedRuleData == null)
+            {
+                EditorUtility.DisplayDialog("Import Rules", "Please select a LayoutRuleData first", "OK");
+                return;
+            }
+
+            string path = EditorUtility.OpenFilePanel("Import Rules", Application.dataPath, "json");
+            if (string.IsNullOrEmpty(path))
+            {
+                return; // User cancelled
+            }
+
+            bool mergeMode = EditorUtility.DisplayDialog("Import Mode",
+                "How would you like to import the rules?\n\n" +
+                "Replace: Remove all existing rules and import new ones\n" +
+                "Merge: Keep existing rules and add imported rules",
+                "Merge", "Replace");
+
+            bool success = RuleSerializer.ImportFromJson(_selectedRuleData, path, mergeMode);
+
+            if (success)
+            {
+                EditorUtility.DisplayDialog("Import Complete",
+                    $"Rules imported successfully from:\n{System.IO.Path.GetFileName(path)}\n\n" +
+                    $"Mode: {(mergeMode ? "Merge" : "Replace")}\n" +
+                    $"Total rules: {_selectedRuleData.TotalRuleCount}",
+                    "OK");
+
+                _selectedRuleIndex = -1;
+                _previewNeedsRefresh = true;
+                Repaint();
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Import Failed",
+                    "Failed to import rules. Check the console for details.",
+                    "OK");
+            }
         }
 
         private void ExportRules()
         {
-            EditorUtility.DisplayDialog("Export", "Export functionality coming soon!", "OK");
+            if (_selectedRuleData == null)
+            {
+                EditorUtility.DisplayDialog("Export Rules", "Please select a LayoutRuleData first", "OK");
+                return;
+            }
+
+            string defaultName = string.IsNullOrEmpty(_selectedRuleData.Description)
+                ? "AddressableRules"
+                : _selectedRuleData.Description.Replace(" ", "_");
+
+            string path = EditorUtility.SaveFilePanel("Export Rules", Application.dataPath, defaultName, "json");
+            if (string.IsNullOrEmpty(path))
+            {
+                return; // User cancelled
+            }
+
+            bool success = RuleSerializer.ExportToJson(_selectedRuleData, path);
+
+            if (success)
+            {
+                EditorUtility.DisplayDialog("Export Complete",
+                    $"Rules exported successfully to:\n{System.IO.Path.GetFileName(path)}\n\n" +
+                    $"Address rules: {_selectedRuleData.AddressRules.Count}\n" +
+                    $"Label rules: {_selectedRuleData.LabelRules.Count}\n" +
+                    $"Version rules: {_selectedRuleData.VersionRules.Count}",
+                    "OK");
+
+                // Offer to reveal in explorer
+                if (EditorUtility.DisplayDialog("Show in Explorer",
+                    "Would you like to reveal the exported file?",
+                    "Yes", "No"))
+                {
+                    EditorUtility.RevealInFinder(path);
+                }
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Export Failed",
+                    "Failed to export rules. Check the console for details.",
+                    "OK");
+            }
         }
     }
 }

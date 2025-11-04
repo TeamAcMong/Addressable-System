@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using AddressableManager.Editor.Rules;
+using AddressableManager.Editor.Versioning;
 
 namespace AddressableManager.Editor.CLI
 {
@@ -187,8 +188,8 @@ namespace AddressableManager.Editor.CLI
         }
 
         /// <summary>
-        /// Set version expression for filtering (placeholder for Phase 4)
-        /// Usage: Unity -batchmode -executeMethod AddressableManager.Editor.CLI.AddressableCLI.SetVersionExpression -layoutRuleAssetPath "Assets/Rules/Main.asset" -versionExpression "[1.0.0,2.0.0)"
+        /// Set version expression for filtering
+        /// Usage: Unity -batchmode -executeMethod AddressableManager.Editor.CLI.AddressableCLI.SetVersionExpression -layoutRuleAssetPath "Assets/Rules/Main.asset" -versionExpression "[1.0.0,2.0.0)" -excludeUnversioned true
         /// </summary>
         public static void SetVersionExpression()
         {
@@ -196,13 +197,58 @@ namespace AddressableManager.Editor.CLI
 
             string layoutRuleAssetPath = GetArg(args, "layoutRuleAssetPath", "");
             string versionExpression = GetArg(args, "versionExpression", "");
+            bool excludeUnversioned = GetArg(args, "excludeUnversioned", false);
 
-            Log($"SetVersionExpression called (Phase 4 - Coming Soon)");
-            Log($"  LayoutRuleData: {layoutRuleAssetPath}");
-            Log($"  Version Expression: {versionExpression}");
+            if (string.IsNullOrEmpty(layoutRuleAssetPath))
+            {
+                LogError("Missing required argument: -layoutRuleAssetPath");
+                EditorApplication.Exit(2);
+                return;
+            }
 
-            // Will be implemented in Phase 4
-            EditorApplication.Exit(0);
+            var ruleData = AssetDatabase.LoadAssetAtPath<LayoutRuleData>(layoutRuleAssetPath);
+            if (ruleData == null)
+            {
+                LogError($"LayoutRuleData not found at path: {layoutRuleAssetPath}");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            try
+            {
+                // Validate version expression if provided
+                if (!string.IsNullOrEmpty(versionExpression))
+                {
+                    if (!VersionExpression.TryParse(versionExpression, out var parsedExpression))
+                    {
+                        LogError($"Invalid version expression: {versionExpression}");
+                        LogError("Valid formats: [1.0.0,2.0.0), (1.0.0,2.0.0], [1.0.0,2.0.0], 1.0.0, >=1.0.0, >1.0.0, <=2.0.0, <2.0.0");
+                        EditorApplication.Exit(1);
+                        return;
+                    }
+                    Log($"✓ Version expression validated: {versionExpression}");
+                }
+
+                // Update properties
+                ruleData.VersionExpression = versionExpression;
+                ruleData.ExcludeUnversioned = excludeUnversioned;
+
+                // Save changes
+                EditorUtility.SetDirty(ruleData);
+                AssetDatabase.SaveAssets();
+
+                Log($"✓ Version expression updated successfully");
+                Log($"  LayoutRuleData: {layoutRuleAssetPath}");
+                Log($"  Version Expression: {(string.IsNullOrEmpty(versionExpression) ? "(none)" : versionExpression)}");
+                Log($"  Exclude Unversioned: {excludeUnversioned}");
+
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Exception during version expression update: {ex.Message}");
+                EditorApplication.Exit(2);
+            }
         }
 
         /// <summary>
