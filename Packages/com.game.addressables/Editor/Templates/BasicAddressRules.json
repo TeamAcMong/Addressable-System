@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "description": "Basic address assignment rules - Assigns addresses based on asset paths",
+  "autoApplyOnImport": true,
+  "autoApplyOnModified": false,
+  "verboseLogging": false,
+  "versionExpression": "",
+  "excludeUnversioned": false,
+  "addressRules": [
+    {
+      "ruleName": "UI Sprites by Filename",
+      "description": "Assign UI sprites using their filename as address",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "targetGroupName": "UI",
+      "filters": [],
+      "addressProviderType": "FileNameAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Prefabs by Path",
+      "description": "Assign prefabs using their full path as address",
+      "enabled": true,
+      "priority": 90,
+      "skipExisting": false,
+      "targetGroupName": "Prefabs",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Audio by Filename",
+      "description": "Assign audio clips using their filename",
+      "enabled": true,
+      "priority": 80,
+      "skipExisting": false,
+      "targetGroupName": "Audio",
+      "filters": [],
+      "addressProviderType": "FileNameAddressProvider",
+      "addressProviderPath": ""
+    }
+  ],
+  "labelRules": [],
+  "versionRules": []
+}

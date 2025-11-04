@@ -371,11 +371,105 @@ namespace AddressableManager.Editor.Rules
 
         private void ProcessVersionRules(List<string> assetPaths, ProcessResult result, Action<float, string> progressCallback)
         {
-            // Placeholder for Phase 4 - Version Management
-            // For now, just log that version rules are not yet implemented
-            if (_ruleData.VersionRules != null && _ruleData.VersionRules.Count > 0)
+            if (_ruleData.VersionRules == null || _ruleData.VersionRules.Count == 0)
             {
-                result.Warnings.Add("Version rules are not yet implemented (coming in v3.4.0)");
+                Log("No version rules to process");
+                return;
+            }
+
+            // Sort rules by priority (higher first)
+            var sortedRules = _ruleData.VersionRules
+                .Where(r => r != null && r.Enabled)
+                .OrderByDescending(r => r.Priority)
+                .ToList();
+
+            Log($"Processing {sortedRules.Count} version rules");
+
+            int processed = 0;
+            int total = assetPaths.Count;
+
+            foreach (var assetPath in assetPaths)
+            {
+                processed++;
+                if (processed % 100 == 0)
+                {
+                    float progress = 0.9f + (0.1f * (processed / (float)total));
+                    progressCallback?.Invoke(progress, $"Processing versions ({processed}/{total})...");
+                }
+
+                // Find first matching rule
+                VersionRule matchedRule = null;
+                foreach (var rule in sortedRules)
+                {
+                    if (rule.IsMatch(assetPath))
+                    {
+                        matchedRule = rule;
+                        break; // Use first matching rule (highest priority)
+                    }
+                }
+
+                if (matchedRule != null)
+                {
+                    ApplyVersionRule(assetPath, matchedRule, result);
+                }
+            }
+        }
+
+        private void ApplyVersionRule(string assetPath, VersionRule rule, ProcessResult result)
+        {
+            try
+            {
+                var guid = AssetDatabase.AssetPathToGUID(assetPath);
+                var entry = _settings.FindAssetEntry(guid);
+
+                // Skip if not in addressables
+                if (entry == null)
+                {
+                    return;
+                }
+
+                // Skip if already has version and rule says skip existing
+                bool hasVersion = entry.labels.Any(l => l.StartsWith("version:"));
+                if (rule.SkipExisting && hasVersion)
+                {
+                    return;
+                }
+
+                // Generate version
+                string version = rule.GenerateVersion(assetPath);
+                if (string.IsNullOrEmpty(version))
+                {
+                    result.Warnings.Add($"Rule '{rule.RuleName}' generated empty version for: {assetPath}");
+                    return;
+                }
+
+                // Format version as label: "version:1.0.0"
+                string versionLabel = $"version:{version}";
+
+                // Remove existing version labels
+                var existingVersionLabels = entry.labels.Where(l => l.StartsWith("version:")).ToList();
+                foreach (var oldLabel in existingVersionLabels)
+                {
+                    entry.labels.Remove(oldLabel);
+                }
+
+                // Add version label to settings if it doesn't exist
+                if (!_settings.GetLabels().Contains(versionLabel))
+                {
+                    _settings.AddLabel(versionLabel, false);
+                }
+
+                // Add version label to entry
+                if (!entry.labels.Contains(versionLabel))
+                {
+                    entry.labels.Add(versionLabel);
+                    result.VersionsApplied++;
+                    LogVerbose($"Applied version '{version}' to {assetPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add($"Error applying version rule to {assetPath}: {ex.Message}");
             }
         }
 

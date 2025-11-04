@@ -39,6 +39,13 @@ namespace AddressableManager.Editor.Rules
         [Tooltip("Show detailed logs when applying rules")]
         [SerializeField] private bool _verboseLogging = false;
 
+        [Header("Version Filtering")]
+        [Tooltip("Version expression for filtering assets (e.g., '[1.0.0,2.0.0)')\nLeave empty to include all versions")]
+        [SerializeField] private string _versionExpression = "";
+
+        [Tooltip("Exclude assets without version labels when expression is set")]
+        [SerializeField] private bool _excludeUnversioned = false;
+
         /// <summary>
         /// Unique identifier for this rule data
         /// </summary>
@@ -93,6 +100,24 @@ namespace AddressableManager.Editor.Rules
         {
             get => _verboseLogging;
             set => _verboseLogging = value;
+        }
+
+        /// <summary>
+        /// Version expression for filtering assets
+        /// </summary>
+        public string VersionExpression
+        {
+            get => _versionExpression;
+            set => _versionExpression = value;
+        }
+
+        /// <summary>
+        /// Exclude unversioned assets when version expression is set
+        /// </summary>
+        public bool ExcludeUnversioned
+        {
+            get => _excludeUnversioned;
+            set => _excludeUnversioned = value;
         }
 
         /// <summary>

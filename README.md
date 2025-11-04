@@ -1,10 +1,12 @@
-# Addressable Manager v3.0
+# Addressable Manager v3.5.0
 
-**Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, and automatic memory management.
+**Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and **SmartAddresser-inspired rule-based automation**.
 
 [![Unity](https://img.shields.io/badge/Unity-2021.3%2B-black.svg)](https://unity.com/)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.5.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+> **NEW in v3.5**: Complete SmartAddresser-like automation system with rule-based configuration, visual editor tools, version management, and CI/CD integration!
 
 ---
 
@@ -58,6 +60,83 @@ await Task.Run(async () => {
 var player1 = Advanced.GetNamedScope("Session", "Player1");
 var player2 = Advanced.GetNamedScope("Session", "Player2");
 ```
+
+---
+
+## 🤖 Automation System (NEW in v3.5!)
+
+**SmartAddresser-inspired rule-based automation for addressable assets**
+
+### Quick Automation Example
+
+```csharp
+// 1. Create rule asset: Right-click > Create > Addressable Manager > Layout Rule Data
+
+// 2. Configure address rule
+AddressRule uiSprites = new AddressRule {
+    RuleName = "UI Sprites",
+    Enabled = true,
+    Priority = 100,
+    TargetGroupName = "UI",
+    Filters = new[] { new PathFilter("Assets/UI/**/*.png") },
+    AddressProvider = new FileNameAddressProvider()
+};
+
+// 3. Apply rules
+Window > Addressable Manager > Layout Rule Editor
+> Select rule data > Click "Apply All"
+
+// Result: All UI PNGs automatically configured!
+```
+
+### Automation Features
+
+#### 🎯 Rule-Based Configuration
+- **3 Rule Types**: Address, Label, Version
+- **8 Filter Types**: Path, Type, Extension, Object, Address, Group, FindAssets, Dependencies
+- **Multiple Providers**: Filename, Path, Folder, Constant, Git, Build Number, Date
+- **Priority System**: Control rule processing order
+- **Preview Mode**: See matches before applying
+
+#### 🛠️ Visual Editor Tools
+- **Layout Rule Editor**: Create and manage rules with live preview
+- **Layout Viewer**: Visualize addressable layout, detect conflicts
+- **Dashboard**: Real-time monitoring with memory graph
+- **Debug Settings**: Configure runtime behavior
+
+#### 📦 Version Management
+- **Git Integration**: Version from commits/tags
+- **Build Numbers**: Unity PlayerSettings integration
+- **Timestamps**: Date-based versioning
+- **Version Expressions**: Semantic version filtering (`[1.0.0,2.0.0)`)
+
+#### ⚙️ CI/CD Integration
+- **CLI Commands**: Batch processing for build pipelines
+- **JSON Templates**: Shareable rule configurations
+- **Import/Export**: Team collaboration
+- **Validation**: Pre-apply rule checking
+
+### Automation Workflow
+
+```
+1. Define Rules
+   ↓ (PathFilter, TypeFilter, etc.)
+2. Preview Matches
+   ↓ (Check generated addresses/labels)
+3. Apply Rules
+   ↓ (Bulk configuration)
+4. Verify Layout
+   ↓ (Layout Viewer)
+5. Build & Deploy
+   ↓ (CLI automation)
+```
+
+### Documentation
+
+- **[Automation Guide](Documentation/ADDRESSABLE_AUTOMATION_GUIDE.md)**: Complete 6000-word guide with concepts, workflows, and best practices
+- **[Rule Examples](Documentation/RULE_SYSTEM_EXAMPLES.md)**: 8 copy-paste-ready examples for common scenarios
+- **[Editor Tools Guide](Documentation/EDITOR_TOOLS_GUIDE.md)**: Detailed reference for all visual tools
+- **[Troubleshooting](Documentation/TROUBLESHOOTING.md)**: Common issues and solutions
 
 ---
 

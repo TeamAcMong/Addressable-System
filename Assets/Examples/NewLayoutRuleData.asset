@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1fc774d33b88e0749a0836f6d59257e0, type: 3}
+  m_Name: NewLayoutRuleData
+  m_EditorClassIdentifier: AddressableManager.Editor::AddressableManager.Editor.Rules.LayoutRuleData
+  _ruleDataId: 8599b9ad-4057-48ee-843c-76adccb59e21
+  _description: 
+  _addressRules:
+  - _ruleName: Address Rule 1
+    _enabled: 1
+    _description: 
+    _targetGroupName: Scene
+    _filters:
+    - {fileID: 11400000, guid: 9c564a386331e364381baae12e21b91f, type: 2}
+    - {fileID: 11400000, guid: 3f853aa620355c84eb55c20ee5ce5c84, type: 2}
+    _addressProvider: {fileID: 11400000, guid: 7fdfd6a512907f44ba73e6fe8e3e1f99, type: 2}
+    _priority: 0
+    _skipExisting: 0
+  _labelRules:
+  - _ruleName: Label Rule 1
+    _enabled: 1
+    _description: 
+    _filters:
+    - {fileID: 0}
+    _labelProvider: {fileID: 0}
+    _priority: 0
+    _appendToExisting: 1
+  _versionRules:
+  - _ruleName: Version Rule 1
+    _enabled: 1
+    _description: 
+    _filters:
+    - {fileID: 0}
+    _versionProvider: {fileID: 0}
+    _priority: 0
+    _skipExisting: 0
+  _autoApplyOnImport: 1
+  _autoApplyOnModified: 1
+  _verboseLogging: 0
+  _versionExpression: 
+  _excludeUnversioned: 0
