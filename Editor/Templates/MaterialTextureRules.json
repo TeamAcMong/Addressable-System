@@ -1,0 +1,129 @@
+{
+  "version": "1.0",
+  "description": "Material and Texture rules - Organize materials and textures by type and quality",
+  "autoApplyOnImport": true,
+  "autoApplyOnModified": false,
+  "verboseLogging": false,
+  "versionExpression": "",
+  "excludeUnversioned": false,
+  "addressRules": [
+    {
+      "ruleName": "Character Materials",
+      "description": "Materials for character models",
+      "enabled": true,
+      "priority": 110,
+      "skipExisting": false,
+      "targetGroupName": "Materials",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Environment Materials",
+      "description": "Materials for environment objects",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "targetGroupName": "Materials",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "High Res Textures",
+      "description": "4K and 2K textures",
+      "enabled": true,
+      "priority": 90,
+      "skipExisting": false,
+      "targetGroupName": "Textures_High",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Normal Res Textures",
+      "description": "1K textures",
+      "enabled": true,
+      "priority": 80,
+      "skipExisting": false,
+      "targetGroupName": "Textures_Normal",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Low Res Textures",
+      "description": "512px and below",
+      "enabled": true,
+      "priority": 70,
+      "skipExisting": false,
+      "targetGroupName": "Textures_Low",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    }
+  ],
+  "labelRules": [
+    {
+      "ruleName": "PBR Material Label",
+      "description": "Label PBR materials",
+      "enabled": true,
+      "priority": 100,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Diffuse Texture Label",
+      "description": "Label diffuse/albedo textures",
+      "enabled": true,
+      "priority": 90,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Normal Map Label",
+      "description": "Label normal maps",
+      "enabled": true,
+      "priority": 80,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Quality Level - High",
+      "description": "High quality assets",
+      "enabled": true,
+      "priority": 70,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Quality Level - Medium",
+      "description": "Medium quality assets",
+      "enabled": true,
+      "priority": 60,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Quality Level - Low",
+      "description": "Low quality assets",
+      "enabled": true,
+      "priority": 50,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    }
+  ],
+  "versionRules": []
+}
