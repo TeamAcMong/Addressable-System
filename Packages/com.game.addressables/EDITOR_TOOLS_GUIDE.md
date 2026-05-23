@@ -1,571 +1,274 @@
-# Editor Tools Guide - Addressable Manager v2.1
+# Editor Tools Guide
 
-## 🎉 Welcome to the Professional Edition!
+Companion to the [README](README.md) and [MONITORING_GUIDE](MONITORING_GUIDE.md). This document covers everything you only ever touch inside the Editor: the Dashboard window, custom inspectors, ScriptableObject configs, the runtime progress-bar component, menu shortcuts, and the `ScopeManager` API for multi-instance scope setups.
 
-Version 2.1 transforms Addressable Manager from a code-only library into a **professional-grade Unity package** with comprehensive Editor tools, visual debugging, and **automatic monitoring**!
+## Quick start
 
-> **✨ NEW in v2.1**: All asset loading is now **automatically monitored** in the Editor!
-> No need for `.LoadAssetAsync()` extensions - just use regular `LoadAssetAsync()`.
-> All code examples below work with automatic monitoring.
+| Action | Where |
+|---|---|
+| Open the Dashboard | **Window → Addressable Manager → Dashboard** (`Ctrl+Alt+A`) |
+| Drop scope objects into a scene | **Tools → Addressable Manager → Quick Setup → Create All Scope Objects** |
+| Create a config asset | **Assets → Create → Addressable Manager → …** |
 
----
+Asset loading is auto-monitored — there are no `Monitored` variants. Anything that goes through `AssetLoader.LoadAssetAsync` (directly or via `Assets.Load`, scope loaders, `ScopeManager`, etc.) shows up in the Dashboard while you Play.
 
-## 🚀 Quick Start
+## Dashboard window
 
-### 1. Open the Dashboard
+Shortcut: `Ctrl+Alt+A`.
 
-**Window → Addressable Manager → Dashboard** (or press `Ctrl+Alt+A`)
+### Tab 1 — Active Assets
+Live row per currently-alive asset handle. Search by name, filter by scope. Visible columns:
 
-The Dashboard is your central hub for monitoring all addressable operations in real-time.
+- Address
+- Type
+- Scope (label from the loader that created the handle)
+- Reference count
+- Estimated memory
+- Time since loaded
 
-### 2. Add Scopes to Your Scene
+Use it to hunt leaks: anything alive longer than expected, or with a refcount that only grows, is a candidate.
 
-**GameObject → Addressable Manager → Add [Scope Type]**
+### Tab 2 — Performance
+Aggregated counters and a slowest-10 list:
 
-Or use the quick setup:
-**Tools → Addressable Manager → Quick Setup → Create All Scope Objects**
+- Total handles
+- Cache-hit ratio (`hits / (hits + misses)`)
+- Estimated total memory
+- Average load time
+- Slowest-10 loads
 
-### 3. Create Configuration Files
+`Export Report (CSV)` writes the current metrics next to the project, useful for diffing across optimisation passes.
 
-**Assets → Addressable Manager → Create [Config Type]**
+### Tab 3 — Scopes
+One foldout per known scope (Global / Session / Scene / Hierarchy / any custom name registered via `ScopeManager` or `new AssetLoader("…")`). Each foldout exposes per-scope asset count, estimated memory, and a manual cleanup button.
 
-Or use the quick setup:
-**Tools → Addressable Manager → Quick Setup → Create Sample Configs**
+### Tab 4 — Settings
+Controls the live `DebugSettings` instance: log level, dashboard refresh interval, simulated slow loading / failure rate / network type. Useful for stress-testing without touching real assets.
 
----
+## Custom inspectors
 
-## 📊 Dashboard Window
+### Scope components
+Selecting any `GlobalAssetScope` / `SessionAssetScope` / `SceneAssetScope` / `HierarchyAssetScope` in the Hierarchy shows the same rich inspector layout:
 
-Access: **Window → Addressable Manager → Dashboard**
-Shortcut: `Ctrl+Alt+A`
+- Coloured banner (Global = green, Session = blue, Scene = yellow, Hierarchy = red) with ACTIVE / INACTIVE badge
+- Live counters (assets loaded, estimated memory)
+- Coloured memory bar (< 50 % green, 50–80 % yellow, > 80 % red)
+- Expandable list of assets the scope currently owns
+- Buttons: Activate, Deactivate, Cleanup, Open Dashboard
 
-### Tab 1: Active Assets
+The same inspector also drives the `MonitoringHelper` component (with an "Open Dashboard" jump button).
 
-Real-time list of all loaded assets:
-- **Search**: Filter by asset name or type
-- **Scope Filter**: Show only assets from specific scopes
-- **Asset Details**: Address, type, scope, reference count, memory usage, load time
-- **Live Updates**: Refreshes automatically every 500ms (configurable)
+### Config inspectors
 
-**Use Case**: Monitor which assets are currently loaded and catch memory leaks
+**AddressablePreloadConfig.** Adds a `Validate All Addresses` button, a `Sort by Priority` button, and a stats panel summarising total / startup / invalid counts.
 
-### Tab 2: Performance
+**PoolConfiguration.** Validates `preloadCount <= maxSize`, flags duplicate addresses, and logs warnings on `OnValidate`.
 
-Performance metrics and statistics:
-- **Stat Cards**: Total assets, cache hit ratio, total memory, average load time
-- **Memory Chart**: Visual graph of memory usage over time *(placeholder for future)*
-- **Slowest Assets**: Top 10 slowest-loading assets
-- **Export Report**: Save metrics to CSV for analysis
+**DebugSettings.** Just the default inspector, but pairs with the Dashboard's Settings tab — both edit the same asset.
 
-**Use Case**: Optimize load times and identify performance bottlenecks
+### AddressableProgressBar inspector (Play Mode)
+While playing, the inspector exposes interactive testing controls:
 
-### Tab 3: Scopes
+- Progress slider (0–100 %)
+- Show / Hide / Reset buttons
+- Animate (auto 0 → 100 % over the configured fill speed)
+- Status text input
 
-Overview of all scope management:
-- **4 Foldouts**: Global, Session, Scene, Hierarchy scopes
-- **Per-Scope Stats**: Asset count and memory usage
-- **Asset Lists**: Expandable lists showing all assets in each scope
-- **Cleanup Buttons**: Clear individual scopes or all at once
+Lets you sanity-check your loading screen UX without writing test code.
 
-**Use Case**: Manage scope lifecycles and prevent cross-scene memory leaks
+## ScriptableObject configurations
 
-### Tab 4: Settings
-
-Runtime configuration and debugging:
-- **Log Level**: Control verbosity (None, Errors Only, Warnings, All)
-- **Auto Refresh**: Toggle automatic dashboard updates
-- **Refresh Interval**: Adjust update frequency (100-5000ms)
-- **Load Simulation**: Simulate slow loading and failures for testing
-- **Reset Buttons**: Clear settings or statistics
-
-**Use Case**: Configure debugging behavior without code changes
-
----
-
-## 🎨 Custom Inspectors
-
-### Scope Component Inspectors
-
-When you select a GameObject with a scope component (GlobalAssetScope, SessionAssetScope, etc.), you'll see a beautiful custom inspector:
-
-#### Header
-- **Color-coded indicator**: Green (Global), Blue (Session), Yellow (Scene), Red (Hierarchy)
-- **Status badge**: ACTIVE or INACTIVE
-
-#### Status Section
-- Assets Loaded count
-- Total Memory usage
-
-#### Memory Usage
-- **Progress bar** showing memory consumption
-- **Color warnings**: Green (<50%), Yellow (50-80%), Red (>80%)
-
-#### Loaded Assets
-- **Expandable foldout** showing all assets in this scope
-- Per-asset info: Name, type, references, size, load time
-
-#### Actions
-- **Activate Scope**: Enable the scope (Play mode only)
-- **Deactivate Scope**: Disable the scope
-- **Cleanup Scope**: Release all assets
-- **Open Dashboard**: Quick link to main dashboard
-
-**Use Case**: Monitor individual scope behavior without leaving the Inspector
-
-### ScriptableObject Config Inspectors
-
-#### AddressablePreloadConfig Inspector
-
-Special features:
-- **Validate All Addresses**: Check if all entries are valid
-- **Sort by Priority**: Reorder list by priority values
-- **Test Load in Editor**: Simulate loading in Play mode
-- **Statistics Panel**: Show total/startup/valid/invalid counts
-
-**Use Case**: Ensure your preload configuration is error-free before building
-
-#### Progress Bar Inspector
-
-In **Play Mode**, you get interactive testing controls:
-- **Progress Slider**: Manually set progress (0-100%)
-- **Show/Hide/Reset Buttons**: Test visibility states
-- **Animate Button**: Auto-animate from 0% to 100%
-- **Test Status Field**: Set custom status text
-
-**Use Case**: Perfect your loading screen UX without writing test code
-
----
-
-## ⚙️ ScriptableObject Configurations
-
-### 1. AddressablePreloadConfig
-
-**Purpose**: Define which assets to load on startup without hardcoding addresses
-
-**Create**: Assets → Addressable Manager → Create Preload Config
-
-#### Configuration Options
+### AddressablePreloadConfig
+**Create:** Assets → Create → Addressable Manager → Preload Configuration.
 
 ```
-Preload Entry:
-├── Asset Reference: Drag asset from Addressables Groups
-├── Address: Or manually enter address string
-├── Scope: Which scope to load into (Global/Session/Scene/Hierarchy)
-├── Load On Startup: Auto-load when game starts
-├── Priority: Load order (lower = first)
-└── Label: Optional debug label
+Preload Entry
+├── Asset Reference   (drag from Addressables Groups)
+├── Address           (manual address as alternative)
+├── Scope             Global | Session | Scene | Hierarchy
+├── Load On Startup   bool
+├── Priority          lower = earlier
+└── Label             optional debug label
 
-Global Settings:
-├── Validate On Build: Check all addresses before building
-├── Fail Build On Error: Stop build if validation fails
-├── Load In Parallel: Load multiple assets simultaneously
-└── Max Concurrent Loads: Limit parallel operations (1-20)
+Global Settings
+├── Validate On Build
+├── Fail Build On Error
+├── Load In Parallel
+└── Max Concurrent Loads (1–20)
 ```
 
-#### Code Usage
+Code usage:
 
 ```csharp
-// Load a specific preload config
 var config = Resources.Load<AddressablePreloadConfig>("MyPreloadConfig");
 
-// Get startup assets sorted by priority
-var startupAssets = config.GetStartupAssets();
-
-foreach (var entry in startupAssets)
+foreach (var entry in config.GetStartupAssets())
 {
     var address = entry.GetAddress();
-    var scope = entry.scope;
-    // Load asset into appropriate scope...
+    var loader = ResolveLoaderForScope(entry.scope);
+    await loader.LoadAssetAsync<UnityEngine.Object>(address);
 }
 ```
 
-### 2. PoolConfiguration
-
-**Purpose**: Configure object pools centrally
-
-**Create**: Assets → Addressable Manager → Create Pool Config
-
-#### Configuration Options
+### PoolConfiguration
+**Create:** Assets → Create → Addressable Manager → Pool Configuration.
 
 ```
-Pool Settings:
-├── Prefab Reference: Drag GameObject asset
-├── Address: Or manual address
-├── Preload Count: Instances to create upfront (0-100)
-├── Max Size: Pool capacity limit (0 = unlimited)
-├── Auto Create: Create pool on startup
-├── Pool Root: Parent transform for pooled objects
-├── Destroy On Full: Auto-destroy when at max capacity
-└── Label: Optional debug label
-
-Global Settings:
-├── Default Max Size: Default for new pools
-├── Default Preload Count: Default preload amount
-├── Create All On Startup: Auto-create all pools
-└── Cleanup On Scene Unload: Auto-cleanup on scene change
+Pool Settings
+├── Prefab Reference  (AssetReference)
+├── Address           (manual fallback)
+├── Preload Count     0–100
+├── Max Size          0 = unlimited
+├── Auto Create       create on startup
+├── Pool Root         parent transform
+└── Label             optional debug label
 ```
 
-#### Code Usage
+> `destroyOnFull` is obsolete as of 2.2.0 and hidden from the inspector. `UnityEngine.Pool.ObjectPool` always destroys instances released above `maxSize`; toggling the flag had no effect.
+
+Code usage:
 
 ```csharp
 var poolConfig = Resources.Load<PoolConfiguration>("MyPoolConfig");
 
-// Get pools marked for auto-creation
-var autoPools = poolConfig.GetAutoCreatePools();
-
-foreach (var pool in autoPools)
+foreach (var pool in poolConfig.GetAutoCreatePools())
 {
-    await poolManager.CreatePoolAsync(
+    await Assets.CreatePool(
         pool.GetAddress(),
         pool.preloadCount,
-        pool.maxSize,
-        pool.poolRoot
+        pool.maxSize
     );
 }
 ```
 
-### 3. DebugSettings
+### DebugSettings
+**Create:** Assets → Create → Addressable Manager → Debug Settings.
 
-**Purpose**: Runtime debugging configuration
+The `Instance` accessor looks up `Resources/AddressableManager/DebugSettings` inside `#if UNITY_EDITOR`. In builds the lookup is skipped and a transient default is returned, so the `Resources/` dependency is purely an Editor convenience — your shipping build does not need the asset.
 
-**Create**: Assets → Addressable Manager → Create Debug Settings
+Notable fields:
 
-#### Configuration Options
-
-```
-Logging:
-├── Log Level: None | Errors Only | Warnings | All
-├── Log To File: Save logs to disk
-└── Log File Path: Relative path for log file
-
-Profiling:
-├── Enable Profiling: Track performance metrics
-├── Show Profiler Overlay: In-game stats (Editor only)
-└── Record Metrics: Save metrics history
-
-Simulation (Editor Only):
-├── Simulate Slow Loading: Add artificial delay
-├── Simulated Delay Ms: Delay duration (0-5000ms)
-├── Simulate Failure Rate: Random failures (0-100%)
-├── Simulate Network Conditions: Network type simulation
-└── Network Simulation: WiFi | 4G | 3G | Slow
-
-Validation:
-├── Validate References: Check asset refs on load
-├── Detect Memory Leaks: Enable leak detection
-└── Leak Detection Minutes: Time threshold (1-60min)
-
-Warnings:
-├── Warn On High Ref Count: Alert for unusual refs
-├── High Ref Count Threshold: Ref count limit (5-100)
-├── Warn On High Memory: Alert for high usage
-└── High Memory Threshold MB: Memory limit (10-1000MB)
-```
-
-#### Code Usage
+- **Logging:** level, log-to-file, log-file path
+- **Profiling:** enable / overlay / record metrics
+- **Simulation (Editor only):** slow-loading toggle + delay ms, failure rate %, network type (`WiFi` / `4G` / `3G` / `Slow`)
+- **Validation:** validate references, leak detection threshold (minutes)
+- **Warnings:** high-refcount + high-memory thresholds
 
 ```csharp
 var settings = DebugSettings.Instance;
-
 if (settings.ShouldLog(LogType.Warning))
-{
-    Debug.LogWarning("Something happened");
-}
+    Debug.LogWarning("…");
 
 if (settings.simulateSlowLoading)
-{
     await Task.Delay((int)settings.simulatedDelayMs);
-}
 
 if (settings.ShouldSimulateFailure())
-{
-    // Simulate load failure for testing
-}
+    /* simulate failure */;
 ```
 
----
+`DebugSettings.IsVerbose` is a fast Editor-only shortcut used inside `AssetLoader` to gate informational logs in the hot path.
 
-## 🎮 Runtime UI Components
+## Runtime UI: AddressableProgressBar
 
-### AddressableProgressBar
+**Add Component → Addressable Manager → Progress Bar.**
 
-**Purpose**: Visual feedback for loading operations
+TextMeshPro is **optional**: the asmdef defines `TMP_PRESENT` only when `com.unity.textmeshpro 3.0.0+` is installed, so the text fields fall back to plain `UnityEngine.UI.Text` otherwise.
 
-**Add to Scene**: Add Component → Addressable Manager → Progress Bar
+Inspector wiring:
 
-#### Inspector Setup
+1. Fill Image — an Image set to `Filled` type
+2. Percent Text — optional, percentage label
+3. Status Text — optional, current operation label
+4. Download Text — optional, formatted bytes / speed / ETA
 
-1. **Fill Image**: Assign an Image component with Fill type
-2. **Percent Text** *(optional)*: TextMeshProUGUI for percentage
-3. **Status Text** *(optional)*: TextMeshProUGUI for status messages
-4. **Download Text** *(optional)*: TextMeshProUGUI for download info
+Behaviour settings:
 
-#### Settings
+- Auto Find Tracker, Smooth Fill, Fill Speed (1–20)
+- Hide When Complete, Hide Delay (0–5 s)
+- Gradient Colors (red → yellow → green by default)
 
-- **Auto Find Tracker**: Automatically bind to active tracker
-- **Smooth Fill**: Animate fill changes
-- **Fill Speed**: Animation speed (1-20)
-- **Hide When Complete**: Auto-hide at 100%
-- **Hide Delay**: Delay before hiding (0-5s)
-- **Gradient Colors**: Change color based on progress
-  - Start Color: 0% progress (default: Red)
-  - Mid Color: 50% progress (default: Yellow)
-  - End Color: 100% progress (default: Green)
-
-#### Code Usage
+Code:
 
 ```csharp
-// Bind to a progress tracker
 progressBar.BindToTracker(myProgressTracker);
 
-// Or manually update
-progressBar.SetProgress(0.5f); // 50%
-progressBar.SetStatus("Loading textures...");
-
-// Show/hide manually
+// or manual
+progressBar.SetProgress(0.5f);
+progressBar.SetStatus("Loading textures…");
 progressBar.Show();
 progressBar.Hide();
 progressBar.Reset();
 ```
 
-#### Testing in Play Mode
+## Menus and shortcuts
 
-In the Inspector during Play Mode:
-- Drag the **Test Progress slider** to see live updates
-- Click **Animate** to auto-animate 0% → 100%
-- Test **Show/Hide/Reset** buttons
-- Enter custom status text
+**GameObject → Addressable Manager →** Add Global / Session / Scene / Hierarchy Scope · View in Dashboard
+**Assets → Create → Addressable Manager →** Preload Configuration · Pool Configuration · Debug Settings
+**Window → Addressable Manager →** Dashboard (`Ctrl+Alt+A`) · Documentation · Settings · Clear All Caches
+**Tools → Addressable Manager → Quick Setup →** Create All Scope Objects · Create Sample Configs
 
----
+## Workflow recipes
 
-## 🛠️ Context Menus & Shortcuts
+### Set up a new scene with scopes
+1. **Tools → Addressable Manager → Quick Setup → Create All Scope Objects**.
+2. Select each scope GameObject — its inspector tells you whether it's active.
+3. Press Play, open the Dashboard, verify all four scopes light up.
 
-### GameObject Menu
+### Configure asset preloading
+1. **Assets → Create → Addressable Manager → Preload Configuration** → name it `GlobalPreloadConfig`.
+2. Add entries, drag assets onto `Asset Reference`, pick a Scope, set Priority.
+3. Click **Validate All Addresses** — fix anything reported invalid.
+4. From your bootstrap, `Resources.Load<AddressablePreloadConfig>("GlobalPreloadConfig")` and iterate `GetStartupAssets()`.
 
-Right-click in Hierarchy or use top menu:
-
-**GameObject → Addressable Manager →**
-- Add Global Scope
-- Add Session Scope
-- Add Scene Scope
-- Add Hierarchy Scope
-- View in Dashboard
-
-### Assets Menu
-
-Right-click in Project or use top menu:
-
-**Assets → Addressable Manager →**
-- Create Preload Config
-- Create Pool Config
-- Create Debug Settings
-
-### Window Menu
-
-**Window → Addressable Manager →**
-- Dashboard (`Ctrl+Alt+A`)
-- Documentation
-- Settings
-- Clear All Caches
-
-### Tools Menu
-
-**Tools → Addressable Manager → Quick Setup →**
-- Create All Scope Objects
-- Create Sample Configs
-
----
-
-## 💡 Workflow Examples
-
-### Example 1: Setup a New Scene with Scopes
-
-1. **Tools → Addressable Manager → Quick Setup → Create All Scope Objects**
-2. Unity creates 4 GameObjects with scope components
-3. Select each scope in Hierarchy to see custom inspector
-4. Press Play and open **Dashboard** (`Ctrl+Alt+A`) to see scopes activate
-
-### Example 2: Configure Asset Preloading
-
-1. **Assets → Create → Addressable Manager → Preload Configuration**
-2. Name it `GlobalPreloadConfig`
-3. In Inspector:
-   - Add entries by clicking `+` on the list
-   - Drag assets from Addressables Groups to **Asset Reference** field
-   - Set **Scope** to Global, **Load On Startup** = true
-   - Set **Priority** (lower loads first)
-4. Click **Validate All Addresses** to check for errors
-5. Click **Sort by Priority** to reorder
-
-### Example 3: Create a Loading Screen
-
-1. Create a Canvas with CanvasGroup
-2. **Add Component → Addressable Manager → Progress Bar**
-3. Create UI hierarchy:
+### Build a loading screen
+1. Drop a Canvas with a CanvasGroup, add **Progress Bar** to it.
+2. Hierarchy:
    ```
    Canvas
    └── LoadingScreen (CanvasGroup + AddressableProgressBar)
        ├── Background (Image)
-       ├── FillBar (Image - Fill type) ← Assign to Progress Bar
-       ├── PercentText (TextMeshProUGUI) ← Assign to Progress Bar
-       └── StatusText (TextMeshProUGUI) ← Assign to Progress Bar
+       ├── FillBar    (Image — Fill type → Fill Image slot)
+       ├── PercentText (Text or TMP_Text → Percent Text slot)
+       └── StatusText (Text or TMP_Text → Status Text slot)
    ```
-4. In code:
+3. Bind a tracker and load:
    ```csharp
    var tracker = new ProgressTracker();
-   loadingScreen.BindToTracker(tracker);
-
-   // Your loading code will auto-update the UI
-   await LoadAssetsWithProgress(tracker);
+   progressBar.BindToTracker(tracker);
+   await loader.LoadAssetWithProgressAsync<Texture2D>(
+       "Textures/Big",
+       info => tracker.UpdateProgress(info));
    ```
-5. **Test in Play Mode**: Use Inspector sliders and buttons
+4. Use the Inspector sliders / Animate button to test visuals without entering Play.
 
-### Example 4: Debug Memory Issues
+### Debug a memory issue
+1. Play, open Dashboard → Active Assets, filter to the suspect scope.
+2. Sort by **Time Since Loaded** descending — anything older than expected is suspicious.
+3. Check the Refcount column. A handle whose count never returns to 0 was retained without a matching `Release()`.
+4. Cross-reference Performance → Slowest Assets if the slowdown shows up at load time.
 
-1. Enter Play Mode
-2. Open **Dashboard** (`Ctrl+Alt+A`)
-3. Go to **Active Assets** tab
-4. Filter by scope or search for specific assets
-5. Watch memory usage in real-time
-6. Go to **Performance** tab
-7. Check "Slowest Assets" to find bottlenecks
-8. Click **Export Report** to save CSV for analysis
+### Validate the preload config before shipping
+1. Select the config asset → click **Validate All Addresses**.
+2. Enable `Validate On Build` and `Fail Build On Error` on the asset so the validation re-runs as a build step.
 
-### Example 5: Validate Before Build
+## `ScopeManager` for multi-instance scopes
 
-1. Select your `PreloadConfig` in Project
-2. Click **Validate All Addresses** in Inspector
-3. If errors appear, fix invalid entries
-4. Enable **Validate On Build** checkbox
-5. Optionally enable **Fail Build On Error** to prevent bad builds
+Use `ScopeManager` instead of the built-in singletons when:
 
----
+- You need more than one `Session`-style scope at a time (e.g. `PlayerSession`, `GameSession`, `MatchSession`).
+- You want a scope per match / level / quest with a structured name.
+- You're plugging Addressable Manager into a DI container that already owns lifetime.
 
-## 📈 Best Practices
+Use the built-in singletons when one global + one session + per-scene is enough.
 
-### 1. Use ScriptableObjects for Configuration
-
-**❌ Bad - Hardcoded:**
-```csharp
-await loader.LoadAssetAsync<Sprite>("UI/MainMenuBackground");
-await loader.LoadAssetAsync<AudioClip>("Audio/BGM_Menu");
-```
-
-**✅ Good - Configured:**
-```csharp
-var config = Resources.Load<AddressablePreloadConfig>("GlobalPreload");
-var assets = config.GetStartupAssets();
-
-foreach (var entry in assets)
-{
-    await LoadAsset(entry);
-}
-```
-
-### 2. Monitor with Dashboard During Development
-
-- Keep Dashboard open during Play Mode testing
-- Watch for unexpected loads or leaks
-- Use Performance tab to identify slow assets
-- Export reports for team analysis
-
-### 3. Use Custom Inspectors for Quick Debugging
-
-- Select scope GameObjects to see live stats
-- Use Cleanup buttons to test cleanup logic
-- Verify reference counts in Inspector
-- No need to add Debug.Log everywhere!
-
-### 4. Test Loading Screens Interactively
-
-- Use Progress Bar Inspector in Play Mode
-- Test all visual states without writing test code
-- Verify gradient colors and animations
-- Ensure text displays correctly
-
-### 5. Simulate Real Conditions
-
-- Use DebugSettings to simulate slow networks
-- Test with simulated failures
-- Verify your error handling works
-- Don't wait for real slow networks to test!
-
----
-
-## 🎨 Color Coding Reference
-
-Throughout the Editor tools, scopes are color-coded:
-
-- 🟢 **Green**: Global Scope (persists forever)
-- 🔵 **Blue**: Session Scope (persists between scenes)
-- 🟡 **Yellow**: Scene Scope (cleared on scene unload)
-- 🔴 **Red**: Hierarchy Scope (cleared on GameObject destroy)
-
-Memory warnings:
-- 🟢 **Green**: < 50% usage (healthy)
-- 🟡 **Yellow**: 50-80% usage (moderate)
-- 🔴 **Red**: > 80% usage (high)
-
----
-
-## 🐛 Troubleshooting
-
-### Dashboard Not Updating
-
-**Solution**: Check Settings tab → ensure "Auto Refresh" is enabled
-
-### Inspector Shows No Assets
-
-**Solution**: Scope might not be active. Click "Activate Scope" button in Play Mode
-
-### Progress Bar Not Animating
-
-**Solution**: Ensure "Smooth Fill" is enabled and Fill Speed > 0
-
-### Config Validation Fails
-
-**Solution**: Click "Validate All Addresses" to see specific errors. Check for:
-- Invalid AssetReferences
-- Empty address strings
-- Duplicate entries
-
-### Can't Find Dashboard Window
-
-**Solution**: Use menu **Window → Addressable Manager → Dashboard** or press `Ctrl+Alt+A`
-
----
-
----
-
-# ScopeManager for Complex Apps
-
-## 🎯 When To Use ScopeManager
-
-Use `ScopeManager` instead of built-in singleton scopes when you need:
-
-- ✅ Multiple independent sessions (PlayerSession, GameSession, MatchSession)
-- ✅ Fine-grained control over scope lifecycle
-- ✅ Custom scope naming and organization
-- ✅ Flexible scope creation/destruction
-
-Use built-in scopes (`GlobalAssetScope.Instance`, etc.) when:
-
-- ✅ Simple single-player game
-- ✅ Only need 1 global + 1 session + scene scopes
-- ✅ Beginner-friendly API
-
----
-
-## 📝 Basic Usage
-
-### 1. Simple Multi-Session Example
+### Multi-session sketch
 
 ```csharp
-using UnityEngine;
 using AddressableManager.Managers;
 using AddressableManager.Loaders;
+using AddressableManager.Core;
 
-public class GameController : MonoBehaviour
+public sealed class GameController : MonoBehaviour
 {
     private ScopeManager _scopes;
 
@@ -573,514 +276,150 @@ public class GameController : MonoBehaviour
     {
         _scopes = ScopeManager.Instance;
 
-        // Create different scopes for different purposes
+        // Three named scopes. The name is also the label shown in the Dashboard.
         var globalLoader = _scopes.GetOrCreateScope("Global");
         var playerLoader = _scopes.GetOrCreateScope("PlayerSession");
-        var gameLoader = _scopes.GetOrCreateScope("GameSession");
+        var gameLoader   = _scopes.GetOrCreateScope("GameSession");
 
-        // Load into specific scopes WITH monitoring
-        var uiAtlas = await globalLoader.LoadAssetAsync<Texture2D>(
-            "UI/Atlas",
-            "Global" // Shows in Dashboard under "Global"
-        );
-
-        var playerProfile = await playerLoader.LoadAssetAsync<PlayerData>(
-            "Data/PlayerProfile",
-            "PlayerSession" // Shows under "PlayerSession"
-        );
-
-        var levelData = await gameLoader.LoadAssetAsync<LevelData>(
-            "Levels/Level1",
-            "GameSession" // Shows under "GameSession"
-        );
-
-        // Open Dashboard (Ctrl+Alt+A) to see all 3 scopes!
+        var uiAtlas       = await globalLoader.LoadAssetAsync<Texture2D>("UI/Atlas");
+        var playerProfile = await playerLoader.LoadAssetAsync<PlayerData>("Data/PlayerProfile");
+        var levelData     = await gameLoader.LoadAssetAsync<LevelData>("Levels/Level1");
     }
 
-    void OnApplicationQuit()
-    {
-        // Keep global, clear everything else
-        _scopes.ClearAllExceptGlobal();
-    }
+    void OnApplicationQuit() => _scopes.ClearAllExceptGlobal();
 }
 ```
 
-**Dashboard will show**:
+Dashboard layout that produces:
+
 ```
-Scopes Tab:
-├─ Global (1 asset, 5.2 MB)
+Scopes
+├─ Global         1 asset · 5.2 MB
 │  └─ UI/Atlas
-├─ PlayerSession (1 asset, 0.5 MB)
+├─ PlayerSession  1 asset · 0.5 MB
 │  └─ Data/PlayerProfile
-└─ GameSession (1 asset, 2.1 MB)
+└─ GameSession    1 asset · 2.1 MB
    └─ Levels/Level1
 ```
 
----
-
-### 2. Multiplayer Match Example
+### Per-match scopes (multiplayer)
 
 ```csharp
-using UnityEngine;
-using AddressableManager.Managers;
-using AddressableManager.Loaders;
-
-public class MultiplayerManager : MonoBehaviour
+public sealed class MultiplayerManager : MonoBehaviour
 {
-    private ScopeManager _scopes;
+    private readonly ScopeManager _scopes = ScopeManager.Instance;
     private string _currentMatchId;
 
-    public async void StartMatch(string matchId)
+    public async Task StartMatch(string matchId)
     {
-        _scopes = ScopeManager.Instance;
         _currentMatchId = $"Match_{matchId}";
+        var loader = _scopes.GetOrCreateScope(_currentMatchId);
 
-        // Create scope for this specific match
-        var matchLoader = _scopes.GetOrCreateScope(_currentMatchId);
-
-        // Load match-specific assets
-        var mapData = await matchLoader.LoadAssetAsync<MapData>(
-            $"Maps/{matchId}",
-            _currentMatchId
-        );
-
-        var playerModels = await matchLoader.LoadAssetsByLabelAsync<GameObject>(
-            $"Characters_{matchId}",
-            _currentMatchId
-        );
-
-        Debug.Log($"Match {matchId} started with {playerModels.Count} characters");
+        var map = await loader.LoadAssetAsync<MapData>($"Maps/{matchId}");
+        var players = await loader.LoadAssetsByLabelAsync<GameObject>($"Characters_{matchId}");
     }
 
     public void EndMatch()
     {
         if (!string.IsNullOrEmpty(_currentMatchId))
         {
-            // Clear only this match's assets
             _scopes.ClearScope(_currentMatchId);
-            Debug.Log($"Cleared match scope: {_currentMatchId}");
-
             _currentMatchId = null;
         }
     }
-
-    void OnApplicationQuit()
-    {
-        // Clear all match scopes, keep global
-        _scopes.ClearAllExceptGlobal();
-    }
 }
 ```
 
-**Use case**: Each multiplayer match gets its own scope. When match ends, only that match's assets are cleared!
-
----
-
-### 3. Complex RPG Example
+### RPG-style segmentation
 
 ```csharp
-using UnityEngine;
-using AddressableManager.Managers;
-using AddressableManager.Loaders;
-using System.Collections.Generic;
-
-public class RPGGameManager : MonoBehaviour
+public sealed class RPGGameManager : MonoBehaviour
 {
-    private ScopeManager _scopes;
+    private readonly ScopeManager _scopes = ScopeManager.Instance;
 
-    // Different loaders for different systems
-    private AssetLoader _globalLoader;      // UI, fonts, shared assets
-    private AssetLoader _playerLoader;      // Player inventory, skills, stats
-    private AssetLoader _worldLoader;       // Current world/zone assets
-    private AssetLoader _questLoader;       // Active quests
-    private AssetLoader _partyLoader;       // Party members
+    private AssetLoader _global;   // UI, fonts, shared
+    private AssetLoader _player;   // inventory, save data
+    private AssetLoader _world;    // current zone
+    private AssetLoader _quests;   // active quests
+    private AssetLoader _party;    // companions
 
     async void Start()
     {
-        _scopes = ScopeManager.Instance;
+        _global = _scopes.GetOrCreateScope("Global");
+        _player = _scopes.GetOrCreateScope("Player");
+        _world  = _scopes.GetOrCreateScope("World");
+        _quests = _scopes.GetOrCreateScope("Quests");
+        _party  = _scopes.GetOrCreateScope("Party");
 
-        // Initialize all scopes
-        _globalLoader = _scopes.GetOrCreateScope("Global");
-        _playerLoader = _scopes.GetOrCreateScope("Player");
-        _worldLoader = _scopes.GetOrCreateScope("World");
-        _questLoader = _scopes.GetOrCreateScope("Quests");
-        _partyLoader = _scopes.GetOrCreateScope("Party");
-
-        await LoadGlobalAssets();
-        await LoadPlayerData();
+        await _global.LoadAssetAsync<Texture2D>("UI/Atlas");
+        await _global.LoadAssetAsync<ItemDatabase>("Data/Items");
+        await _player.LoadAssetAsync<PlayerProfile>("Save/PlayerProfile");
     }
 
-    async Task LoadGlobalAssets()
+    public async Task EnterZone(string zone)
     {
-        var uiAtlas = await _globalLoader.LoadAssetAsync<Texture2D>(
-            "UI/Atlas",
-            "Global"
-        );
-
-        var itemDatabase = await _globalLoader.LoadAssetAsync<ItemDatabase>(
-            "Data/Items",
-            "Global"
-        );
-
-        Debug.Log("Global assets loaded");
-    }
-
-    async Task LoadPlayerData()
-    {
-        var playerProfile = await _playerLoader.LoadAssetAsync<PlayerProfile>(
-            "Save/PlayerProfile",
-            "Player"
-        );
-
-        var inventory = await _playerLoader.LoadAssetAsync<InventoryData>(
-            "Save/Inventory",
-            "Player"
-        );
-
-        Debug.Log("Player data loaded");
-    }
-
-    public async void EnterZone(string zoneName)
-    {
-        // Clear previous world assets
         _scopes.ClearScope("World");
+        _world = _scopes.GetOrCreateScope("World");
 
-        // Reload with new zone
-        _worldLoader = _scopes.GetOrCreateScope("World");
-
-        var zoneData = await _worldLoader.LoadAssetAsync<ZoneData>(
-            $"Zones/{zoneName}",
-            "World"
-        );
-
-        var enemies = await _worldLoader.LoadAssetsByLabelAsync<GameObject>(
-            $"Enemies_{zoneName}",
-            "World"
-        );
-
-        Debug.Log($"Entered zone: {zoneName} with {enemies.Count} enemy types");
+        await _world.LoadAssetAsync<ZoneData>($"Zones/{zone}");
+        await _world.LoadAssetsByLabelAsync<GameObject>($"Enemies_{zone}");
     }
 
-    public async void StartQuest(int questId)
-    {
-        var questData = await _questLoader.LoadAssetAsync<QuestData>(
-            $"Quests/Quest_{questId}",
-            "Quests"
-        );
-
-        Debug.Log($"Started quest: {questData.name}");
-    }
-
-    public void ExitToMainMenu()
-    {
-        // Clear everything except Global
-        _scopes.ClearAllExcept("Global");
-
-        Debug.Log("Returned to main menu");
-    }
-
-    void OnApplicationQuit()
-    {
-        _scopes.ClearAll();
-    }
+    public void ExitToMainMenu() => _scopes.ClearAllExcept("Global", "Player");
+    void OnApplicationQuit()      => _scopes.ClearAll();
 }
 ```
 
-**Dashboard shows**:
-```
-Scopes:
-├─ Global (UI, databases) - 15 MB
-├─ Player (save data) - 2 MB
-├─ World (current zone) - 50 MB
-├─ Quests (active quests) - 5 MB
-└─ Party (party members) - 10 MB
-
-Total: 82 MB across 5 scopes
-```
-
----
-
-## 🔧 Advanced Patterns
-
-### Pattern 1: Scope Groups
+### Useful patterns
 
 ```csharp
-public class ScopeGroups
+// Grouping
+public sealed class ScopeGroups
 {
-    private ScopeManager _scopes = ScopeManager.Instance;
-
-    // Group related scopes
-    private readonly string[] _gameplayScopes = {
-        "World",
-        "Quests",
-        "Combat",
-        "Dialogue"
-    };
-
-    private readonly string[] _persistentScopes = {
-        "Global",
-        "Player"
-    };
+    private static readonly string[] Gameplay   = { "World", "Quests", "Combat", "Dialogue" };
+    private static readonly string[] Persistent = { "Global", "Player" };
 
     public void ClearGameplay()
     {
-        foreach (var scope in _gameplayScopes)
-        {
-            _scopes.ClearScope(scope);
-        }
+        foreach (var s in Gameplay) ScopeManager.Instance.ClearScope(s);
     }
 
     public void ClearAllExceptPersistent()
-    {
-        _scopes.ClearAllExcept(_persistentScopes);
-    }
+        => ScopeManager.Instance.ClearAllExcept(Persistent);
 }
-```
 
-### Pattern 2: Lazy Scope Creation
+// Per-id scopes with a prefix convention
+public AssetLoader GetLevelScope(int levelId)
+    => ScopeManager.Instance.GetOrCreateScope($"Level_{levelId}");
 
-```csharp
-public class LazyScopes
+public void ClearAllLevels()
 {
-    private ScopeManager _scopes = ScopeManager.Instance;
-    private Dictionary<string, AssetLoader> _cache = new();
-
-    public AssetLoader GetWorldScope()
-    {
-        if (!_cache.ContainsKey("World"))
-        {
-            _cache["World"] = _scopes.GetOrCreateScope("World");
-        }
-        return _cache["World"];
-    }
-
-    // Similar for other scopes...
+    var levelScopes = ScopeManager.Instance.ActiveScopes
+        .Where(s => s.StartsWith("Level_")).ToList();
+    foreach (var s in levelScopes) ScopeManager.Instance.ClearScope(s);
 }
 ```
 
-### Pattern 3: Scope Prefixes
+### Best practices for `ScopeManager`
 
-```csharp
-public class PrefixedScopes
-{
-    private ScopeManager _scopes = ScopeManager.Instance;
+1. **Use stable, descriptive names.** `"PlayerSession"`, `"World_Overworld"`, `"Match_<id>"`. Avoid `"temp"`, `"scope1"` — the name is what you'll see in the Dashboard.
+2. **Reuse the loader.** `GetOrCreateScope("X")` caches; calling it twice returns the same `AssetLoader`. Don't allocate `new AssetLoader()` per call — you lose the cache and the Dashboard label.
+3. **Clear at natural seams.** Scene unload, match end, logout, zone change. Don't `ClearAll()` from `Update()` — it defeats the cache.
+4. **`ScopeManager` is reset on domain reload** (`[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`). You don't need a manual reset between Play sessions.
 
-    public AssetLoader GetLevelScope(int levelId)
-    {
-        return _scopes.GetOrCreateScope($"Level_{levelId}");
-    }
+## Troubleshooting
 
-    public AssetLoader GetPlayerScope(string playerId)
-    {
-        return _scopes.GetOrCreateScope($"Player_{playerId}");
-    }
+| Symptom | Likely cause / fix |
+|---|---|
+| Dashboard tabs don't refresh | Settings tab → ensure `Auto Refresh` is on; bump refresh interval down. |
+| Scope inspector shows no assets | Scope hasn't activated yet — `BaseAssetScope.Activate()` runs in the constructor, but if you're inspecting in Edit mode it stays inert until Play. |
+| `ScopeManager.GetScopeMemoryUsage` returns 0 | Marked `[Obsolete]` since 2.2.0 — runtime memory tracking isn't implemented. Use the Editor Dashboard's Active Assets tab for live numbers. |
+| Progress bar text fields red in inspector | TMP isn't installed and you assigned a `TextMeshProUGUI` reference. Either install TMP (asmdef will define `TMP_PRESENT`) or assign a `UnityEngine.UI.Text` instead. |
+| Config validation fails on build | Re-run the inspector's **Validate All Addresses**, fix invalid `AssetReference` rows, then enable `Fail Build On Error`. |
+| Can't find the Dashboard | `Window → Addressable Manager → Dashboard` or `Ctrl+Alt+A`. |
 
-    public void ClearAllLevels()
-    {
-        var levelScopes = _scopes.ActiveScopes
-            .Where(s => s.StartsWith("Level_"))
-            .ToList();
+## See also
 
-        foreach (var scope in levelScopes)
-        {
-            _scopes.ClearScope(scope);
-        }
-    }
-}
-```
-
----
-
-## 📊 Monitoring With ScopeManager
-
-### View In Dashboard
-
-1. Enter Play Mode
-2. Open Dashboard (`Ctrl+Alt+A`)
-3. Go to **Scopes** tab
-4. You'll see ALL your custom scopes!
-
-```
-Scopes Tab:
-├─ Global
-├─ PlayerSession
-├─ GameSession
-├─ Match_12345
-├─ World
-├─ Quests
-└─ Party
-```
-
-Each scope shows:
-- Asset count
-- Memory usage
-- Individual assets
-
-### Track Asset Loads
-
-Always use `.LoadAssetAsync()`:
-
-```csharp
-var loader = _scopes.GetOrCreateScope("MyScope");
-
-// ✅ Tracked - shows in Dashboard
-var handle = await loader.LoadAssetAsync<T>(
-    address,
-    "MyScope" // Must match scope ID!
-);
-
-// ❌ Not tracked - Dashboard won't see it
-var handle2 = await loader.LoadAssetAsync<T>(address);
-```
-
----
-
-## ⚙️ Best Practices
-
-### 1. Consistent Naming
-
-```csharp
-// ✅ Good - clear naming
-"Global"
-"PlayerSession"
-"GameSession"
-"World_Overworld"
-"World_Dungeon1"
-
-// ❌ Bad - unclear
-"Scope1"
-"temp"
-"stuff"
-```
-
-### 2. Match Scope ID With Monitoring
-
-```csharp
-var scopeId = "PlayerSession";
-var loader = _scopes.GetOrCreateScope(scopeId);
-
-// ✅ Good - consistent
-await loader.LoadAssetAsync<T>(address, scopeId);
-
-// ❌ Bad - mismatch
-await loader.LoadAssetAsync<T>(address, "Session"); // Different name!
-```
-
-### 3. Clear At Appropriate Times
-
-```csharp
-// ✅ Good timing
-void OnSceneUnload() => _scopes.ClearScope("Scene");
-void OnMatchEnd() => _scopes.ClearScope($"Match_{matchId}");
-void OnLogout() => _scopes.ClearAllExceptGlobal();
-
-// ❌ Bad timing
-void Update() => _scopes.ClearAll(); // Too aggressive!
-```
-
-### 4. Document Your Scopes
-
-```csharp
-/// <summary>
-/// Scope Organization:
-/// - Global: UI, audio, persistent data (never cleared)
-/// - Player: Player profile, inventory (cleared on logout)
-/// - World: Current zone/level (cleared on zone change)
-/// - Match_*: Match-specific (cleared on match end)
-/// </summary>
-public class ScopeDocumentation { }
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: Scope Not Showing In Dashboard
-
-**Cause**: Forgot to use `.LoadAssetAsync()`
-
-**Fix**:
-```csharp
-// ❌ Not monitored
-await loader.LoadAssetAsync<T>(address);
-
-// ✅ Monitored
-await loader.LoadAssetAsync<T>(address, scopeId);
-```
-
-### Issue: Assets Not Clearing
-
-**Cause**: Wrong scope ID or still holding references
-
-**Fix**:
-```csharp
-// Verify scope ID
-Debug.Log($"Active scopes: {string.Join(", ", _scopes.ActiveScopes)}");
-
-// Clear specific scope
-_scopes.ClearScope("MyScope");
-
-// Or clear all except important ones
-_scopes.ClearAllExcept("Global", "Player");
-```
-
-### Issue: Memory Still High After Clear
-
-**Cause**: Unity hasn't run GC yet
-
-**Fix**:
-```csharp
-_scopes.ClearScope("MyScope");
-
-// Force GC (Editor only, for testing)
-#if UNITY_EDITOR
-System.GC.Collect();
-Resources.UnloadUnusedAssets();
-#endif
-```
-
----
-
-## ✅ Summary
-
-**ScopeManager provides**:
-- ✅ Multiple named scopes (not singletons)
-- ✅ Fine-grained control
-- ✅ Dashboard integration (with `.Monitored()`)
-- ✅ Flexible lifecycle management
-
-**Use it when**:
-- You need multiple sessions/scopes
-- Built-in singletons are too limiting
-- You want full control
-
-**Remember**:
-- Always use `.LoadAssetAsync()` for Dashboard tracking
-- Match scope ID between `GetOrCreateScope()` and monitoring
-- Clear scopes at appropriate times
-- Document your scope organization
-
----
-
-## 🚀 What's Next?
-
-This is version 2.0 with Editor Tools Phase 1 implemented. Future updates may include:
-
-- Memory Profiler Window with leak detection
-- Dependency Graph visualization
-- Scene View overlays and gizmos
-- 8 complete sample scenes
-- Automated testing tools
-- Build report generation
-- Advanced analytics
-
-Stay tuned! 🎉
-
----
-
-**For more information, see:**
-- [README.md](README.md) - Package overview and comprehensive guide
-- [MONITORING_GUIDE.md](MONITORING_GUIDE.md) - Complete monitoring guide
-- [CHANGELOG.md](CHANGELOG.md) - Version history
-
-**Need help?** Check the documentation or inspect existing components to see how they work!
+- [README.md](README.md) — package overview, install, quick start
+- [MONITORING_GUIDE.md](MONITORING_GUIDE.md) — Dashboard internals, custom monitors
+- [CHANGELOG.md](CHANGELOG.md) — release notes

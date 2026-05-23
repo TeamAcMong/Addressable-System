@@ -1,507 +1,111 @@
-# Monitoring Guide - Real-Time Asset Tracking
+# Monitoring Guide
 
-## 🎯 Overview
+The Addressable Manager Dashboard tracks every asset load, every release and every scope state change in **real time** while you Play in the Editor. There is no setup code, no extension methods, no "monitored" variants of the API — wherever your code calls `LoadAssetAsync`, `Spawn`, `Release`, etc., the Dashboard sees it.
 
-Addressable Manager v2.0 includes **real-time monitoring** that automatically tracks all asset operations and displays them in the Dashboard.
+> Monitoring is **Editor-only**. Reporting calls are wrapped in `#if UNITY_EDITOR`, so shipping builds carry zero monitoring overhead.
 
-This guide explains how monitoring works and how to use it effectively.
+## Quick start
 
----
+1. Enter Play Mode.
+2. Open **Window → Addressable Manager → Dashboard** (shortcut: `Ctrl+Alt+A`).
+3. Load anything — `Assets.Load<T>(…)`, `scope.Loader.LoadAssetAsync<T>(…)`, `Assets.Spawn(…)` — and watch it appear.
 
-## 🚀 Quick Setup
+Optional: drop a `MonitoringHelper` component on any scene GameObject (Add Component → Addressable Manager → Monitoring Helper). It's purely a discoverable indicator — monitoring runs whether or not it's there.
 
-### Option 1: Automatic (Recommended)
+## What is tracked
 
-Monitoring is **automatically enabled** in Editor. Just open the Dashboard:
+| Event | Source | Reported as |
+|---|---|---|
+| Asset load (cache miss) | `AssetLoader.LoadAssetAsync` / `LoadAssetsByLabelAsync` | `OnAssetLoaded(address, type, scope, duration, fromCache: false)` |
+| Asset load (cache hit) | `AssetLoader.LoadAssetAsync` | `OnAssetLoaded(..., fromCache: true)` |
+| Asset release | `IAssetHandle.Release` going to refcount 0 | `OnAssetReleased(address, type)` |
+| Scope construction | `BaseAssetScope` ctor | `OnScopeRegistered(name, isActive: false)` |
+| Scope activation | `BaseAssetScope.Activate` | `OnScopeStateChanged(name, isActive: true)` |
+| Scope deactivation | `BaseAssetScope.Deactivate` | `OnScopeStateChanged(name, isActive: false)` |
+| Scope dispose | `BaseAssetScope.Dispose` / `ScopeManager.ClearScope` | `OnScopeCleared(name)` |
 
-1. Enter Play Mode
-2. Press `Ctrl+Alt+A` (or **Window → Addressable Manager → Dashboard**)
-3. You'll see all scope activations immediately!
+The **scope name** that appears in the Dashboard comes from whichever channel originated the load:
 
-### Option 2: Add Monitoring Helper (Visual Indicator)
+| If you load via… | Scope name shown |
+|---|---|
+| `Assets.Load` / `AddressablesFacade.LoadGlobalAsync` | `Global` |
+| `Assets.LoadSession` / session scope | `Session` |
+| `Assets.LoadScene` / `SceneAssetScope.GetOrCreate().Loader` | `Scene-<sceneName>` |
+| `HierarchyAssetScope` on a GameObject | `Hierarchy-<goName>` |
+| `ScopeManager.Instance.GetOrCreateScope("PlayerSession")` | `PlayerSession` |
+| `new AssetLoader("MyScope")` | `MyScope` |
+| `new AssetLoader()` | `Unknown` |
 
-For a visual reminder that monitoring is active:
+The label is set when the loader is **constructed** — there is no per-call scope override. If you need a unique name, create the loader with one (`ScopeManager.GetOrCreateScope` is the easiest path).
 
-1. Create an empty GameObject in your scene
-2. **Add Component → Addressable Manager → Monitoring Helper**
-3. Enable "Enable Monitoring" checkbox
-4. Enter Play Mode
+## Dashboard tabs
 
-That's it! The Dashboard will now show real-time data.
+### Active Assets
+Live list of every handle currently alive. Search by name, filter by scope. Columns: address, type, scope, refcount, est. memory, time-since-loaded.
 
----
+Use it to spot leaks — anything that has been alive an order of magnitude longer than expected, or whose refcount keeps climbing.
 
-## 🏗️ How It Works
+### Performance
+Aggregated counters: total assets, cache-hit ratio, total estimated memory, average load time, top-10 slowest loads. "Export Report (CSV)" dumps the metrics to disk for offline analysis.
 
-### Architecture
+A healthy cache-hit ratio depends on your access pattern, but anything below ~30 % usually means you're re-creating loaders instead of reusing scope loaders.
 
-```
-Runtime Code                  Bridge                 Editor Code
-─────────────────────────────────────────────────────────────────
-BaseAssetScope     ──────>   AssetMonitorBridge  ──────>  EditorAssetMonitor
-  └─ Activate()                                              └─ AssetTrackerService
-  └─ Deactivate()                                                └─ Dashboard Window
-  └─ Dispose()
+### Scopes
+One foldout per scope (Global / Session / Scene / Hierarchy / custom). Shows asset count, estimated memory, and a per-scope cleanup button. Useful for verifying that scopes actually drain when you expect them to (e.g. after a scene unload).
 
-AssetLoader        ──────>   Extension Methods   ──────>  PerformanceMetrics
-  └─ LoadAsync()              └─ .Monitored()
-  └─ Release()
-```
+### Settings
+Log-level for `DebugSettings`, dashboard refresh rate (100–5000 ms), and load-simulation toggles (slow loading, artificial failure rate) for stress testing.
 
-### Data Flow
+## Custom monitors
 
-1. **Runtime**: Scope activates → calls `AssetMonitorBridge.ReportScopeRegistered()`
-2. **Bridge**: Notifies all registered monitors
-3. **Editor**: `EditorAssetMonitor` receives event → updates `AssetTrackerService`
-4. **Dashboard**: Listens to `AssetTrackerService.OnAssetsChanged` → refreshes UI
-
----
-
-## 📊 What Gets Tracked
-
-### Scope Lifecycle
-
-✅ **Automatically tracked** (no code changes needed):
-- Scope registration (when BaseAssetScope is constructed)
-- Scope activation (`Activate()` called)
-- Scope deactivation (`Deactivate()` called)
-- Scope cleanup (`Dispose()` called)
-
-**Example**:
-```csharp
-// This is automatically tracked:
-var globalScope = GlobalAssetScope.Instance;
-// Dashboard immediately shows "Global Scope - ACTIVE"
-```
-
-### Asset Operations
-
-⚠️ **Requires using extension methods** (see below):
-- Asset loads (address, type, duration)
-- Cache hits vs cache misses
-- Reference counts
-- Memory usage (estimated)
-- Load failures
-
----
-
-## 🔧 Using Monitored Asset Loading
-
-To track individual asset loads, use the **extension methods**:
-
-### Before (No Tracking)
-
-```csharp
-// ❌ Not tracked by Dashboard
-var handle = await loader.LoadAssetAsync<Sprite>("UI/Logo");
-```
-
-### After (With Tracking)
-
-```csharp
-using AddressableManager.Loaders; // For extension methods
-
-// ✅ Tracked by Dashboard
-var handle = await loader.LoadAssetAsync<Sprite>(
-    "UI/Logo",
-    scopeName: "Global" // Specify which scope this belongs to
-);
-```
-
-### Extension Methods Available
-
-```csharp
-// Load by address
-await loader.LoadAssetAsync<T>(address, scopeName);
-
-// Load by AssetReference
-await loader.LoadAssetAsync<T>(assetReference, scopeName);
-
-// Load by label
-await loader.LoadAssetsByLabelAsync<T>(label, scopeName);
-
-// Release (reports to Dashboard)
-handle.Release(address);
-```
-
-### Full Example
-
-```csharp
-using UnityEngine;
-using AddressableManager.Scopes;
-using AddressableManager.Loaders;
-
-public class ExampleLoader : MonoBehaviour
-{
-    private async void Start()
-    {
-        var globalScope = GlobalAssetScope.Instance;
-        var loader = globalScope.Loader;
-
-        // Load with monitoring
-        var logoHandle = await loader.LoadAssetAsync<Sprite>(
-            "UI/MainLogo",
-            "Global"
-        );
-
-        // Do something with asset
-        var logo = logoHandle.Asset;
-
-        // Later, release with monitoring
-        logoHandle.Release("UI/MainLogo");
-    }
-}
-```
-
-Now when you open the Dashboard (`Ctrl+Alt+A`):
-- **Active Assets** tab shows "UI/MainLogo"
-- **Performance** tab shows load time
-- **Scopes** tab shows it under "Global Scope"
-
----
-
-## 📈 Dashboard Usage
-
-### Tab 1: Active Assets
-
-**What you see**:
-- All currently loaded assets
-- Address, type, scope assignment
-- Reference counts
-- Memory usage per asset
-- Time since loaded
-
-**Use case**:
-- Find memory leaks (assets with high ref counts)
-- See what's currently in memory
-- Filter by scope to see scope contents
-
-**Actions**:
-- Search by name/type
-- Filter by scope (Global/Session/Scene/Hierarchy)
-- Click asset to see details
-
-### Tab 2: Performance
-
-**What you see**:
-- Total assets loaded
-- Cache hit ratio (% of loads from cache)
-- Total memory usage
-- Average load time
-- Slowest 10 assets
-
-**Use case**:
-- Identify slow-loading assets
-- Check if caching is working (high cache hit ratio = good!)
-- Export CSV for offline analysis
-
-**Actions**:
-- Click "Export Report (CSV)" to save metrics
-
-### Tab 3: Scopes
-
-**What you see**:
-- All 4 scope types (Global, Session, Scene, Hierarchy)
-- Per-scope asset lists
-- Per-scope memory usage
-- Active/Inactive status
-
-**Use case**:
-- Verify scope cleanup is working
-- Check memory per scope
-- Manually cleanup if needed
-
-**Actions**:
-- Expand foldout to see scope contents
-- Click "Cleanup" to clear individual scope
-- Click "Cleanup All Scopes" to clear everything
-
-### Tab 4: Settings
-
-**What you see**:
-- Log level control
-- Auto-refresh toggle
-- Refresh interval slider (100-5000ms)
-- Load simulation settings (for testing)
-
-**Use case**:
-- Adjust dashboard update frequency
-- Enable slow loading simulation
-- Reset statistics
-
----
-
-## 🎯 Best Practices
-
-### 1. Use Extension Methods for Critical Assets
-
-For assets you want to monitor closely:
-
-```csharp
-// ✅ Good - tracked
-await loader.LoadAssetAsync<Texture2D>("Textures/BigTexture", "Scene");
-```
-
-For temporary/debug assets that don't matter:
-
-```csharp
-// ⚠️ OK - not tracked (less overhead)
-await loader.LoadAssetAsync<Sprite>("Debug/TestIcon");
-```
-
-### 2. Specify Correct Scope Names
-
-Always pass the actual scope name:
-
-```csharp
-// ✅ Good - correct scope
-var sessionLoader = SessionAssetScope.Instance.Loader;
-await sessionLoader.LoadAssetAsync<T>(address, "Session");
-
-// ❌ Bad - wrong scope name
-await sessionLoader.LoadAssetAsync<T>(address, "Global"); // Misleading!
-```
-
-### 3. Monitor During Development
-
-Keep Dashboard open during Play Mode testing:
-
-1. Dock Dashboard as a tab next to Inspector
-2. Enter Play Mode
-3. Watch assets load in real-time
-4. Check for unexpected loads or leaks
-
-### 4. Use Performance Tab to Optimize
-
-After a Play Mode session:
-
-1. Go to Performance tab
-2. Check "Slowest Assets"
-3. Optimize those assets (compress, reduce size, etc.)
-4. Export CSV to track improvements over time
-
-### 5. Cleanup Verification
-
-Before switching scenes:
-
-1. Open Dashboard → Scopes tab
-2. Verify Scene Scope shows 0 assets after scene unload
-3. If assets remain, check your cleanup code
-
----
-
-## 🔍 Debugging with Monitoring
-
-### Finding Memory Leaks
-
-**Symptom**: Asset count keeps growing, never decreases
-
-**Solution**:
-1. Open Dashboard → Active Assets
-2. Sort by "Time Since Loaded"
-3. Assets loaded >5 minutes ago are suspicious
-4. Check their reference counts
-5. If ref count never decreases, you have a leak!
-
-**Example**:
-```
-Asset: "Audio/BGM_Battle"
-Refs: 5
-Loaded: 15m ago
-```
-↑ This asset was loaded 15 minutes ago and has 5 references.
-Check your code - are you calling Retain() without Release()?
-
-### Checking Cache Effectiveness
-
-**Question**: Is my caching working?
-
-**Solution**:
-1. Open Dashboard → Performance
-2. Check "Cache Hit Ratio"
-3. **Good**: >70% (most loads from cache)
-4. **Bad**: <30% (caching not working)
-
-**Fix for low cache hit ratio**:
-- Ensure you're not creating new loaders for each load
-- Use scope loaders (they cache automatically)
-- Don't call `ClearCache()` too often
-
-### Verifying Scope Cleanup
-
-**Question**: Are my scopes cleaning up properly?
-
-**Solution**:
-1. Enter Play Mode
-2. Load a scene (Scene Scope gets assets)
-3. Open Dashboard → Scopes → Scene Scope (should show assets)
-4. Load a different scene
-5. Check Scene Scope again (should be 0 assets)
-
-If assets remain, your cleanup code has a bug!
-
----
-
-## ⚙️ Advanced Configuration
-
-### Disable Monitoring (Performance)
-
-If you don't need monitoring (e.g., in builds), monitoring is automatically disabled outside Editor.
-
-In Editor, if you want to disable it:
-
-```csharp
-// Monitoring is Editor-only, no runtime overhead in builds!
-// To disable in Editor, just don't use .Monitored() extensions
-```
-
-### Custom Monitoring
-
-You can implement your own `IAssetMonitor`:
+`AssetMonitorBridge` is public — register your own `IAssetMonitor` to forward events to analytics, an in-game overlay, automated tests, etc.
 
 ```csharp
 using AddressableManager.Monitoring;
 
-public class MyCustomMonitor : IAssetMonitor
+public sealed class AnalyticsMonitor : IAssetMonitor
 {
     public void OnAssetLoaded(string address, string type, string scope, float duration, bool fromCache)
-    {
-        // Your custom logic (e.g., analytics, logging)
-        MyAnalytics.TrackAssetLoad(address, duration);
-    }
+        => Analytics.Track("asset.loaded", address, duration, fromCache);
 
-    // Implement other methods...
+    public void OnAssetReleased(string address, string type) { }
+    public void OnScopeRegistered(string scopeName, bool isActive) { }
+    public void OnScopeStateChanged(string scopeName, bool isActive) { }
+    public void OnScopeCleared(string scopeName) { }
 }
 
-// Register it
-AssetMonitorBridge.RegisterMonitor(new MyCustomMonitor());
+// During bootstrap
+AssetMonitorBridge.RegisterMonitor(new AnalyticsMonitor());
 ```
 
----
+`RegisterMonitor` / `UnregisterMonitor` are thread-safe (the listener list is copy-on-write), so monitor implementations are free to do their own work on background threads — just don't touch Unity objects from there.
 
-## 🐛 Troubleshooting
+The bridge is auto-cleared on domain reload and `SubsystemRegistration`, so leftover Editor-side monitors from a previous Play session never fire into disposed objects.
 
-### Dashboard Shows No Data
+## Build behavior
 
-**Cause**: Monitoring not active or no assets loaded yet
+In a non-Editor build:
 
-**Solution**:
-1. Ensure you're in Play Mode
-2. Load some assets using scopes
-3. Check that scopes are activated
-4. Use `.Monitored()` extension methods for asset loads
+- `AssetMonitorBridge.Report*` calls compile to no-ops at the call sites in `AssetLoader` (each is wrapped in `#if UNITY_EDITOR`).
+- `MonitoredAssetLoader` is a thin pass-through wrapper around `AssetLoader` — same zero overhead.
+- `DebugSettings.Instance` returns a transient default; the `Resources.Load<DebugSettings>` lookup is itself Editor-gated.
 
-### Assets Not Appearing in Dashboard
+There is no separate "monitored" code path. The Dashboard is exclusively an Editor convenience.
 
-**Cause**: Not using monitored extension methods
+## Troubleshooting
 
-**Solution**:
-Use `LoadAssetAsync()` instead of `LoadAssetAsync()`:
+**Dashboard shows the scope but no assets.** You opened the Dashboard but never loaded anything yet — loads only appear after `LoadAssetAsync` completes. Drop a `Debug.Log` next to the load to confirm it actually runs.
 
-```csharp
-// ❌ Not tracked
-await loader.LoadAssetAsync<T>(address);
+**Scope name shows as `Unknown`.** A bare `new AssetLoader()` defaults to `"Unknown"`. Either construct with a scope name or get the loader from a real scope (`GlobalAssetScope.Instance.Loader`, `ScopeManager.Instance.GetOrCreateScope("…")`).
 
-// ✅ Tracked
-await loader.LoadAssetAsync<T>(address, scopeName);
-```
+**Refcount never goes back to zero.** You are calling `Retain()` without a matching `Release()`, or holding the `IAssetHandle` past the GameObject that owned it. Inspect the asset row in the Dashboard — the column shows the live refcount.
 
-### Scopes Show But No Assets
+**Cache-hit ratio stays near zero.** You're allocating a fresh `new AssetLoader()` per load instead of reusing a scope-owned loader, so each load is its own cache.
 
-**Cause**: Scopes are tracked automatically, but assets require extension methods
+**Memory numbers look off.** They are **estimates** keyed by type, not authoritative bytes. For real numbers use the Unity Profiler. The Dashboard is for relative comparison and leak hunting.
 
-**Solution**:
-- Scopes are always tracked (Activate/Deactivate)
-- Assets require using `.Monitored()` extensions
-- Check your loading code uses the right methods
+## See also
 
-### Memory Numbers Seem Wrong
-
-**Cause**: Memory is estimated, not actual
-
-**Solution**:
-- Memory values are rough estimates based on asset type
-- For accurate memory, use Unity Profiler
-- Dashboard is for relative comparison, not absolute values
-
----
-
-## 📚 API Reference
-
-### AssetMonitorBridge (Runtime)
-
-```csharp
-// Register a custom monitor
-AssetMonitorBridge.RegisterMonitor(IAssetMonitor monitor);
-
-// Unregister
-AssetMonitorBridge.UnregisterMonitor(IAssetMonitor monitor);
-
-// Report events (called by framework, you rarely need these)
-AssetMonitorBridge.ReportAssetLoaded(address, type, scope, duration, fromCache);
-AssetMonitorBridge.ReportAssetReleased(address, type);
-AssetMonitorBridge.ReportScopeRegistered(scopeName, isActive);
-AssetMonitorBridge.ReportScopeStateChanged(scopeName, isActive);
-AssetMonitorBridge.ReportScopeCleared(scopeName);
-```
-
-### Extension Methods (Runtime)
-
-```csharp
-// Load with monitoring
-await loader.LoadAssetAsync<T>(address, scopeName);
-await loader.LoadAssetAsync<T>(assetReference, scopeName);
-await loader.LoadAssetsByLabelAsync<T>(label, scopeName);
-
-// Release with monitoring
-handle.Release(address);
-```
-
-### AssetTrackerService (Editor Only)
-
-```csharp
-var tracker = AssetTrackerService.Instance;
-
-// Get all tracked assets
-var assets = tracker.TrackedAssets;
-
-// Get assets by scope
-var globalAssets = tracker.GetAssetsByScope("Global");
-
-// Detect leaks
-var leaks = tracker.DetectPotentialLeaks(minutesThreshold: 5);
-
-// Stats
-var totalMemory = tracker.TotalMemoryUsage;
-var cacheHits = tracker.CacheHits;
-var cacheMisses = tracker.CacheMisses;
-var cacheRatio = tracker.CacheHitRatio;
-```
-
----
-
-## ✅ Summary
-
-**Monitoring is:**
-- ✅ Automatic for scopes (no code changes)
-- ⚠️ Manual for assets (use `.Monitored()` extensions)
-- ✅ Editor-only (zero runtime overhead in builds)
-- ✅ Real-time (updates every 500ms by default)
-- ✅ Extensible (implement `IAssetMonitor` for custom tracking)
-
-**To enable full monitoring:**
-1. Enter Play Mode
-2. Open Dashboard (`Ctrl+Alt+A`)
-3. Use `.LoadAssetAsync()` for assets you want to track
-4. Watch real-time data appear!
-
-**Most common issue:**
-- "I see scopes but no assets" → Use `.Monitored()` extension methods!
-
----
-
-**For more info:**
-- [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md) - Complete Editor features guide
-- [README.md](README.md) - Package overview with comprehensive guide
-
-Happy monitoring! 🎉
+- [README.md](README.md) — package overview
+- [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md) — Dashboard, inspectors, configs
+- [CHANGELOG.md](CHANGELOG.md) — release notes
