@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02240f8bfe592634582e9274c751d1fd, type: 3}
+  m_Name: DebugSettings
+  m_EditorClassIdentifier: AddressableManager::AddressableManager.Configs.DebugSettings
+  logLevel: 2
+  logToFile: 0
+  logFilePath: addressable_manager.log
+  enableProfiling: 1
+  showProfilerOverlay: 0
+  recordMetrics: 1
+  simulateSlowLoading: 0
+  simulatedDelayMs: 500
+  simulateFailureRate: 0
+  simulateNetworkConditions: 0
+  networkSimulation: 0
+  validateReferences: 1
+  detectMemoryLeaks: 1
+  leakDetectionMinutes: 5
+  warnOnHighRefCount: 1
+  highRefCountThreshold: 10
+  warnOnHighMemory: 1
+  highMemoryThresholdMB: 100

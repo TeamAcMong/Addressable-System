@@ -1,0 +1,180 @@
+{
+  "version": "1.0",
+  "description": "Comprehensive rule set - Demonstrates all rule types and features",
+  "autoApplyOnImport": true,
+  "autoApplyOnModified": true,
+  "verboseLogging": false,
+  "versionExpression": "[1.0.0,)",
+  "excludeUnversioned": true,
+  "addressRules": [
+    {
+      "ruleName": "UI Elements by Filename",
+      "description": "UI sprites and elements use filename as address",
+      "enabled": true,
+      "priority": 120,
+      "skipExisting": false,
+      "targetGroupName": "UI",
+      "filters": [],
+      "addressProviderType": "FileNameAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Prefabs by Full Path",
+      "description": "Prefabs use full path as address for uniqueness",
+      "enabled": true,
+      "priority": 110,
+      "skipExisting": false,
+      "targetGroupName": "Prefabs",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Character Models",
+      "description": "Character models and animations",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "targetGroupName": "Characters",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Audio Clips",
+      "description": "Music and sound effects",
+      "enabled": true,
+      "priority": 90,
+      "skipExisting": false,
+      "targetGroupName": "Audio",
+      "filters": [],
+      "addressProviderType": "FileNameAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Localization Assets",
+      "description": "Localized content for different languages",
+      "enabled": true,
+      "priority": 80,
+      "skipExisting": false,
+      "targetGroupName": "Localization",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    }
+  ],
+  "labelRules": [
+    {
+      "ruleName": "Default Label - Always Load",
+      "description": "Assets that should always be loaded",
+      "enabled": true,
+      "priority": 150,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Level Content",
+      "description": "Per-level assets for streaming",
+      "enabled": true,
+      "priority": 140,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Platform - PC",
+      "description": "PC-specific high quality assets",
+      "enabled": true,
+      "priority": 130,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Platform - Mobile",
+      "description": "Mobile-optimized assets",
+      "enabled": true,
+      "priority": 120,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "DLC Content",
+      "description": "Downloadable content marker",
+      "enabled": true,
+      "priority": 110,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Language - English",
+      "description": "English localization",
+      "enabled": true,
+      "priority": 100,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Language - Spanish",
+      "description": "Spanish localization",
+      "enabled": true,
+      "priority": 90,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Language - Japanese",
+      "description": "Japanese localization",
+      "enabled": true,
+      "priority": 80,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    }
+  ],
+  "versionRules": [
+    {
+      "ruleName": "Build Number Version",
+      "description": "Use Unity build version for all assets",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "BuildNumberVersionProvider",
+      "versionProviderPath": ""
+    },
+    {
+      "ruleName": "Git Commit Hash",
+      "description": "Track assets by git commit (useful for dev builds)",
+      "enabled": false,
+      "priority": 90,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "GitCommitVersionProvider",
+      "versionProviderPath": ""
+    },
+    {
+      "ruleName": "Date Timestamp",
+      "description": "Version by build timestamp",
+      "enabled": false,
+      "priority": 80,
+      "skipExisting": false,
+      "filters": [],
+      "versionProviderType": "DateVersionProvider",
+      "versionProviderPath": ""
+    }
+  ]
+}

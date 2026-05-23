@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "description": "Platform-specific labeling rules - Adds platform labels for conditional loading",
+  "autoApplyOnImport": true,
+  "autoApplyOnModified": true,
+  "verboseLogging": false,
+  "versionExpression": "",
+  "excludeUnversioned": false,
+  "addressRules": [
+    {
+      "ruleName": "High Quality Assets",
+      "description": "High resolution assets for PC/Console",
+      "enabled": true,
+      "priority": 100,
+      "skipExisting": false,
+      "targetGroupName": "HighQuality",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    },
+    {
+      "ruleName": "Mobile Optimized Assets",
+      "description": "Optimized assets for mobile platforms",
+      "enabled": true,
+      "priority": 90,
+      "skipExisting": false,
+      "targetGroupName": "Mobile",
+      "filters": [],
+      "addressProviderType": "PathAddressProvider",
+      "addressProviderPath": ""
+    }
+  ],
+  "labelRules": [
+    {
+      "ruleName": "PC Platform Label",
+      "description": "Add 'pc' label to high quality assets",
+      "enabled": true,
+      "priority": 100,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Mobile Platform Label",
+      "description": "Add 'mobile' label to mobile-optimized assets",
+      "enabled": true,
+      "priority": 90,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "Android Platform",
+      "description": "Add 'android' label",
+      "enabled": true,
+      "priority": 80,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    },
+    {
+      "ruleName": "iOS Platform",
+      "description": "Add 'ios' label",
+      "enabled": true,
+      "priority": 70,
+      "appendToExisting": true,
+      "filters": [],
+      "labelProviderType": "FolderLabelProvider",
+      "labelProviderPath": ""
+    }
+  ],
+  "versionRules": []
+}

@@ -2,6 +2,75 @@
 
 All notable changes to this package will be documented in this file.
 
+## [3.5.0] - 2026-05-23 - Branch merge: Tiered API + Rules engine + Hardening lineage
+
+Merges the `feat/asset-importer` branch (Tiered API v3, thread-safety,
+SmartAssetHandle, Result pattern, DynamicPool, Rule-based automation
+with 8 filter types, Layout Rule Editor, CLI tools, auto-apply on
+import) into the 2.3.x lineage (audit hardening, UniTask switching,
+documentation refresh). All work from both branches is preserved.
+
+### Added (from `feat/asset-importer`)
+- **Tiered API** — Simple / Standard / Advanced loader layers with
+  progressive complexity.
+- **Thread-safety** — `ThreadSafeAssetLoader`, `UnityMainThreadDispatcher`,
+  `LoadOperation<T>` for background-thread loads with main-thread
+  dispatch. `AssetLoader` now ships `AssertMainThread()` guards with
+  detailed remediation hints.
+- **SmartAssetHandle<T>** — `IDisposable` wrapper for `using`-statement
+  auto-release; GC finalizer as safety net; `.ToSmart()` /
+  `.LoadAssetSmartAsync()` extensions.
+- **`LoadResult<T>` / `LoadError`** — Rust-style result pattern with 11
+  specific error codes, hints, and `.Match` / `.Map` / `.FlatMap` /
+  `.Unwrap*` helpers. New `LoadAsyncSafe<T>` overloads on `AssetLoader`.
+- **Dynamic pools** — `DynamicPool<T>` + `DynamicPoolConfig` that grow
+  / shrink based on usage; `Default` / `Conservative` / `Aggressive`
+  presets plus `Fixed()` for static behaviour. `AddressablePoolManager`
+  gains `CreateDynamicPoolAsync`, `GetDynamicPoolStats`, `ResizePool`,
+  `IsDynamicPool`.
+- **Tiered cache + ValidationMode + HybridScope + ThreadSafeCacheManager**
+  for advanced cache management.
+- **Rule-based automation** — `AddressableRuleConfig` + 8 filter
+  types (label / address-equals / glob / regex / group / etc.), Layout
+  Rule Editor, Layout Viewer with conflict detection, composite rule
+  merging, batch operations, auto-apply-on-import. This is the
+  "rules and filters" surface that was previously missing.
+- **CLI tools** for CI/CD pipelines.
+
+### Preserved (from 2.2 / 2.3 hardening lineage)
+- All Blocker / High / Medium / Low / Nice-to-have fixes from 2.2.0:
+  `ProgressiveAssetLoader` release-on-fail, `AddressablePoolManager`
+  template-handle release (now applies to both `CreatePoolAsync` and
+  `CreateDynamicPoolAsync`), `MonitoredAssetLoader` rewritten as
+  forwarder, `AssetLoader.ReleaseAsset` cast fix, `SceneAssetScope`
+  dispose collapse, `BaseAssetScope.DisposedToken`, `ScopeManager`
+  `SubsystemRegistration` reset, optional TMP via `TMP_PRESENT`,
+  shared-list refcount, `Facade.OnDestroy` releases scopes,
+  `DebugSettings` Editor-only `Resources.Load`, `Assets` facade
+  parity, `MonitoringHelperInspector` moved to Editor.
+- **UniTask switching** (`UNITASK_PRESENT` versionDefine) preserved on
+  every public async signature — both the original `CreatePoolAsync`
+  and the newly-merged `CreateDynamicPoolAsync` switch return types
+  between `Task<T>` and `UniTask<T>`.
+- Doc refresh from 2.2.1 superseded by branch's v3 README, but
+  architecture diagrams and migration tables retained where they
+  describe behaviour still present in 3.x.
+- `MonitoringHelperInspector.cs.meta` from 2.3.0 retained.
+
+### Migration
+- `package.json` jumps from 2.3.0 → 3.5.0 (branch's authoritative
+  version).
+- Unity floor stays at **2022.3** (the higher of the two branches' floors).
+- `com.cysharp.unitask 2.3.0+` continues to auto-switch the async
+  surface to `UniTask<T>`.
+- Consumers that were on 2.3.0 and relied on `Task<T>` return types
+  without UniTask installed see no change. With UniTask installed,
+  return types become `UniTask<T>` as documented.
+- Consumers on 1.x / 2.0 / 2.1 should re-read the 2.2.0 audit
+  CHANGELOG for behavioural changes around handle release, scope
+  dispose, and `DownloadDependenciesAsync` signature (`Task<long>` →
+  `Task<bool>`).
+
 ## [2.3.0] - 2026-05-23 - UniTask switching + dependency auto-detection
 
 ### Added
@@ -121,10 +190,11 @@ handful of correctness / API issues. Every finding is addressed below.
 - `AssetLoaderExtensions.*Monitored` methods are removed. Replace with the
   plain `AssetLoader.LoadAssetAsync` overloads — monitoring is automatic.
 
-## [2.1.0] - 2026-05-23 - Automatic Monitoring
+## [2.1.0] - 2025-01-XX - Automatic Monitoring
 
-### Maintenance
+### Maintenance (added 2026-05-23)
 - Aligned package metadata with the rest of the DreamTech library family: minimum Unity bumped to **2022.3**, author standardised to **DreamTech**.
+
 
 
 ### 🎉 Breaking Changes (Minor)
