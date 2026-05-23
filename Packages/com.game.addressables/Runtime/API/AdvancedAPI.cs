@@ -8,6 +8,9 @@ using AddressableManager.Core;
 using AddressableManager.Loaders;
 using AddressableManager.Threading;
 using AddressableManager.Pooling;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 using AddressableManager.Scopes;
 
 namespace AddressableManager.API
@@ -305,12 +308,21 @@ namespace AddressableManager.API
         }
 
         /// <summary>
-        /// Load asset from background thread
+        /// Load asset from a background thread. Internally hops to the thread pool
+        /// before calling the loader; the loader itself bounces back to the main thread
+        /// before touching Addressables.
         /// </summary>
+#if UNITASK_PRESENT
+        public static async UniTask<IAssetHandle<T>> LoadFromBackgroundThread<T>(ThreadSafeAssetLoader loader, string address)
+        {
+            return await UniTask.RunOnThreadPool(() => loader.LoadAssetAsync<T>(address));
+        }
+#else
         public static async Task<IAssetHandle<T>> LoadFromBackgroundThread<T>(ThreadSafeAssetLoader loader, string address)
         {
             return await Task.Run(() => loader.LoadAssetAsync<T>(address));
         }
+#endif
 
         #endregion
 

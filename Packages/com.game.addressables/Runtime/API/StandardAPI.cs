@@ -296,9 +296,12 @@ namespace AddressableManager.API
         }
 
         /// <summary>
-        /// Download dependencies for remote assets
+        /// Download dependencies for remote assets.
+        /// Returns true on success, false otherwise. The signature dropped
+        /// the old <c>long</c> sentinel in 2.2.0 — pair with
+        /// <see cref="GetDownloadSize(string)"/> for byte counts.
         /// </summary>
-        public static async Task<long> DownloadDependencies(string address)
+        public static async Task<bool> DownloadDependencies(string address)
         {
             var loader = Facade.GetGlobalScope().Loader;
             return await loader.DownloadDependenciesAsync(address);

@@ -2,6 +2,49 @@
 
 All notable changes to this package will be documented in this file.
 
+## [3.5.1] - 2026-05-23 - UniTask compile-fix for merged branch code
+
+Fixes compile errors that surfaced when 3.5.0 was consumed by a
+project that has `com.cysharp.unitask` installed (UNITASK_PRESENT
+define active). The branch's code was written before the
+Task ↔ UniTask switch existed in 2.3.0, so several call sites
+expected concrete `Task<T>` types where the switched API now
+returns `UniTask<T>`.
+
+### Fixed
+- **`Runtime/Threading/ThreadSafeAssetLoader.cs`** — every public
+  `LoadAssetAsync` / `LoadAssetsByLabelAsync` / `InstantiateAsync`
+  overload now switches its return type between `Task<T>` and
+  `UniTask<T>` via `#if UNITASK_PRESENT`, matching the rest of the
+  package. The internal `TaskCompletionSource` for the by-label
+  branch also switches to `UniTaskCompletionSource` when UniTask
+  is present.
+- **`Runtime/Threading/LoadOperation.cs`** — the internal queued
+  load + instantiate operations now use
+  `UniTaskCompletionSource<T>` + `Func<UniTask<T>>` under
+  `UNITASK_PRESENT`, falling back to the original
+  `TaskCompletionSource<T>` + `Func<Task<T>>` otherwise.
+- **`Runtime/Pooling/AddressablePoolManager.cs`** —
+  `task.Wait()` + `task.Result` replaced with
+  `task.GetAwaiter().GetResult()` in the auto-create code path.
+  `Wait` / `Result` are Task-only members; the awaiter form works
+  for both Task and UniTask.
+- **`Runtime/API/StandardAPI.cs`** — `DownloadDependencies` return
+  type corrected from `Task<long>` to `Task<bool>` to match
+  `AssetLoader.DownloadDependenciesAsync` (changed from
+  `Task<long>` to `Task<bool>` in 2.2.0).
+- **`Runtime/API/AdvancedAPI.cs`** — `LoadFromBackgroundThread`
+  uses `UniTask.RunOnThreadPool` under `UNITASK_PRESENT`, falling
+  back to `Task.Run` otherwise. `Task.Run` cannot accept
+  `Func<UniTask<T>>`.
+
+### Notes
+- No public API change for consumers without UniTask installed.
+- Consumers with UniTask installed previously got a build failure
+  on first compile; now compiles cleanly. Public return types in
+  `ThreadSafeAssetLoader` correctly become `UniTask<T>` to match
+  the rest of the surface.
+
 ## [3.5.0] - 2026-05-23 - Branch merge: Tiered API + Rules engine + Hardening lineage
 
 Merges the `feat/asset-importer` branch (Tiered API v3, thread-safety,

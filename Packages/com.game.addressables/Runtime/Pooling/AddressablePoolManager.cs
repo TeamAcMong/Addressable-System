@@ -279,14 +279,16 @@ namespace AddressableManager.Pooling
                 {
                     Debug.LogWarning($"[PoolManager] Auto-creating pool for {address}");
 
-                    // Create pool synchronously (blocking)
+                    // Create pool synchronously (blocking).
+                    // GetAwaiter().GetResult() works for both Task<bool> and UniTask<bool> awaiters,
+                    // so the call site stays valid regardless of whether UNITASK_PRESENT is set.
                     var task = _autoCreateDefaultConfig != null
                         ? CreateDynamicPoolAsync(address, _autoCreateDefaultConfig, preloadCount: 0)
                         : CreatePoolAsync(address, preloadCount: 0, maxSize: 50);
 
-                    task.Wait(); // Block until pool is created
+                    bool created = task.GetAwaiter().GetResult();
 
-                    if (!task.Result)
+                    if (!created)
                     {
                         Debug.LogError($"[PoolManager] Failed to auto-create pool for {address}");
                         return null;
