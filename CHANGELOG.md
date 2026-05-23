@@ -2,6 +2,19 @@
 
 All notable changes to this package will be documented in this file.
 
+## [2.2.1] - 2026-05-23 - Documentation Refresh
+
+Doc-only release; no code changes.
+
+### Changed
+- **`README.md`** rewritten end-to-end against the current API surface: install via tagged git URL, scope concept table, scoped/static/direct usage paths, pooling + progress + monitoring snippets, architecture diagram, migration notes for 2.1 → 2.2 and 2.0 → 2.1. ~60 % shorter than the previous version.
+- **`MONITORING_GUIDE.md`** rewritten from scratch around the new "always-on, Editor-only" monitoring model. Removed the obsolete "use extension methods" framing, the made-up `LoadAssetAsync(address, scopeName)` overload, and the deprecated `handle.Release(address)` pattern. Added scope-name resolution table, `IAssetMonitor` example, build-time guarantees.
+- **`EDITOR_TOOLS_GUIDE.md`** rewritten to match the real API: every `LoadAssetAsync<T>(address, scopeName)` call corrected, every `.Monitored()` reference removed, `ScopeManager` examples updated, recipes consolidated, troubleshooting table tightened.
+
+### Notes
+- The docs now treat `Assets` (static) and `AddressablesFacade` (MonoBehaviour) as parity-equivalent entry points (`Assets` gained the missing API in 2.2.0).
+- Cross-doc links and footer version bumped to 2.2.1.
+
 ## [2.2.0] - 2026-05-23 - Audit-Driven Hardening
 
 A pre-ship audit found three blocker-class Addressables ref-count leaks and a
