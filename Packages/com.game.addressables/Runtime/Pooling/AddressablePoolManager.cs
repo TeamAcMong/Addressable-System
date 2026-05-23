@@ -6,6 +6,9 @@ using UnityEngine.AddressableAssets;
 using AddressableManager.Core;
 using AddressableManager.Loaders;
 using AddressableManager.Pooling.Adapters;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Pooling
 {
@@ -50,13 +53,22 @@ namespace AddressableManager.Pooling
         }
 
         /// <summary>
-        /// Create a pool for an addressable prefab
+        /// Create a pool for an addressable prefab.
+        /// Returns <c>UniTask&lt;bool&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<bool> CreatePoolAsync(
+            string address,
+            int preloadCount = 0,
+            int maxSize = 100,
+            Transform poolRoot = null)
+#else
         public async Task<bool> CreatePoolAsync(
             string address,
             int preloadCount = 0,
             int maxSize = 100,
             Transform poolRoot = null)
+#endif
         {
             if (_disposed)
             {

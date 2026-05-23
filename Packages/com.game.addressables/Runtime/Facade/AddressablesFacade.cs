@@ -8,6 +8,9 @@ using AddressableManager.Pooling;
 using AddressableManager.Pooling.Adapters;
 using AddressableManager.Progress;
 using AddressableManager.Scopes;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Facade
 {
@@ -69,9 +72,14 @@ namespace AddressableManager.Facade
         #region Global Scope Operations
 
         /// <summary>
-        /// Load asset into global scope (persistent)
+        /// Load asset into global scope (persistent).
+        /// Returns <c>UniTask&lt;IAssetHandle&lt;T&gt;&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadGlobalAsync<T>(string address)
+#else
         public async Task<IAssetHandle<T>> LoadGlobalAsync<T>(string address)
+#endif
         {
             return await _globalScope.Loader.LoadAssetAsync<T>(address);
         }
@@ -79,7 +87,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Load with progress tracking
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadGlobalWithProgressAsync<T>(string address, Action<ProgressInfo> onProgress)
+#else
         public async Task<IAssetHandle<T>> LoadGlobalWithProgressAsync<T>(string address, Action<ProgressInfo> onProgress)
+#endif
         {
             return await _globalScope.Loader.LoadAssetWithProgressAsync<T>(address, onProgress);
         }
@@ -110,7 +122,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Load asset into session scope
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadSessionAsync<T>(string address)
+#else
         public async Task<IAssetHandle<T>> LoadSessionAsync<T>(string address)
+#endif
         {
             if (_sessionScope == null)
             {
@@ -137,7 +153,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Load asset into scene scope
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadSceneAsync<T>(string address)
+#else
         public async Task<IAssetHandle<T>> LoadSceneAsync<T>(string address)
+#endif
         {
             var scope = GetOrCreateSceneScope();
             return await scope.Loader.LoadAssetAsync<T>(address);
@@ -150,7 +170,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Create object pool
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<bool> CreatePoolAsync(string address, int preloadCount = 0, int maxSize = 100)
+#else
         public async Task<bool> CreatePoolAsync(string address, int preloadCount = 0, int maxSize = 100)
+#endif
         {
             return await _poolManager.CreatePoolAsync(address, preloadCount, maxSize);
         }
@@ -223,7 +247,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Get download size for address
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<long> GetDownloadSizeAsync(string address)
+#else
         public async Task<long> GetDownloadSizeAsync(string address)
+#endif
         {
             return await _globalScope.Loader.GetDownloadSizeAsync(address);
         }
@@ -231,7 +259,11 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Download dependencies with progress
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<bool> DownloadAsync(string address, Action<ProgressInfo> onProgress = null)
+#else
         public async Task<bool> DownloadAsync(string address, Action<ProgressInfo> onProgress = null)
+#endif
         {
             return await ProgressiveAssetLoader.DownloadWithProgressAsync(address, onProgress);
         }

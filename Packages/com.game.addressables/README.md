@@ -18,7 +18,7 @@ com.game.addressables · Unity 2022.3+ · MIT
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#2.2.1"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#2.3.0"
   }
 }
 ```
@@ -26,7 +26,7 @@ com.game.addressables · Unity 2022.3+ · MIT
 Or via Package Manager → **+ → Add package from git URL**:
 
 ```
-https://github.com/TeamAcMong/Addressable-System.git#2.2.1
+https://github.com/TeamAcMong/Addressable-System.git#2.3.0
 ```
 
 Tags publish only the package subtree (~KB, not MB) — see the repo's `DEPLOY_UPM_SUBTREE.md` for the release flow.
@@ -265,6 +265,12 @@ Packages/com.game.addressables/
 
 ## Migration
 
+### From 2.2.x → 2.3.x
+
+- Public async methods return `UniTask<T>` instead of `Task<T>` **when** `com.cysharp.unitask` is installed in the consumer project (auto-detected via asmdef `versionDefines` → `UNITASK_PRESENT`). Without UniTask there is no change.
+- Existing call sites that `await` the result need no edit — UniTask is awaiter-compatible with Task and vice versa. Any code that captured the return as `Task<T>` will compile error if UniTask is present; either uninstall UniTask, or `.AsTask()` on the call site.
+- Fixed a missing `MonitoringHelperInspector.cs.meta` from 2.2.0 that triggered an "immutable folder" warning in the Unity console.
+
 ### From 2.1.x → 2.2.x
 
 - `AssetLoader.DownloadDependenciesAsync` now returns `Task<bool>` (it previously returned `Task<long>` with a sentinel `1`/`0`). Update any `result == 1` checks to `result == true`.
@@ -277,13 +283,32 @@ Packages/com.game.addressables/
 
 - Monitoring became automatic across all `AssetLoader` paths. Drop any explicit `LoadAssetAsyncMonitored` calls.
 
+## Async API: Task or UniTask
+
+Every public async method picks its return type at compile time based on which packages the consumer has installed:
+
+| Consumer setup | Public return type | Activated by |
+|---|---|---|
+| Default | `System.Threading.Tasks.Task<T>` | (no flag) |
+| With `com.cysharp.unitask 2.3.0+` | `Cysharp.Threading.Tasks.UniTask<T>` | `UNITASK_PRESENT` define (set automatically by the asmdef `versionDefines`) |
+
+You do not have to set the define yourself — installing UniTask is enough. The same source file compiles either way; only the declared return type changes. UniTask's `async`/`await` is structurally compatible with `Task`, so callers don't need to rewrite their `await` sites.
+
+```csharp
+// Same call, return type depends on whether UniTask is installed.
+var icon = await Assets.Load<Sprite>("UI/Icon");
+```
+
+If you want to mix — e.g. consume `Task<T>` from a project that has UniTask installed — bridge with `Cysharp.Threading.Tasks.AsTask()` / `AsUniTask()` extension methods that UniTask ships.
+
 ## Requirements
 
 - **Unity 2022.3** or later
 - `com.unity.addressables` 2.3.1+
 - TextMeshPro 3.0+ — **optional**, only the `AddressableProgressBar` component needs it (gated by `TMP_PRESENT`)
+- UniTask 2.3.0+ — **optional**, switches the async return type from `Task<T>` to `UniTask<T>` (gated by `UNITASK_PRESENT`)
 
-No UniTask, no Newtonsoft, no other runtime dependencies. Async surface is plain `System.Threading.Tasks.Task` + `AsyncOperationHandle.Task`.
+No Newtonsoft, no other runtime dependencies.
 
 ## See also
 
@@ -295,4 +320,4 @@ No UniTask, no Newtonsoft, no other runtime dependencies. Async surface is plain
 
 MIT — see [LICENSE.md](LICENSE.md).
 
-**Version**: 2.2.1
+**Version**: 2.3.0

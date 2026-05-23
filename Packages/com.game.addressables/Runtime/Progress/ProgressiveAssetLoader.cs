@@ -5,6 +5,9 @@ using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using AddressableManager.Core;
 using AddressableManager.Loaders;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Progress
 {
@@ -14,12 +17,20 @@ namespace AddressableManager.Progress
     public static class ProgressiveAssetLoader
     {
         /// <summary>
-        /// Load asset with progress tracking
+        /// Load asset with progress tracking.
+        /// Returns <c>UniTask&lt;IAssetHandle&lt;T&gt;&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
         /// </summary>
+#if UNITASK_PRESENT
+        public static async UniTask<IAssetHandle<T>> LoadAssetWithProgressAsync<T>(
+            this AssetLoader loader,
+            string address,
+            Action<ProgressInfo> onProgress)
+#else
         public static async Task<IAssetHandle<T>> LoadAssetWithProgressAsync<T>(
             this AssetLoader loader,
             string address,
             Action<ProgressInfo> onProgress)
+#endif
         {
             var tracker = new ProgressTracker();
 
@@ -44,7 +55,11 @@ namespace AddressableManager.Progress
                 {
                     var info = new ProgressInfo(operation.PercentComplete, $"Loading {address}");
                     tracker.UpdateProgress(info);
+#if UNITASK_PRESENT
+                    await UniTask.Yield();
+#else
                     await Task.Yield();
+#endif
                 }
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
@@ -81,9 +96,15 @@ namespace AddressableManager.Progress
         /// <summary>
         /// Download dependencies with progress tracking
         /// </summary>
+#if UNITASK_PRESENT
+        public static async UniTask<bool> DownloadWithProgressAsync(
+            string address,
+            Action<ProgressInfo> onProgress)
+#else
         public static async Task<bool> DownloadWithProgressAsync(
             string address,
             Action<ProgressInfo> onProgress)
+#endif
         {
             var tracker = new ProgressTracker();
 
@@ -126,7 +147,11 @@ namespace AddressableManager.Progress
                     tracker.UpdateProgress(info);
 
                     lastProgress = currentProgress;
+#if UNITASK_PRESENT
+                    await UniTask.Yield();
+#else
                     await Task.Yield();
+#endif
                 }
 
                 tracker.Complete();
@@ -156,10 +181,17 @@ namespace AddressableManager.Progress
         /// <summary>
         /// Load multiple assets with composite progress tracking
         /// </summary>
+#if UNITASK_PRESENT
+        public static async UniTask<bool> LoadMultipleWithProgressAsync<T>(
+            this AssetLoader loader,
+            string[] addresses,
+            Action<ProgressInfo> onProgress)
+#else
         public static async Task<bool> LoadMultipleWithProgressAsync<T>(
             this AssetLoader loader,
             string[] addresses,
             Action<ProgressInfo> onProgress)
+#endif
         {
             var compositeTracker = new CompositeProgressTracker();
 
@@ -170,7 +202,11 @@ namespace AddressableManager.Progress
 
             try
             {
+#if UNITASK_PRESENT
+                var tasks = new UniTask<IAssetHandle<T>>[addresses.Length];
+#else
                 var tasks = new Task<IAssetHandle<T>>[addresses.Length];
+#endif
 
                 for (int i = 0; i < addresses.Length; i++)
                 {
@@ -184,7 +220,11 @@ namespace AddressableManager.Progress
                     );
                 }
 
+#if UNITASK_PRESENT
+                await UniTask.WhenAll(tasks);
+#else
                 await Task.WhenAll(tasks);
+#endif
 
                 compositeTracker.Complete();
                 return true;

@@ -11,7 +11,7 @@ Add to `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#2.2.1"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#2.3.0"
   }
 }
 ```
@@ -19,7 +19,7 @@ Add to `Packages/manifest.json`:
 Or via Unity: **Window → Package Manager → ＋ → Add package from git URL**:
 
 ```
-https://github.com/TeamAcMong/Addressable-System.git#2.2.1
+https://github.com/TeamAcMong/Addressable-System.git#2.3.0
 ```
 
 Tags publish only the package subtree (~KB, not MB) — see [DEPLOY_UPM_SUBTREE.md](DEPLOY_UPM_SUBTREE.md) for the release flow.
@@ -65,9 +65,10 @@ Full API tour + architecture diagram + best practices: [`Packages/com.game.addre
 
 - **Unity 2022.3** or later
 - `com.unity.addressables` 2.3.1+
-- TextMeshPro 3.0+ — optional (only `AddressableProgressBar` uses it, gated by `TMP_PRESENT`)
+- TextMeshPro 3.0+ — optional, only `AddressableProgressBar` uses it (gated by `TMP_PRESENT`)
+- UniTask 2.3.0+ — optional, switches the async API from `Task<T>` to `UniTask<T>` (gated by `UNITASK_PRESENT`)
 
-No UniTask, no Newtonsoft, no other runtime dependencies. Async surface is plain `System.Threading.Tasks.Task` + `AsyncOperationHandle.Task`.
+No Newtonsoft, no other runtime dependencies.
 
 ## License
 

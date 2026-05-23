@@ -2,6 +2,20 @@
 
 All notable changes to this package will be documented in this file.
 
+## [2.3.0] - 2026-05-23 - UniTask switching + dependency auto-detection
+
+### Added
+- **Automatic `Task` ↔ `UniTask` switching.** The Runtime asmdef now declares a `versionDefines` entry that defines `UNITASK_PRESENT` whenever `com.cysharp.unitask 2.3.0+` is installed in the consumer project. Every public async method (`AssetLoader.LoadAssetAsync`, `Assets.Load`, `AddressablesFacade.LoadGlobalAsync`, `AddressablePoolManager.CreatePoolAsync`, `ProgressiveAssetLoader.LoadAssetWithProgressAsync` etc. — 30 signatures across 6 files) now returns `UniTask<T>` when the define is active, `Task<T>` otherwise. Body await sites are awaiter-compatible and unchanged.
+- `Task.Yield()` / `Task.WhenAll(…)` / `new Task<T>[…]` inside `ProgressiveAssetLoader.LoadMultipleWithProgressAsync` are bracketed with `#if UNITASK_PRESENT` so they switch to the corresponding `UniTask` calls when UniTask is present (avoids the cost of awaiting a `Task.YieldAwaitable` from inside a `UniTask` async method).
+- UniTask asmdef listed under the Runtime asmdef `references`. Unity ignores the reference gracefully when UniTask is not installed.
+
+### Fixed
+- `Editor/Inspectors/MonitoringHelperInspector.cs` shipped without a `.meta` file in 2.2.0, triggering Unity's "Asset has no meta file, but it's in an immutable folder. The asset will be ignored." warning when the package was consumed via UPM. Generated a stable GUID + `MonoImporter` meta so the inspector loads on first import.
+
+### Notes
+- This is a backwards-compatible change for projects **without** UniTask. Projects **with** UniTask installed will see public return types change from `Task<T>` to `UniTask<T>`. The two are awaiter-compatible (you can `await` a `UniTask` from a `Task` async method and vice versa), but code that captured the return value as a concrete `Task<T>` variable will need to either uninstall UniTask, refactor to `var`, or call `.AsTask()` on the result.
+- Editor asmdef is unchanged — Editor code uses no `Task`/`UniTask` surface.
+
 ## [2.2.1] - 2026-05-23 - Documentation Refresh
 
 Doc-only release; no code changes.
