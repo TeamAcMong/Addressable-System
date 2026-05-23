@@ -102,7 +102,7 @@ var handle = await loader.LoadAssetAsync<Sprite>("UI/Logo");
 using AddressableManager.Loaders; // For extension methods
 
 // ✅ Tracked by Dashboard
-var handle = await loader.LoadAssetAsyncMonitored<Sprite>(
+var handle = await loader.LoadAssetAsync<Sprite>(
     "UI/Logo",
     scopeName: "Global" // Specify which scope this belongs to
 );
@@ -112,16 +112,16 @@ var handle = await loader.LoadAssetAsyncMonitored<Sprite>(
 
 ```csharp
 // Load by address
-await loader.LoadAssetAsyncMonitored<T>(address, scopeName);
+await loader.LoadAssetAsync<T>(address, scopeName);
 
 // Load by AssetReference
-await loader.LoadAssetAsyncMonitored<T>(assetReference, scopeName);
+await loader.LoadAssetAsync<T>(assetReference, scopeName);
 
 // Load by label
-await loader.LoadAssetsByLabelAsyncMonitored<T>(label, scopeName);
+await loader.LoadAssetsByLabelAsync<T>(label, scopeName);
 
 // Release (reports to Dashboard)
-handle.ReleaseMonitored(address);
+handle.Release(address);
 ```
 
 ### Full Example
@@ -139,7 +139,7 @@ public class ExampleLoader : MonoBehaviour
         var loader = globalScope.Loader;
 
         // Load with monitoring
-        var logoHandle = await loader.LoadAssetAsyncMonitored<Sprite>(
+        var logoHandle = await loader.LoadAssetAsync<Sprite>(
             "UI/MainLogo",
             "Global"
         );
@@ -148,7 +148,7 @@ public class ExampleLoader : MonoBehaviour
         var logo = logoHandle.Asset;
 
         // Later, release with monitoring
-        logoHandle.ReleaseMonitored("UI/MainLogo");
+        logoHandle.Release("UI/MainLogo");
     }
 }
 ```
@@ -239,7 +239,7 @@ For assets you want to monitor closely:
 
 ```csharp
 // ✅ Good - tracked
-await loader.LoadAssetAsyncMonitored<Texture2D>("Textures/BigTexture", "Scene");
+await loader.LoadAssetAsync<Texture2D>("Textures/BigTexture", "Scene");
 ```
 
 For temporary/debug assets that don't matter:
@@ -256,10 +256,10 @@ Always pass the actual scope name:
 ```csharp
 // ✅ Good - correct scope
 var sessionLoader = SessionAssetScope.Instance.Loader;
-await sessionLoader.LoadAssetAsyncMonitored<T>(address, "Session");
+await sessionLoader.LoadAssetAsync<T>(address, "Session");
 
 // ❌ Bad - wrong scope name
-await sessionLoader.LoadAssetAsyncMonitored<T>(address, "Global"); // Misleading!
+await sessionLoader.LoadAssetAsync<T>(address, "Global"); // Misleading!
 ```
 
 ### 3. Monitor During Development
@@ -396,14 +396,14 @@ AssetMonitorBridge.RegisterMonitor(new MyCustomMonitor());
 **Cause**: Not using monitored extension methods
 
 **Solution**:
-Use `LoadAssetAsyncMonitored()` instead of `LoadAssetAsync()`:
+Use `LoadAssetAsync()` instead of `LoadAssetAsync()`:
 
 ```csharp
 // ❌ Not tracked
 await loader.LoadAssetAsync<T>(address);
 
 // ✅ Tracked
-await loader.LoadAssetAsyncMonitored<T>(address, scopeName);
+await loader.LoadAssetAsync<T>(address, scopeName);
 ```
 
 ### Scopes Show But No Assets
@@ -449,12 +449,12 @@ AssetMonitorBridge.ReportScopeCleared(scopeName);
 
 ```csharp
 // Load with monitoring
-await loader.LoadAssetAsyncMonitored<T>(address, scopeName);
-await loader.LoadAssetAsyncMonitored<T>(assetReference, scopeName);
-await loader.LoadAssetsByLabelAsyncMonitored<T>(label, scopeName);
+await loader.LoadAssetAsync<T>(address, scopeName);
+await loader.LoadAssetAsync<T>(assetReference, scopeName);
+await loader.LoadAssetsByLabelAsync<T>(label, scopeName);
 
 // Release with monitoring
-handle.ReleaseMonitored(address);
+handle.Release(address);
 ```
 
 ### AssetTrackerService (Editor Only)
@@ -492,7 +492,7 @@ var cacheRatio = tracker.CacheHitRatio;
 **To enable full monitoring:**
 1. Enter Play Mode
 2. Open Dashboard (`Ctrl+Alt+A`)
-3. Use `.LoadAssetAsyncMonitored()` for assets you want to track
+3. Use `.LoadAssetAsync()` for assets you want to track
 4. Watch real-time data appear!
 
 **Most common issue:**

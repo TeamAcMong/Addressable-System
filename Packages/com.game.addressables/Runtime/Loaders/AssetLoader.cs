@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using AddressableManager.Configs;
 using AddressableManager.Core;
 #if UNITY_EDITOR
 using AddressableManager.Monitoring;
@@ -17,9 +18,8 @@ namespace AddressableManager.Loaders
     /// </summary>
     public class AssetLoader : IDisposable
     {
-        // Cache: key = (address + type), value = handle
-        // This allows caching different types for same address
-        private readonly Dictionary<string, object> _assetCache = new();
+        // Cache: key = (address + type), value = handle (IDisposable so we can release without knowing T)
+        private readonly Dictionary<string, IDisposable> _assetCache = new();
 
         // Track all active handles for cleanup
         private readonly List<IDisposable> _activeHandles = new();
@@ -64,7 +64,6 @@ namespace AddressableManager.Loaders
 
             // Create cache key with type to allow different types for same address
             string cacheKey = $"{address}_{typeof(T).Name}";
-            bool fromCache = false;
 
             // Check cache first
             if (_assetCache.TryGetValue(cacheKey, out var cachedObj))
@@ -72,9 +71,8 @@ namespace AddressableManager.Loaders
                 var cachedHandle = cachedObj as IAssetHandle<T>;
                 if (cachedHandle != null && cachedHandle.IsValid)
                 {
-                    Debug.Log($"[AssetLoader] Cache hit for: {address}");
+                    LogVerbose($"[AssetLoader] Cache hit for: {address}");
                     cachedHandle.Retain();
-                    fromCache = true;
 
 #if UNITY_EDITOR
                     // Report cache hit to monitoring
@@ -90,22 +88,25 @@ namespace AddressableManager.Loaders
 
                     return cachedHandle;
                 }
-                else
-                {
-                    // Remove invalid cached handle
-                    _assetCache.Remove(cacheKey);
-                    if (cachedHandle != null)
-                    {
-                        _activeHandles.Remove(cachedHandle);
-                    }
-                }
+
+                // Stale entry — purge before re-loading
+                _assetCache.Remove(cacheKey);
+                if (cachedObj != null) _activeHandles.Remove(cachedObj);
             }
 
             try
             {
-                Debug.Log($"[AssetLoader] Loading asset: {address}");
+                LogVerbose($"[AssetLoader] Loading asset: {address}");
                 var operation = Addressables.LoadAssetAsync<T>(address);
                 await operation.Task;
+
+                // The loader may have been disposed (e.g. owner GameObject destroyed) during
+                // the await. Don't cache into a torn-down loader — release immediately.
+                if (_disposed)
+                {
+                    if (operation.IsValid()) Addressables.Release(operation);
+                    return null;
+                }
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
@@ -115,7 +116,7 @@ namespace AddressableManager.Loaders
                     _assetCache[cacheKey] = handle;
                     _activeHandles.Add(handle);
 
-                    Debug.Log($"[AssetLoader] Successfully loaded: {address}");
+                    LogVerbose($"[AssetLoader] Successfully loaded: {address}");
 
 #if UNITY_EDITOR
                     // Report successful load to monitoring
@@ -131,11 +132,10 @@ namespace AddressableManager.Loaders
 
                     return handle;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to load asset: {address}. Error: {operation.OperationException}");
-                    return null;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to load asset: {address}. Error: {operation.OperationException}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return null;
             }
             catch (Exception ex)
             {
@@ -194,20 +194,21 @@ namespace AddressableManager.Loaders
 
                     return cachedHandle;
                 }
-                else
-                {
-                    _assetCache.Remove(cacheKey);
-                    if (cachedHandle != null)
-                    {
-                        _activeHandles.Remove(cachedHandle);
-                    }
-                }
+
+                _assetCache.Remove(cacheKey);
+                if (cachedObj != null) _activeHandles.Remove(cachedObj);
             }
 
             try
             {
                 var operation = assetReference.LoadAssetAsync<T>();
                 await operation.Task;
+
+                if (_disposed)
+                {
+                    if (operation.IsValid()) Addressables.Release(operation);
+                    return null;
+                }
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
@@ -229,11 +230,10 @@ namespace AddressableManager.Loaders
 
                     return handle;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to load AssetReference. Error: {operation.OperationException}");
-                    return null;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to load AssetReference. Error: {operation.OperationException}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return null;
             }
             catch (Exception ex)
             {
@@ -270,19 +270,26 @@ namespace AddressableManager.Loaders
 
             try
             {
-                Debug.Log($"[AssetLoader] Loading assets with label: {label}");
+                LogVerbose($"[AssetLoader] Loading assets with label: {label}");
                 var operation = Addressables.LoadAssetsAsync<T>(label, null);
                 await operation.Task;
+
+                if (_disposed)
+                {
+                    if (operation.IsValid()) Addressables.Release(operation);
+                    return null;
+                }
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
                     var handles = new List<IAssetHandle<T>>();
 
-                    // Create a shared tracker for the list operation
+                    // Create a shared tracker for the list operation. Start with refcount 1 so the
+                    // tracker itself keeps the underlying handle alive; we release it once after the
+                    // foreach so that the surviving refcount is equal to the number of ListItemHandles.
                     var sharedTracker = new SharedListOperationTracker<T>(operation);
                     _activeHandles.Add(sharedTracker);
 
-                    // For each loaded asset, create a wrapper handle
                     foreach (var asset in operation.Result)
                     {
                         var wrapper = new ListItemHandle<T>(sharedTracker, asset);
@@ -290,14 +297,18 @@ namespace AddressableManager.Loaders
                         _activeHandles.Add(wrapper);
                     }
 
-                    Debug.Log($"[AssetLoader] Loaded {handles.Count} assets with label: {label}");
+                    // Drop our extra reference; if results were empty the tracker disposes immediately
+                    // and releases the underlying Addressables handle.
+                    sharedTracker.Release();
+
+                    LogVerbose($"[AssetLoader] Loaded {handles.Count} assets with label: {label}");
 
 #if UNITY_EDITOR
                     // Report each asset loaded
                     var loadDuration = Time.realtimeSinceStartup - startTime;
                     var avgTimePerAsset = handles.Count > 0 ? loadDuration / handles.Count : loadDuration;
 
-                    foreach (var handle in handles)
+                    foreach (var _ in handles)
                     {
                         AssetMonitorBridge.ReportAssetLoaded(
                             $"{label}/*",
@@ -311,11 +322,10 @@ namespace AddressableManager.Loaders
 
                     return handles;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to load assets by label: {label}");
-                    return null;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to load assets by label: {label}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return null;
             }
             catch (Exception ex)
             {
@@ -348,11 +358,10 @@ namespace AddressableManager.Loaders
                 {
                     return operation.Result;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to instantiate: {address}");
-                    return null;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to instantiate: {address}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return null;
             }
             catch (Exception ex)
             {
@@ -381,11 +390,10 @@ namespace AddressableManager.Loaders
                 {
                     return operation.Result;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to instantiate: {address}");
-                    return null;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to instantiate: {address}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return null;
             }
             catch (Exception ex)
             {
@@ -417,14 +425,15 @@ namespace AddressableManager.Loaders
         #region Preload & Download
 
         /// <summary>
-        /// Preload/Download asset without loading it into memory
+        /// Preload/Download asset without loading it into memory.
+        /// Returns true on success, false otherwise.
         /// </summary>
-        public async Task<long> DownloadDependenciesAsync(string address)
+        public async Task<bool> DownloadDependenciesAsync(string address)
         {
             if (_disposed)
             {
                 Debug.LogError("[AssetLoader] Cannot download from disposed loader");
-                return 0;
+                return false;
             }
 
             try
@@ -432,21 +441,24 @@ namespace AddressableManager.Loaders
                 var operation = Addressables.DownloadDependenciesAsync(address);
                 await operation.Task;
 
-                if (operation.Status == AsyncOperationStatus.Succeeded)
-                {
-                    Addressables.Release(operation);
-                    return 1; // Return success indicator
-                }
-                else
+                bool succeeded = operation.Status == AsyncOperationStatus.Succeeded;
+
+                if (!succeeded)
                 {
                     Debug.LogError($"[AssetLoader] Failed to download dependencies: {address}");
-                    return 0;
                 }
+
+                if (operation.IsValid())
+                {
+                    Addressables.Release(operation);
+                }
+
+                return succeeded;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[AssetLoader] Exception downloading dependencies: {ex.Message}");
-                return 0;
+                return false;
             }
         }
 
@@ -466,11 +478,10 @@ namespace AddressableManager.Loaders
                     Addressables.Release(operation);
                     return size;
                 }
-                else
-                {
-                    Debug.LogError($"[AssetLoader] Failed to get download size: {address}");
-                    return 0;
-                }
+
+                Debug.LogError($"[AssetLoader] Failed to get download size: {address}");
+                if (operation.IsValid()) Addressables.Release(operation);
+                return 0;
             }
             catch (Exception ex)
             {
@@ -488,14 +499,11 @@ namespace AddressableManager.Loaders
         /// </summary>
         public void ClearCache()
         {
-            Debug.Log($"[AssetLoader] Clearing cache ({_assetCache.Count} items)");
+            LogVerbose($"[AssetLoader] Clearing cache ({_assetCache.Count} items)");
 
             foreach (var obj in _assetCache.Values)
             {
-                if (obj is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
+                obj?.Dispose();
             }
 
             _assetCache.Clear();
@@ -503,33 +511,33 @@ namespace AddressableManager.Loaders
         }
 
         /// <summary>
-        /// Release specific asset by address
+        /// Release specific asset by address (all types stored for that address).
+        /// Each cached handle is disposed once.
         /// </summary>
         public void ReleaseAsset(string address)
         {
-            // Try to find and release handles for this address (any type)
-            var keysToRemove = new List<string>();
+            if (string.IsNullOrEmpty(address)) return;
+
+            string prefix = address + "_";
+            List<string> keysToRemove = null;
 
             foreach (var kvp in _assetCache)
             {
-                if (kvp.Key.StartsWith(address + "_"))
-                {
-                    if (kvp.Value is IAssetHandle<object> handle)
-                    {
-                        handle.Release();
+                if (!kvp.Key.StartsWith(prefix)) continue;
 
-                        if (handle.ReferenceCount <= 0)
-                        {
-                            keysToRemove.Add(kvp.Key);
-                            _activeHandles.Remove(handle);
-                        }
-                    }
-                }
+                keysToRemove ??= new List<string>();
+                keysToRemove.Add(kvp.Key);
+
+                kvp.Value?.Dispose();
+                if (kvp.Value != null) _activeHandles.Remove(kvp.Value);
             }
 
-            foreach (var key in keysToRemove)
+            if (keysToRemove != null)
             {
-                _assetCache.Remove(key);
+                foreach (var key in keysToRemove)
+                {
+                    _assetCache.Remove(key);
+                }
             }
         }
 
@@ -549,12 +557,22 @@ namespace AddressableManager.Loaders
         {
             if (_disposed) return;
 
-            Debug.Log("[AssetLoader] Disposing loader and releasing all assets");
+            LogVerbose("[AssetLoader] Disposing loader and releasing all assets");
             ClearCache();
             _disposed = true;
         }
 
         #endregion
+
+        // Gate verbose informational logs behind DebugSettings.logLevel so shipping
+        // builds don't burn GC on string-interpolation for every cache hit.
+        private static void LogVerbose(string message)
+        {
+            if (DebugSettings.IsVerbose)
+            {
+                Debug.Log(message);
+            }
+        }
     }
 
     /// <summary>
@@ -572,7 +590,10 @@ namespace AddressableManager.Loaders
         public SharedListOperationTracker(AsyncOperationHandle<System.Collections.Generic.IList<T>> listHandle)
         {
             _listHandle = listHandle;
-            _referenceCount = 0; // Will be incremented by each ListItemHandle
+            // Start with 1 reference — caller (AssetLoader.LoadAssetsByLabelAsync) drops it
+            // once it has wrapped all items in ListItemHandle. Empty-result label loads then
+            // release immediately instead of leaking the list handle.
+            _referenceCount = 1;
         }
 
         public void Retain()

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using AddressableManager.Core;
 using AddressableManager.Loaders;
 using AddressableManager.Pooling.Adapters;
 
@@ -16,6 +17,10 @@ namespace AddressableManager.Pooling
     {
         private readonly AssetLoader _loader;
         private readonly Dictionary<string, IObjectPool<GameObject>> _pools;
+        // Template handles are retained alongside the pool so they can be released
+        // deterministically in ClearPool / Dispose. Without this the Addressables
+        // ref-count on the prefab grew by 1 per pool with no path to release it.
+        private readonly Dictionary<string, IDisposable> _templateHandles;
         private IPoolFactory _poolFactory;
         private bool _disposed;
 
@@ -24,6 +29,7 @@ namespace AddressableManager.Pooling
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
             _poolFactory = poolFactory ?? new UnityPoolFactory(); // Default to Unity's pool
             _pools = new Dictionary<string, IObjectPool<GameObject>>();
+            _templateHandles = new Dictionary<string, IDisposable>();
         }
 
         /// <summary>
@@ -94,6 +100,7 @@ namespace AddressableManager.Pooling
             );
 
             _pools[address] = pool;
+            _templateHandles[address] = handle;
             Debug.Log($"[PoolManager] Pool created for {address} with max size {maxSize}");
 
             // Preload instances
@@ -204,6 +211,8 @@ namespace AddressableManager.Pooling
                 pool.Clear();
                 pool.Dispose();
                 _pools.Remove(address);
+
+                ReleaseTemplate(address);
             }
         }
 
@@ -221,6 +230,12 @@ namespace AddressableManager.Pooling
             }
 
             _pools.Clear();
+
+            foreach (var template in _templateHandles.Values)
+            {
+                template?.Dispose();
+            }
+            _templateHandles.Clear();
         }
 
         public void Dispose()
@@ -229,6 +244,15 @@ namespace AddressableManager.Pooling
 
             ClearAllPools();
             _disposed = true;
+        }
+
+        private void ReleaseTemplate(string address)
+        {
+            if (_templateHandles.TryGetValue(address, out var template))
+            {
+                template?.Dispose();
+                _templateHandles.Remove(address);
+            }
         }
 
         private GameObject CreateInstance(GameObject prefab, Transform parent)

@@ -11,6 +11,7 @@ namespace AddressableManager.Scopes
     {
         private BaseAssetScope _scope;
         private Scene _ownerScene;
+        private bool _subscribed;
 
         public string ScopeName => _scope?.ScopeName ?? "Scene";
         public Loaders.AssetLoader Loader => _scope?.Loader;
@@ -22,39 +23,35 @@ namespace AddressableManager.Scopes
             _scope = new InternalScope($"Scene-{_ownerScene.name}");
             _scope.Activate();
 
-            // Subscribe to scene unload events
             SceneManager.sceneUnloaded += OnSceneUnloaded;
+            _subscribed = true;
         }
 
         private void OnSceneUnloaded(Scene scene)
         {
-            if (scene == _ownerScene)
-            {
-                Debug.Log($"[SceneAssetScope] Scene {scene.name} unloaded, cleaning up scope");
-                Dispose();
-            }
+            if (scene != _ownerScene) return;
+
+            Debug.Log($"[SceneAssetScope] Scene {scene.name} unloaded, cleaning up scope");
+            // Destroying the GameObject funnels every cleanup path through OnDestroy below,
+            // collapsing scene-unload and explicit-destroy into a single Dispose() call.
+            if (this != null) Destroy(gameObject);
         }
 
-        public void Activate()
-        {
-            _scope?.Activate();
-        }
+        public void Activate() => _scope?.Activate();
 
-        public void Deactivate()
-        {
-            _scope?.Deactivate();
-        }
+        public void Deactivate() => _scope?.Deactivate();
 
         public void Dispose()
         {
-            SceneManager.sceneUnloaded -= OnSceneUnloaded;
+            if (_subscribed)
+            {
+                SceneManager.sceneUnloaded -= OnSceneUnloaded;
+                _subscribed = false;
+            }
             _scope?.Dispose();
         }
 
-        private void OnDestroy()
-        {
-            Dispose();
-        }
+        private void OnDestroy() => Dispose();
 
         // Internal wrapper
         private class InternalScope : BaseAssetScope

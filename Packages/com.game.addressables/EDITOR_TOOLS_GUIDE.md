@@ -5,7 +5,7 @@
 Version 2.1 transforms Addressable Manager from a code-only library into a **professional-grade Unity package** with comprehensive Editor tools, visual debugging, and **automatic monitoring**!
 
 > **✨ NEW in v2.1**: All asset loading is now **automatically monitored** in the Editor!
-> No need for `.LoadAssetAsyncMonitored()` extensions - just use regular `LoadAssetAsync()`.
+> No need for `.LoadAssetAsync()` extensions - just use regular `LoadAssetAsync()`.
 > All code examples below work with automatic monitoring.
 
 ---
@@ -579,17 +579,17 @@ public class GameController : MonoBehaviour
         var gameLoader = _scopes.GetOrCreateScope("GameSession");
 
         // Load into specific scopes WITH monitoring
-        var uiAtlas = await globalLoader.LoadAssetAsyncMonitored<Texture2D>(
+        var uiAtlas = await globalLoader.LoadAssetAsync<Texture2D>(
             "UI/Atlas",
             "Global" // Shows in Dashboard under "Global"
         );
 
-        var playerProfile = await playerLoader.LoadAssetAsyncMonitored<PlayerData>(
+        var playerProfile = await playerLoader.LoadAssetAsync<PlayerData>(
             "Data/PlayerProfile",
             "PlayerSession" // Shows under "PlayerSession"
         );
 
-        var levelData = await gameLoader.LoadAssetAsyncMonitored<LevelData>(
+        var levelData = await gameLoader.LoadAssetAsync<LevelData>(
             "Levels/Level1",
             "GameSession" // Shows under "GameSession"
         );
@@ -639,12 +639,12 @@ public class MultiplayerManager : MonoBehaviour
         var matchLoader = _scopes.GetOrCreateScope(_currentMatchId);
 
         // Load match-specific assets
-        var mapData = await matchLoader.LoadAssetAsyncMonitored<MapData>(
+        var mapData = await matchLoader.LoadAssetAsync<MapData>(
             $"Maps/{matchId}",
             _currentMatchId
         );
 
-        var playerModels = await matchLoader.LoadAssetsByLabelAsyncMonitored<GameObject>(
+        var playerModels = await matchLoader.LoadAssetsByLabelAsync<GameObject>(
             $"Characters_{matchId}",
             _currentMatchId
         );
@@ -712,12 +712,12 @@ public class RPGGameManager : MonoBehaviour
 
     async Task LoadGlobalAssets()
     {
-        var uiAtlas = await _globalLoader.LoadAssetAsyncMonitored<Texture2D>(
+        var uiAtlas = await _globalLoader.LoadAssetAsync<Texture2D>(
             "UI/Atlas",
             "Global"
         );
 
-        var itemDatabase = await _globalLoader.LoadAssetAsyncMonitored<ItemDatabase>(
+        var itemDatabase = await _globalLoader.LoadAssetAsync<ItemDatabase>(
             "Data/Items",
             "Global"
         );
@@ -727,12 +727,12 @@ public class RPGGameManager : MonoBehaviour
 
     async Task LoadPlayerData()
     {
-        var playerProfile = await _playerLoader.LoadAssetAsyncMonitored<PlayerProfile>(
+        var playerProfile = await _playerLoader.LoadAssetAsync<PlayerProfile>(
             "Save/PlayerProfile",
             "Player"
         );
 
-        var inventory = await _playerLoader.LoadAssetAsyncMonitored<InventoryData>(
+        var inventory = await _playerLoader.LoadAssetAsync<InventoryData>(
             "Save/Inventory",
             "Player"
         );
@@ -748,12 +748,12 @@ public class RPGGameManager : MonoBehaviour
         // Reload with new zone
         _worldLoader = _scopes.GetOrCreateScope("World");
 
-        var zoneData = await _worldLoader.LoadAssetAsyncMonitored<ZoneData>(
+        var zoneData = await _worldLoader.LoadAssetAsync<ZoneData>(
             $"Zones/{zoneName}",
             "World"
         );
 
-        var enemies = await _worldLoader.LoadAssetsByLabelAsyncMonitored<GameObject>(
+        var enemies = await _worldLoader.LoadAssetsByLabelAsync<GameObject>(
             $"Enemies_{zoneName}",
             "World"
         );
@@ -763,7 +763,7 @@ public class RPGGameManager : MonoBehaviour
 
     public async void StartQuest(int questId)
     {
-        var questData = await _questLoader.LoadAssetAsyncMonitored<QuestData>(
+        var questData = await _questLoader.LoadAssetAsync<QuestData>(
             $"Quests/Quest_{questId}",
             "Quests"
         );
@@ -918,13 +918,13 @@ Each scope shows:
 
 ### Track Asset Loads
 
-Always use `.LoadAssetAsyncMonitored()`:
+Always use `.LoadAssetAsync()`:
 
 ```csharp
 var loader = _scopes.GetOrCreateScope("MyScope");
 
 // ✅ Tracked - shows in Dashboard
-var handle = await loader.LoadAssetAsyncMonitored<T>(
+var handle = await loader.LoadAssetAsync<T>(
     address,
     "MyScope" // Must match scope ID!
 );
@@ -960,10 +960,10 @@ var scopeId = "PlayerSession";
 var loader = _scopes.GetOrCreateScope(scopeId);
 
 // ✅ Good - consistent
-await loader.LoadAssetAsyncMonitored<T>(address, scopeId);
+await loader.LoadAssetAsync<T>(address, scopeId);
 
 // ❌ Bad - mismatch
-await loader.LoadAssetAsyncMonitored<T>(address, "Session"); // Different name!
+await loader.LoadAssetAsync<T>(address, "Session"); // Different name!
 ```
 
 ### 3. Clear At Appropriate Times
@@ -997,7 +997,7 @@ public class ScopeDocumentation { }
 
 ### Issue: Scope Not Showing In Dashboard
 
-**Cause**: Forgot to use `.LoadAssetAsyncMonitored()`
+**Cause**: Forgot to use `.LoadAssetAsync()`
 
 **Fix**:
 ```csharp
@@ -1005,7 +1005,7 @@ public class ScopeDocumentation { }
 await loader.LoadAssetAsync<T>(address);
 
 // ✅ Monitored
-await loader.LoadAssetAsyncMonitored<T>(address, scopeId);
+await loader.LoadAssetAsync<T>(address, scopeId);
 ```
 
 ### Issue: Assets Not Clearing
@@ -1055,7 +1055,7 @@ Resources.UnloadUnusedAssets();
 - You want full control
 
 **Remember**:
-- Always use `.LoadAssetAsyncMonitored()` for Dashboard tracking
+- Always use `.LoadAssetAsync()` for Dashboard tracking
 - Match scope ID between `GetOrCreateScope()` and monitoring
 - Clear scopes at appropriate times
 - Document your scope organization

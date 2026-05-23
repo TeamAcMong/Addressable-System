@@ -2,6 +2,98 @@
 
 All notable changes to this package will be documented in this file.
 
+## [2.2.0] - 2026-05-23 - Audit-Driven Hardening
+
+A pre-ship audit found three blocker-class Addressables ref-count leaks and a
+handful of correctness / API issues. Every finding is addressed below.
+
+### 🔴 Blocker fixes
+- **`ProgressiveAssetLoader` leak** — `LoadAssetWithProgressAsync` /
+  `DownloadWithProgressAsync` now `Addressables.Release` the underlying handle
+  in `finally` when the load fails or throws, instead of orphaning it.
+- **`AddressablePoolManager` template-handle leak** — the prefab handle
+  acquired during `CreatePoolAsync` is now retained per-pool and disposed in
+  `ClearPool` / `ClearAllPools` / `Dispose`. Previously every pool created
+  a permanent +1 Addressables ref-count.
+- **`MonitoredAssetLoader` build-time leak + AssetReference bypass** —
+  rewritten as a thin forwarder around `AssetLoader` (which already owns
+  monitoring under `#if UNITY_EDITOR`), so monitoring dispatch no longer
+  ships in builds and `LoadAssetAsync<T>(AssetReference)` no longer rewrites
+  the cache key through `assetReference.AssetGUID`.
+
+### 🟠 High fixes
+- **`AssetLoader.ReleaseAsset`** — the always-null `IAssetHandle<object>`
+  cast is replaced with a non-generic `IDisposable` cache. Calling
+  `ReleaseAsset(address)` now actually releases every cached handle
+  matching that address.
+- **`SceneAssetScope`** — collapsed the dual `sceneUnloaded` + `OnDestroy`
+  dispose paths into a single `Destroy(gameObject)` funnel so cleanup runs
+  exactly once.
+- **`HierarchyAssetScope` / `BaseAssetScope`** — added a `DisposedToken`
+  (`CancellationToken`) that fires when the scope is disposed. Long-running
+  awaits can pass it to `Task.WaitAsync` and unwind cleanly when the owning
+  GameObject is destroyed mid-load.
+- **`ScopeManager`** — added a `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`
+  reset that disposes lingering scopes and nulls the static singleton on
+  domain reload / new Play sessions.
+- **`AddressableProgressBar`** — TextMeshPro is no longer a hard compile-time
+  dependency. The runtime asmdef now defines `TMP_PRESENT` only when
+  `com.unity.textmeshpro 3.0.0+` is installed; without TMP the component
+  falls back to plain `UnityEngine.UI.Text`.
+
+### 🟡 Medium fixes
+- **`SharedListOperationTracker`** — initial refcount changed from 0 to 1,
+  so empty-result label loads release the list handle immediately instead
+  of leaking it until the loader disposes.
+- **`AddressablesFacade.OnDestroy`** — now disposes the global scope and
+  ends any active session before clearing the singleton, fixing repeat
+  Editor Play-mode iterations leaking handles into the next session.
+- **Double monitoring removed** — `MonitoredAssetLoader` no longer
+  re-reports loads that `AssetLoader` already reported (Dashboard counts
+  were doubled in Editor).
+- **`DebugSettings`** — the `Resources.Load<DebugSettings>("AddressableManager/DebugSettings")`
+  lookup is now inside `#if UNITY_EDITOR`. Shipping builds get a transient
+  default instance instead of warning at runtime; added a static
+  `IsVerbose` accessor used to gate informational logs.
+- **README requirements** — Unity floor corrected to 2022.3 and the footer
+  bumped to 2.2.0; flagged TextMeshPro as optional.
+
+### 🟢 Low fixes
+- **Verbose logging gated** — `AssetLoader` cache-hit / load-success
+  `Debug.Log` calls go through `DebugSettings.IsVerbose`. Mobile shipping
+  builds no longer pay a GC-allocating string interpolation per cache hit.
+- **`DownloadDependenciesAsync` return type** — changed from `Task<long>`
+  with a magic `1`/`0` sentinel to `Task<bool>` matching its semantics.
+- **`PoolConfiguration.destroyOnFull`** — annotated `[HideInInspector]` +
+  `[Obsolete]`; the underlying `UnityEngine.Pool.ObjectPool` always
+  destroys excess instances above `maxSize`, so the flag had no effect.
+- **`AddressableManager.Editor.asmdef`** — opaque GUID references
+  replaced with portable name references (`AddressableManager`,
+  `Unity.Addressables`, `Unity.Addressables.Editor`, `Unity.ResourceManager`).
+- **`AssetLoaderExtensions`** — the deprecated forwarder class is removed.
+  Use `AssetLoader.LoadAssetAsync` directly (monitoring is automatic).
+
+### ⚪ Nice-to-have
+- **`AssetMonitorBridge` thread-safety** — switched the listener list to a
+  copy-on-write `IAssetMonitor[]` with a lock around register/unregister,
+  plus a `SubsystemRegistration` reset that drops stale Editor listeners
+  on domain reload.
+- **`Assets` facade parity** — added `GetPoolStats`, `ClearPool(address)`,
+  `SetPoolFactory`, `ReleaseInstance`, and `GetOrCreateSceneScope` so the
+  static facade now matches `AddressablesFacade`.
+- **`MonitoringHelperEditor` moved** — the nested `CustomEditor` was
+  promoted to `Editor/Inspectors/MonitoringHelperInspector.cs` so the
+  runtime assembly no longer carries an `UnityEditor` type.
+- **`ScopeManager.GetScopeMemoryUsage`** — marked `[Obsolete]` with a note
+  that runtime memory tracking is not implemented; live numbers stay in
+  the Editor Dashboard.
+
+### Migration
+- `AssetLoader.DownloadDependenciesAsync` now returns `Task<bool>`. Callers
+  that compared the result to `1`/`0` must switch to `true`/`false`.
+- `AssetLoaderExtensions.*Monitored` methods are removed. Replace with the
+  plain `AssetLoader.LoadAssetAsync` overloads — monitoring is automatic.
+
 ## [2.1.0] - 2026-05-23 - Automatic Monitoring
 
 ### Maintenance

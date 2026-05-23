@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -19,7 +20,7 @@ namespace AddressableManager.Managers
     ///   var playerLoader = ScopeManager.Instance.GetOrCreateScope("PlayerSession");
     ///   var gameLoader = ScopeManager.Instance.GetOrCreateScope("GameSession");
     ///
-    ///   await playerLoader.LoadAssetAsyncMonitored<T>(address, "PlayerSession");
+    ///   await playerLoader.LoadAssetAsync<T>(address);
     /// </summary>
     public class ScopeManager
     {
@@ -147,18 +148,34 @@ namespace AddressableManager.Managers
         }
 
         /// <summary>
-        /// Get memory usage for a specific scope (estimated)
+        /// Get memory usage for a specific scope.
+        /// Not yet implemented at runtime — the live numbers live in the Editor Dashboard
+        /// (AssetTrackerService); kept here as a forward-compatible signature.
         /// </summary>
+        [Obsolete("Runtime memory tracking is not implemented yet. Always returns 0. The Editor Dashboard has live numbers.", false)]
         public long GetScopeMemoryUsage(string scopeId)
         {
-            // This is a rough estimate
-            // In Dashboard, you'll see actual tracked memory
-            return 0; // Placeholder - real tracking happens in AssetTrackerService
+            return 0;
         }
 
         /// <summary>
         /// Get total count of active scopes
         /// </summary>
         public int ActiveScopeCount => _loaders.Count;
+
+        // Reset the static singleton on domain reload (Editor) and at the start of a fresh
+        // SubsystemRegistration in a build. Without this the AssetLoader instances from
+        // a previous Play session — along with whatever live handles they were holding —
+        // would survive into the next session and leak.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOnLoad()
+        {
+            if (_instance != null)
+            {
+                try { _instance.ClearAll(); }
+                catch { /* ignore — singleton state is being torn down */ }
+            }
+            _instance = null;
+        }
     }
 }

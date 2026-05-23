@@ -2,7 +2,9 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using AddressableManager.Core;
+using AddressableManager.Pooling;
 using AddressableManager.Progress;
+using AddressableManager.Scopes;
 
 namespace AddressableManager.Facade
 {
@@ -96,6 +98,44 @@ namespace AddressableManager.Facade
         {
             Manager.Despawn(address, instance);
         }
+
+        /// <summary>
+        /// Get statistics for a pool (active / pooled counts), or null if no pool for that address.
+        /// </summary>
+        public static (int activeCount, int pooledCount)? GetPoolStats(string address)
+            => Manager.GetPoolStats(address);
+
+        /// <summary>
+        /// Clear a single pool by address.
+        /// </summary>
+        public static void ClearPool(string address) => Manager.ClearPool(address);
+
+        /// <summary>
+        /// Swap the pool factory at runtime (e.g. plug in a Zenject-backed pool).
+        /// </summary>
+        public static void SetPoolFactory(IPoolFactory factory) => Manager.SetPoolFactory(factory);
+
+        #endregion
+
+        #region Instance management
+
+        /// <summary>
+        /// Release a GameObject instantiated through the global-scope loader's
+        /// <c>InstantiateAsync</c> path. Returns true if the instance was actually
+        /// owned by Addressables.
+        /// </summary>
+        public static bool ReleaseInstance(GameObject instance)
+            => Manager.GlobalLoader?.ReleaseInstance(instance) ?? false;
+
+        #endregion
+
+        #region Scene scope
+
+        /// <summary>
+        /// Get or create a scene scope attached to the active scene.
+        /// </summary>
+        public static SceneAssetScope GetOrCreateSceneScope()
+            => Manager.GetOrCreateSceneScope();
 
         #endregion
 

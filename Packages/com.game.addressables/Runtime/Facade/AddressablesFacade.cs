@@ -195,6 +195,27 @@ namespace AddressableManager.Facade
             _poolManager.SetPoolFactory(factory);
         }
 
+        /// <summary>
+        /// Get statistics for a specific pool.
+        /// </summary>
+        public (int activeCount, int pooledCount)? GetPoolStats(string address)
+            => _poolManager?.GetPoolStats(address);
+
+        /// <summary>
+        /// Clear a single pool by address (releases template handle + destroys pooled instances).
+        /// </summary>
+        public void ClearPool(string address) => _poolManager?.ClearPool(address);
+
+        #endregion
+
+        #region Accessors
+
+        /// <summary>
+        /// Direct access to the global scope's loader for advanced operations
+        /// (e.g. <c>ReleaseInstance</c>, custom monitoring).
+        /// </summary>
+        public AssetLoader GlobalLoader => _globalScope?.Loader;
+
         #endregion
 
         #region Utility
@@ -235,10 +256,23 @@ namespace AddressableManager.Facade
 
         private void OnDestroy()
         {
+            // Tear down in dependency order: pools own template handles loaded via the
+            // global scope's loader, so dispose the pool manager first, then the scopes.
             _poolManager?.Dispose();
+            _poolManager = null;
 
+            if (_sessionScope != null)
+            {
+                SessionAssetScope.EndSession();
+                _sessionScope = null;
+            }
+
+            // Note: GlobalAssetScope is a process-wide singleton — only dispose it if
+            // this Facade is the owning instance being destroyed.
             if (_instance == this)
             {
+                _globalScope?.Dispose();
+                _globalScope = null;
                 _instance = null;
             }
         }
