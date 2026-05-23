@@ -153,22 +153,41 @@ namespace AddressableManager.Configs
 
         private static DebugSettings _instance;
 
+        /// <summary>
+        /// Editor-only convenience accessor. In builds returns a transient default instance,
+        /// so consumer code never crashes on a missing Resources file. The Resources lookup
+        /// itself is guarded by UNITY_EDITOR — shipping builds don't bake the lookup path.
+        /// </summary>
         public static DebugSettings Instance
         {
             get
             {
+                if (_instance != null) return _instance;
+
+#if UNITY_EDITOR
+                _instance = Resources.Load<DebugSettings>("AddressableManager/DebugSettings");
+#endif
                 if (_instance == null)
                 {
-                    _instance = Resources.Load<DebugSettings>("AddressableManager/DebugSettings");
-
-                    if (_instance == null)
-                    {
-                        Debug.LogWarning("[DebugSettings] No DebugSettings found in Resources. Using defaults.");
-                        _instance = CreateInstance<DebugSettings>();
-                    }
+                    _instance = CreateInstance<DebugSettings>();
                 }
 
                 return _instance;
+            }
+        }
+
+        /// <summary>
+        /// Cheap check used on hot paths to suppress verbose informational logs in builds.
+        /// </summary>
+        public static bool IsVerbose
+        {
+            get
+            {
+#if UNITY_EDITOR
+                return Instance.logLevel == LogLevel.All;
+#else
+                return false;
+#endif
             }
         }
 

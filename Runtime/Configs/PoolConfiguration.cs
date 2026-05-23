@@ -36,7 +36,11 @@ namespace AddressableManager.Configs
             [Tooltip("Parent transform for pooled objects")]
             public Transform poolRoot;
 
-            [Tooltip("Auto-destroy instances when pool is full")]
+            // Kept for serialization compatibility with PoolConfig assets authored in 2.1.0
+            // and earlier. The active pool implementation (UnityPoolAdapter -> UnityEngine.Pool.ObjectPool)
+            // always destroys instances released above maxSize; toggling this flag has no effect.
+            [HideInInspector]
+            [System.Obsolete("Pools always destroy excess instances when full; this flag is ignored.", false)]
             public bool destroyOnFull = false;
 
             [Tooltip("Optional label for debugging")]

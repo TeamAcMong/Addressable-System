@@ -1,4 +1,4 @@
-using System;
+using System.Threading;
 using UnityEngine;
 using AddressableManager.Loaders;
 using AddressableManager.Monitoring;
@@ -14,10 +14,18 @@ namespace AddressableManager.Scopes
         private AssetLoader _loader;
         private bool _isActive;
         private bool _disposed;
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 
         public string ScopeName => _scopeName;
         public AssetLoader Loader => _loader;
         public bool IsActive => _isActive;
+
+        /// <summary>
+        /// Cancellation token that fires when the scope is disposed.
+        /// Pass this to long-running awaits so they unwind cleanly when the
+        /// owning GameObject is destroyed mid-load.
+        /// </summary>
+        public CancellationToken DisposedToken => _cts.Token;
 
         protected BaseAssetScope(string scopeName)
         {
@@ -68,6 +76,10 @@ namespace AddressableManager.Scopes
             if (_disposed) return;
 
             Debug.Log($"[{_scopeName}] Disposing scope");
+
+            // Signal in-flight async work that the scope is gone before we tear the loader down.
+            try { _cts.Cancel(); } catch { /* ignore */ }
+
             Deactivate();
 
             // Report scope cleared
@@ -75,6 +87,8 @@ namespace AddressableManager.Scopes
 
             _loader?.Dispose();
             _loader = null;
+
+            _cts.Dispose();
             _disposed = true;
         }
     }

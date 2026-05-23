@@ -263,8 +263,9 @@ await Assets.Load<Sprite>("Icon2", info => tracker2.UpdateProgress(info));
 
 ## Requirements
 
-- Unity 2021.3 or later
+- Unity **2022.3** or later
 - Unity Addressables package 2.3.1+
+- TextMeshPro 3.0+ (optional — only required if you use `AddressableProgressBar`; gated by the `TMP_PRESENT` define)
 
 ## License
 
@@ -703,7 +704,7 @@ var handle = await loader.LoadAssetAsync<Texture>("Textures/Icon"); // ✅ Monit
 - No need for special "Monitored" methods anymore
 
 **Deprecated Extensions:**
-- `LoadAssetAsyncMonitored()` - NO LONGER NEEDED (will show obsolete warning)
+- `LoadAssetAsync()` - NO LONGER NEEDED (will show obsolete warning)
 - Just use `LoadAssetAsync()` directly - monitoring is built-in!
 
 ---
@@ -951,7 +952,7 @@ var handle = await loader.LoadAssetAsync<T>(address); // ✅ Tracked
 ❌ **Don't use deprecated .Monitored() extensions**
 ```csharp
 // Old way (deprecated):
-var sprite = await loader.LoadAssetAsyncMonitored<Sprite>(address, scope);
+var sprite = await loader.LoadAssetAsync<Sprite>(address, scope);
 
 // New way (automatic):
 var sprite = await loader.LoadAssetAsync<Sprite>(address); // ✅
@@ -1091,7 +1092,7 @@ public class MyProgressTracker : IProgressTracker
 
 ---
 
-**Version**: 2.0.0
+**Version**: 2.2.0
 **Last Updated**: January 2025
 
 For issues or questions, please refer to the documentation or examine existing components to see how they work!

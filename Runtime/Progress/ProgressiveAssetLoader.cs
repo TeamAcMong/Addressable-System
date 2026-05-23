@@ -28,11 +28,16 @@ namespace AddressableManager.Progress
                 tracker.OnProgressChanged += onProgress;
             }
 
+            AsyncOperationHandle<T> operation = default;
+            bool operationStarted = false;
+            bool succeeded = false;
+
             try
             {
                 tracker.UpdateProgress(new ProgressInfo(0f, $"Loading {address}"));
 
-                var operation = Addressables.LoadAssetAsync<T>(address);
+                operation = Addressables.LoadAssetAsync<T>(address);
+                operationStarted = true;
 
                 // Poll progress
                 while (!operation.IsDone)
@@ -45,14 +50,12 @@ namespace AddressableManager.Progress
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
                     tracker.Complete();
-                    var handle = new AssetHandle<T>(operation);
-                    return handle;
+                    succeeded = true;
+                    return new AssetHandle<T>(operation);
                 }
-                else
-                {
-                    Debug.LogError($"[ProgressiveLoader] Failed to load: {address}");
-                    return null;
-                }
+
+                Debug.LogError($"[ProgressiveLoader] Failed to load: {address}");
+                return null;
             }
             catch (Exception ex)
             {
@@ -64,6 +67,13 @@ namespace AddressableManager.Progress
                 if (onProgress != null)
                 {
                     tracker.OnProgressChanged -= onProgress;
+                }
+
+                // Release the underlying Addressables handle if we never wrapped it in an AssetHandle.
+                // AssetHandle takes ownership and releases on Dispose / refcount<=0; without it the handle leaks.
+                if (operationStarted && !succeeded && operation.IsValid())
+                {
+                    Addressables.Release(operation);
                 }
             }
         }
@@ -82,11 +92,15 @@ namespace AddressableManager.Progress
                 tracker.OnProgressChanged += onProgress;
             }
 
+            AsyncOperationHandle operation = default;
+            bool operationStarted = false;
+
             try
             {
                 tracker.UpdateProgress(new ProgressInfo(0f, $"Downloading {address}"));
 
-                var operation = Addressables.DownloadDependenciesAsync(address);
+                operation = Addressables.DownloadDependenciesAsync(address);
+                operationStarted = true;
 
                 float lastProgress = 0f;
                 float startTime = Time.realtimeSinceStartup;
@@ -116,8 +130,6 @@ namespace AddressableManager.Progress
                 }
 
                 tracker.Complete();
-
-                Addressables.Release(operation);
                 return operation.Status == AsyncOperationStatus.Succeeded;
             }
             catch (Exception ex)
@@ -130,6 +142,13 @@ namespace AddressableManager.Progress
                 if (onProgress != null)
                 {
                     tracker.OnProgressChanged -= onProgress;
+                }
+
+                // Always release the download dependencies handle — the cache is owned by Addressables itself,
+                // we only needed the handle for progress tracking.
+                if (operationStarted && operation.IsValid())
+                {
+                    Addressables.Release(operation);
                 }
             }
         }

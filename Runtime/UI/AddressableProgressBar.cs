@@ -1,13 +1,21 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using AddressableManager.Progress;
+#if TMP_PRESENT
+using TMPro;
+#endif
 
 namespace AddressableManager.UI
 {
     /// <summary>
     /// Visual progress bar for addressable loading operations
-    /// Auto-updates from IProgressTracker
+    /// Auto-updates from IProgressTracker.
+    ///
+    /// TextMeshPro fields are wired in only when the project compiles with
+    /// the TMP_PRESENT define (set by the asmdef via versionDefines so it's
+    /// active whenever com.unity.textmeshpro 3.0.0+ is present).
+    /// Falls back to plain UnityEngine.UI.Text otherwise so the component
+    /// is always usable.
     /// </summary>
     [AddComponentMenu("Addressable Manager/Progress Bar")]
     [RequireComponent(typeof(CanvasGroup))]
@@ -17,14 +25,25 @@ namespace AddressableManager.UI
         [Tooltip("Fill image (Image component with Fill type)")]
         [SerializeField] private Image fillImage;
 
-        [Tooltip("Percentage text (optional)")]
+#if TMP_PRESENT
+        [Tooltip("Percentage text (optional, TMP)")]
         [SerializeField] private TextMeshProUGUI percentText;
 
-        [Tooltip("Status/operation text (optional)")]
+        [Tooltip("Status/operation text (optional, TMP)")]
         [SerializeField] private TextMeshProUGUI statusText;
 
-        [Tooltip("Download info text (optional)")]
+        [Tooltip("Download info text (optional, TMP)")]
         [SerializeField] private TextMeshProUGUI downloadText;
+#else
+        [Tooltip("Percentage text (optional)")]
+        [SerializeField] private Text percentText;
+
+        [Tooltip("Status/operation text (optional)")]
+        [SerializeField] private Text statusText;
+
+        [Tooltip("Download info text (optional)")]
+        [SerializeField] private Text downloadText;
+#endif
 
         [Header("Settings")]
         [Tooltip("Auto-find and bind to active progress tracker")]
@@ -123,10 +142,7 @@ namespace AddressableManager.UI
                 UpdateFillImage();
             }
 
-            if (percentText != null)
-            {
-                percentText.text = $"{_targetFill * 100:F0}%";
-            }
+            SetText(percentText, $"{_targetFill * 100:F0}%");
 
             if (_targetFill >= 1f && hideWhenComplete)
             {
@@ -137,13 +153,7 @@ namespace AddressableManager.UI
         /// <summary>
         /// Set status text
         /// </summary>
-        public void SetStatus(string status)
-        {
-            if (statusText != null)
-            {
-                statusText.text = status;
-            }
-        }
+        public void SetStatus(string status) => SetText(statusText, status);
 
         /// <summary>
         /// Show progress bar
@@ -184,37 +194,34 @@ namespace AddressableManager.UI
             _hideTimer = -1f;
             UpdateFillImage();
 
-            if (percentText != null)
-                percentText.text = "0%";
-
-            if (statusText != null)
-                statusText.text = "";
-
-            if (downloadText != null)
-                downloadText.text = "";
+            SetText(percentText, "0%");
+            SetText(statusText, string.Empty);
+            SetText(downloadText, string.Empty);
         }
 
         private void OnProgressChanged(ProgressInfo info)
         {
             SetProgress(info.Progress);
 
-            if (statusText != null && !string.IsNullOrEmpty(info.CurrentOperation))
+            if (!string.IsNullOrEmpty(info.CurrentOperation))
             {
-                statusText.text = info.CurrentOperation;
+                SetText(statusText, info.CurrentOperation);
             }
 
-            if (downloadText != null && info.TotalBytes > 0)
+            if (info.TotalBytes > 0)
             {
                 float downloadedMB = info.BytesDownloaded / (1024f * 1024f);
                 float totalMB = info.TotalBytes / (1024f * 1024f);
                 float speedKBps = info.DownloadSpeed;
 
-                downloadText.text = $"{downloadedMB:F2} MB / {totalMB:F2} MB @ {speedKBps:F0} KB/s";
+                string text = $"{downloadedMB:F2} MB / {totalMB:F2} MB @ {speedKBps:F0} KB/s";
 
                 if (info.EstimatedTimeRemaining > 0)
                 {
-                    downloadText.text += $" • ETA: {info.EstimatedTimeRemaining:F0}s";
+                    text += $" • ETA: {info.EstimatedTimeRemaining:F0}s";
                 }
+
+                SetText(downloadText, text);
             }
         }
 
@@ -235,14 +242,9 @@ namespace AddressableManager.UI
         {
             if (t < 0.5f)
             {
-                // Blend from start to mid (0% to 50%)
                 return Color.Lerp(startColor, midColor, t * 2f);
             }
-            else
-            {
-                // Blend from mid to end (50% to 100%)
-                return Color.Lerp(midColor, endColor, (t - 0.5f) * 2f);
-            }
+            return Color.Lerp(midColor, endColor, (t - 0.5f) * 2f);
         }
 
         private void OnDestroy()
@@ -252,6 +254,18 @@ namespace AddressableManager.UI
                 _currentTracker.OnProgressChanged -= OnProgressChanged;
             }
         }
+
+#if TMP_PRESENT
+        private static void SetText(TextMeshProUGUI label, string value)
+        {
+            if (label != null) label.text = value;
+        }
+#else
+        private static void SetText(Text label, string value)
+        {
+            if (label != null) label.text = value;
+        }
+#endif
 
         #region Editor Helpers
 
