@@ -2,7 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
-## [2.1.0] - 2025-01-XX - Automatic Monitoring
+## [2.1.0] - 2026-05-23 - Automatic Monitoring
+
+### Maintenance
+- Aligned package metadata with the rest of the DreamTech library family: minimum Unity bumped to **2022.3**, author standardised to **DreamTech**.
+
 
 ### 🎉 Breaking Changes (Minor)
 - **AssetLoaderExtensions deprecated**: `.LoadAssetAsyncMonitored()` methods marked as obsolete
