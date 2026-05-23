@@ -3,7 +3,7 @@
   "version": "2.1.0",
   "displayName": "Addressable Manager",
   "description": "Professional Addressable Asset Management System with automatic monitoring, comprehensive Editor tools, real-time dashboard, scope-based lifecycle, object pooling, and visual debugging. All loads automatically tracked!",
-  "unity": "2021.3",
+  "unity": "2022.3",
   "keywords": [
     "addressables",
     "asset management",
@@ -15,7 +15,7 @@
     "debugging"
   ],
   "author": {
-    "name": "Game Team"
+    "name": "DreamTech"
   },
   "dependencies": {
     "com.unity.addressables": "2.3.1",
