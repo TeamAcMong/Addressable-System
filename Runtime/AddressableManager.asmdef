@@ -4,7 +4,8 @@
     "references": [
         "Unity.ResourceManager",
         "Unity.Addressables",
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -18,6 +19,11 @@
             "name": "com.unity.textmeshpro",
             "expression": "3.0.0",
             "define": "TMP_PRESENT"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.3.0",
+            "define": "UNITASK_PRESENT"
         }
     ],
     "noEngineReferences": false

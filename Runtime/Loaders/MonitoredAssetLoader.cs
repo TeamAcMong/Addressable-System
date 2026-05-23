@@ -4,6 +4,9 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using AddressableManager.Core;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Loaders
 {
@@ -25,21 +28,34 @@ namespace AddressableManager.Loaders
         }
 
         /// <summary>
-        /// Load asset asynchronously by address
+        /// Load asset asynchronously by address.
+        /// Returns <c>UniTask&lt;IAssetHandle&lt;T&gt;&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
         /// </summary>
+#if UNITASK_PRESENT
+        public UniTask<IAssetHandle<T>> LoadAssetAsync<T>(string address)
+#else
         public Task<IAssetHandle<T>> LoadAssetAsync<T>(string address)
+#endif
             => _loader.LoadAssetAsync<T>(address);
 
         /// <summary>
         /// Load asset by AssetReference
         /// </summary>
+#if UNITASK_PRESENT
+        public UniTask<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
+#else
         public Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
+#endif
             => _loader.LoadAssetAsync<T>(assetReference);
 
         /// <summary>
         /// Load multiple assets by label
         /// </summary>
+#if UNITASK_PRESENT
+        public UniTask<List<IAssetHandle<T>>> LoadAssetsByLabelAsync<T>(string label)
+#else
         public Task<List<IAssetHandle<T>>> LoadAssetsByLabelAsync<T>(string label)
+#endif
             => _loader.LoadAssetsByLabelAsync<T>(label);
 
         /// <summary>

@@ -9,6 +9,9 @@ using AddressableManager.Core;
 #if UNITY_EDITOR
 using AddressableManager.Monitoring;
 #endif
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Loaders
 {
@@ -41,10 +44,15 @@ namespace AddressableManager.Loaders
         #region Load by Address
 
         /// <summary>
-        /// Load asset asynchronously by address
-        /// Automatically monitored in Editor for Dashboard tracking
+        /// Load asset asynchronously by address.
+        /// Returns <see cref="UniTask{TResult}"/> when <c>com.cysharp.unitask</c> is installed,
+        /// otherwise <see cref="Task{TResult}"/>. Automatically monitored in Editor for Dashboard tracking.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadAssetAsync<T>(string address)
+#else
         public async Task<IAssetHandle<T>> LoadAssetAsync<T>(string address)
+#endif
         {
             if (_disposed)
             {
@@ -149,10 +157,14 @@ namespace AddressableManager.Loaders
         #region Load by AssetReference
 
         /// <summary>
-        /// Load asset by AssetReference
-        /// Automatically monitored in Editor for Dashboard tracking
+        /// Load asset by AssetReference.
+        /// Automatically monitored in Editor for Dashboard tracking.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
+#else
         public async Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference)
+#endif
         {
             if (_disposed)
             {
@@ -247,10 +259,14 @@ namespace AddressableManager.Loaders
         #region Load Multiple by Label
 
         /// <summary>
-        /// Load multiple assets by label
-        /// Automatically monitored in Editor for Dashboard tracking
+        /// Load multiple assets by label.
+        /// Automatically monitored in Editor for Dashboard tracking.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<List<IAssetHandle<T>>> LoadAssetsByLabelAsync<T>(string label)
+#else
         public async Task<List<IAssetHandle<T>>> LoadAssetsByLabelAsync<T>(string label)
+#endif
         {
             if (_disposed)
             {
@@ -341,7 +357,11 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Instantiate a GameObject from addressable
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<GameObject> InstantiateAsync(string address, Transform parent = null)
+#else
         public async Task<GameObject> InstantiateAsync(string address, Transform parent = null)
+#endif
         {
             if (_disposed)
             {
@@ -373,7 +393,11 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Instantiate with position and rotation
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<GameObject> InstantiateAsync(string address, Vector3 position, Quaternion rotation, Transform parent = null)
+#else
         public async Task<GameObject> InstantiateAsync(string address, Vector3 position, Quaternion rotation, Transform parent = null)
+#endif
         {
             if (_disposed)
             {
@@ -428,7 +452,11 @@ namespace AddressableManager.Loaders
         /// Preload/Download asset without loading it into memory.
         /// Returns true on success, false otherwise.
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<bool> DownloadDependenciesAsync(string address)
+#else
         public async Task<bool> DownloadDependenciesAsync(string address)
+#endif
         {
             if (_disposed)
             {
@@ -465,7 +493,11 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Get download size for address
         /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<long> GetDownloadSizeAsync(string address)
+#else
         public async Task<long> GetDownloadSizeAsync(string address)
+#endif
         {
             try
             {
