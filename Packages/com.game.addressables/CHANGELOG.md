@@ -2,6 +2,96 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.0.0] - 2026-05-24 - Scope identity overhaul + SessionAssetScope removal
+
+Two architectural changes graduating from the design review:
+
+1. **Scope identity vs display split** — every scope now has a unique
+   `ScopeId` (used for ScopeManager lookup + monitoring channel) and a
+   separate friendly `DisplayName` (used for Dashboard / inspector
+   labels). Multi-instance scopes (Scene / Hierarchy) encode owner
+   identity into the id so they stop colliding.
+2. **`SessionAssetScope` deleted** — the class was redundant
+   (mechanically identical to `GlobalAssetScope` apart from teardown
+   timing) and *limiting* (singleton, so no parallel sessions
+   possible). Sessions now route through
+   `ScopeManager.GetOrCreateScope("Session")`; the facade ergonomics
+   (`Assets.StartSession()` / `LoadSession<T>` / `EndSession()`) are
+   preserved as thin forwarders.
+
+### Added
+- **`BaseAssetScope.ScopeId`** — unique identifier, used as dictionary
+  key by `ScopeManager` and as the monitoring channel by
+  `AssetMonitorBridge`.
+- **`BaseAssetScope.DisplayName`** — friendly label shown in the
+  Dashboard inspector, defaulting to `ScopeId` if not provided.
+  `BaseAssetScope.ScopeName` is kept as a back-compat alias for
+  `ScopeId`.
+- **`customScopeId` + `customDisplayName`** `[SerializeField]` on
+  both `SceneAssetScope` and `HierarchyAssetScope` — Inspector-set
+  semantic ids ("PlayerInventory", "Match_42", "Lobby"…). Empty =
+  use the auto-derived default.
+- **`HierarchyAssetScope.AddTo(GameObject, customScopeId,
+  customDisplayName)`** factory overload. Internally stashes the
+  pending id on a static field consumed by the newly-added
+  component's Awake — letting you inject the id *before*
+  initialisation without having to deactivate the GameObject.
+- **`SceneAssetScope.CreateForScene(Scene, customScopeId,
+  customDisplayName)`** + **`GetOrCreate(Scene)`** overloads.
+  Cross-scene safe — `GetOrCreate(Scene)` filters by
+  `_ownerScene == scene` instead of returning the first match across
+  every loaded scene.
+- **`SceneAssetScope.OwnerScene`** public property — exposes the
+  scope's bound scene.
+
+### Changed
+- **Default `Hierarchy` scope id** is now
+  `Hierarchy-{name}#{GetInstanceID()}` (was `Hierarchy-{name}`).
+  Unique per Unity object, so 50 enemies with the same name no longer
+  share a ScopeManager dictionary key.
+- **Default `Scene` scope id** is now
+  `Scene-{sceneName}#h{scene.handle}` (was `Scene-{sceneName}`).
+  Unique per loaded scene instance — additive loads of the same scene
+  no longer collide.
+- **`SceneAssetScope.CreateForCurrentScene()`** now calls
+  `SceneManager.MoveGameObjectToScene(go, scene)` so the new scope
+  GameObject lives in the target scene, not in whichever scene was
+  active when the call ran (latent bug).
+- **`AddressablesFacade.StartSession()`** / **`EndSession()`** now
+  back themselves with `ScopeManager.Instance.GetOrCreateScope("Session")`
+  and `ClearScope("Session")` respectively. `LoadSessionAsync<T>`
+  auto-starts the session on first call instead of erroring "no
+  active session".
+- **`AddressablesFacade.GetSessionScope()` removed** — replaced by
+  **`GetSessionLoader()`** which returns the underlying
+  `AssetLoader` directly. Same shape (one method, one return value),
+  but no more pretending the session is a special class.
+- **GameObject menu "Add Session Scope" removed** from Editor
+  context menus. Quick Setup's "Create All Scope Objects" no longer
+  spawns a `[SessionAssetScope]` GameObject.
+
+### Removed
+- **`SessionAssetScope` class** — deleted (`Runtime/Scopes/SessionAssetScope.cs` +
+  meta + Editor inspector). Use `ScopeManager.GetOrCreateScope("Session")`
+  for direct access or the unchanged `Assets.StartSession()` /
+  `Assets.LoadSession<T>(...)` facade helpers.
+
+### Migration
+- **Code calling `SessionAssetScope.Instance` / `StartSession()` /
+  `EndSession()` directly** — replace with the facade
+  (`Assets.StartSession()` etc.) or `ScopeManager.Instance.GetOrCreateScope("Session")`.
+- **Code matching scope names exactly** (e.g.
+  `if (monitor.scopeName == "Hierarchy-Enemy(Clone)") { … }`) breaks
+  because the default id now embeds `#{InstanceID}`. Either:
+  - Switch to `StartsWith("Hierarchy-")` / `Contains(":")`, OR
+  - Set `customScopeId` to a known string and match that exactly.
+- **GameObject prefabs containing `SessionAssetScope`** — open and
+  remove the now-missing-script entry. Re-add the behaviour via
+  `Assets.StartSession()` at runtime if needed.
+- **`AssetScopeType.Session` enum value retained** — semantic still
+  valid; resolvers should map it to
+  `ScopeManager.GetOrCreateScope("Session")`.
+
 ## [3.5.1] - 2026-05-23 - UniTask compile-fix for merged branch code
 
 Fixes compile errors that surfaced when 3.5.0 was consumed by a

@@ -70,7 +70,7 @@ namespace AddressableManager.Scopes
         // Internal wrapper class
         private class InternalScope : BaseAssetScope
         {
-            public InternalScope(string name) : base(name) { }
+            public InternalScope(string name) : base(name, "Global") { }
         }
     }
 }
