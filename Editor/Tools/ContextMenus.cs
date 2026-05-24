@@ -22,16 +22,8 @@ namespace AddressableManager.Editor.Tools
             }
         }
 
-        [MenuItem("GameObject/Addressable Manager/Add Session Scope", false, 1)]
-        private static void AddSessionScope(MenuCommand command)
-        {
-            var go = GetOrCreateGameObject(command, "[SessionAssetScope]");
-            if (go.GetComponent<SessionAssetScope>() == null)
-            {
-                Undo.AddComponent<SessionAssetScope>(go);
-                Debug.Log($"Added SessionAssetScope to {go.name}");
-            }
-        }
+        // SessionAssetScope was removed in 4.0.0 — sessions now route through
+        // ScopeManager.GetOrCreateScope("Session"). No GameObject menu needed.
 
         [MenuItem("GameObject/Addressable Manager/Add Scene Scope", false, 2)]
         private static void AddSceneScope(MenuCommand command)
@@ -188,20 +180,21 @@ namespace AddressableManager.Editor.Tools
         private static void CreateAllScopeObjects()
         {
             if (EditorUtility.DisplayDialog("Create All Scopes",
-                "This will create GameObjects for all scope types in the current scene:\n" +
+                "This will create GameObjects for the persistent scope types in the current scene:\n" +
                 "• Global Scope (DontDestroyOnLoad)\n" +
-                "• Session Scope\n" +
                 "• Scene Scope\n" +
                 "• Hierarchy Scope\n\n" +
+                "Session is now a ScopeManager entry — use\n" +
+                "ScopeManager.Instance.GetOrCreateScope(\"Session\")\n" +
+                "or Assets.StartSession() in code.\n\n" +
                 "Continue?",
                 "Yes", "Cancel"))
             {
                 CreateScopeObject<GlobalAssetScope>("[GlobalAssetScope]");
-                CreateScopeObject<SessionAssetScope>("[SessionAssetScope]");
                 CreateScopeObject<SceneAssetScope>("[SceneAssetScope]");
                 CreateScopeObject<HierarchyAssetScope>("[HierarchyAssetScope]");
 
-                Debug.Log("[AddressableManager] Created all scope objects.");
+                Debug.Log("[AddressableManager] Created scope GameObjects (Global / Scene / Hierarchy). For sessions use ScopeManager.GetOrCreateScope(\"Session\").");
             }
         }
 

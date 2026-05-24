@@ -1,9 +1,9 @@
-# Addressable Manager v3.5.0
+# Addressable Manager v4.0.0
 
 **Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and a rule-based automation engine. Async surface auto-switches between `Task<T>` and `UniTask<T>` based on whether `com.cysharp.unitask` is installed.
 
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg)](https://unity.com/)
-[![Version](https://img.shields.io/badge/version-3.5.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---

@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using AddressableManager.Loaders;
 using AddressableManager.Core;
+using AddressableManager.Managers;
 using AddressableManager.Pooling;
 using AddressableManager.Pooling.Adapters;
 using AddressableManager.Progress;
@@ -22,9 +23,16 @@ namespace AddressableManager.Facade
     {
         private static AddressablesFacade _instance;
 
-        // Scopes
+        // Built-in singleton scope used as the package's default cache root.
         private GlobalAssetScope _globalScope;
-        private SessionAssetScope _sessionScope;
+
+        // Session is no longer a dedicated class — it's a named entry in ScopeManager.
+        // The Facade keeps the existing StartSession/EndSession/LoadSessionAsync ergonomic
+        // by routing through ScopeManager.Instance.GetOrCreateScope(SessionScopeId).
+        private const string SessionScopeId = "Session";
+        private AssetLoader _sessionLoader;
+
+        // Last scene scope the Facade was asked to resolve, cached for reuse.
         private SceneAssetScope _sceneScope;
 
         // Pooling
@@ -101,26 +109,34 @@ namespace AddressableManager.Facade
         #region Session Scope Operations
 
         /// <summary>
-        /// Start new session
+        /// Start a new session. Idempotent — calling it twice returns the same
+        /// ScopeManager-backed loader (use <see cref="EndSession"/> first to
+        /// drop the existing session).
         /// </summary>
         public void StartSession()
         {
-            _sessionScope = SessionAssetScope.StartSession();
-            Debug.Log("[AddressablesFacade] Session started");
+            _sessionLoader = ScopeManager.Instance.GetOrCreateScope(SessionScopeId);
+            Debug.Log("[AddressablesFacade] Session started (ScopeManager-backed)");
         }
 
         /// <summary>
-        /// End current session
+        /// End the current session — releases every asset loaded into the
+        /// <c>Session</c> ScopeManager entry.
         /// </summary>
         public void EndSession()
         {
-            SessionAssetScope.EndSession();
-            _sessionScope = null;
-            Debug.Log("[AddressablesFacade] Session ended");
+            if (ScopeManager.Instance.HasScope(SessionScopeId))
+            {
+                ScopeManager.Instance.ClearScope(SessionScopeId);
+                Debug.Log("[AddressablesFacade] Session ended");
+            }
+            _sessionLoader = null;
         }
 
         /// <summary>
-        /// Load asset into session scope
+        /// Load asset into the session scope. Auto-starts the session if not
+        /// already active so call sites don't have to remember to call
+        /// <see cref="StartSession"/> first.
         /// </summary>
 #if UNITASK_PRESENT
         public async UniTask<IAssetHandle<T>> LoadSessionAsync<T>(string address)
@@ -128,13 +144,11 @@ namespace AddressableManager.Facade
         public async Task<IAssetHandle<T>> LoadSessionAsync<T>(string address)
 #endif
         {
-            if (_sessionScope == null)
+            if (_sessionLoader == null)
             {
-                Debug.LogError("[AddressablesFacade] No active session. Call StartSession() first!");
-                return null;
+                _sessionLoader = ScopeManager.Instance.GetOrCreateScope(SessionScopeId);
             }
-
-            return await _sessionScope.Loader.LoadAssetAsync<T>(address);
+            return await _sessionLoader.LoadAssetAsync<T>(address);
         }
 
         #endregion
@@ -301,27 +315,31 @@ namespace AddressableManager.Facade
         }
 
         /// <summary>
-        /// Get session scope (if active)
+        /// Get the session's <see cref="AssetLoader"/> (the ScopeManager entry
+        /// keyed by <c>"Session"</c>). Returns null when no session is active.
+        /// Replaces the pre-4.0 <c>GetSessionScope()</c> method that returned
+        /// the now-removed <c>SessionAssetScope</c>.
         /// </summary>
-        public SessionAssetScope GetSessionScope()
+        public AssetLoader GetSessionLoader()
         {
-            return _sessionScope;
+            return _sessionLoader ?? ScopeManager.Instance.GetScope(SessionScopeId);
         }
 
         /// <summary>
-        /// Check if session is active
+        /// True when a session loader has been created (via
+        /// <see cref="StartSession"/> or <see cref="LoadSessionAsync{T}"/>).
         /// </summary>
         public bool IsSessionActive()
         {
-            return _sessionScope != null && _sessionScope.IsActive;
+            return _sessionLoader != null || ScopeManager.Instance.HasScope(SessionScopeId);
         }
 
         /// <summary>
-        /// Clear session cache
+        /// Clear the session loader's cache without ending the session.
         /// </summary>
         public void ClearSessionCache()
         {
-            _sessionScope?.Loader?.ClearCache();
+            (_sessionLoader ?? ScopeManager.Instance.GetScope(SessionScopeId))?.ClearCache();
         }
 
         #endregion
@@ -333,11 +351,8 @@ namespace AddressableManager.Facade
             _poolManager?.Dispose();
             _poolManager = null;
 
-            if (_sessionScope != null)
-            {
-                SessionAssetScope.EndSession();
-                _sessionScope = null;
-            }
+            // Session is a ScopeManager entry — clear it explicitly so its loader disposes.
+            EndSession();
 
             // Note: GlobalAssetScope is a process-wide singleton — only dispose it if
             // this Facade is the owning instance being destroyed.
