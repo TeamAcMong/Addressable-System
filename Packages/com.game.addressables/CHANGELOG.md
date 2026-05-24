@@ -2,6 +2,25 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.0.1] - 2026-05-24 - Fix StandardAPI.InstantiateSession compile error
+
+4.0.0 removed `AddressablesFacade.GetSessionScope()` and replaced it
+with `GetSessionLoader()` returning the underlying `AssetLoader`
+directly, but `StandardAPI.InstantiateSession` still called the old
+name — broke compile for any consumer touching that method.
+
+### Fixed
+- **`StandardAPI.InstantiateSession(address)`** now calls
+  `Facade.GetSessionLoader()`. Behaviour also tightened: if the
+  session hasn't been started, the method auto-starts it (via
+  `Facade.StartSession()`) instead of logging an error and returning
+  null — matching the ergonomic of `LoadSessionAsync` from 4.0.0.
+
+### Notes
+- `AdvancedAPI.GetSessionScope()` is unrelated — it returns
+  `HybridScope.Session` (a different class, still present). No change
+  needed there.
+
 ## [4.0.0] - 2026-05-24 - Scope identity overhaul + SessionAssetScope removal
 
 Two architectural changes graduating from the design review:

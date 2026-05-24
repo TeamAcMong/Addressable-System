@@ -137,17 +137,18 @@ namespace AddressableManager.API
         }
 
         /// <summary>
-        /// Instantiate GameObject in Session scope
+        /// Instantiate GameObject in the Session scope.
+        /// Auto-starts the session (ScopeManager-backed) on first call.
         /// </summary>
         public static async Task<GameObject> InstantiateSession(string address)
         {
-            var scope = Facade.GetSessionScope();
-            if (scope == null)
+            var loader = Facade.GetSessionLoader();
+            if (loader == null)
             {
-                Debug.LogError("[Standard] No active session. Call StartSession() first!");
-                return null;
+                Facade.StartSession();
+                loader = Facade.GetSessionLoader();
             }
-            return await scope.Loader.InstantiateAsync(address);
+            return await loader.InstantiateAsync(address);
         }
 
         /// <summary>

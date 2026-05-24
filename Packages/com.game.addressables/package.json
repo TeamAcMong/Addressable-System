@@ -1,6 +1,6 @@
 {
   "name": "com.game.addressables",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "displayName": "Addressable Manager",
   "description": "Professional Addressable Asset Management System with tiered API (Simple/Standard/Advanced), complete thread-safety, intelligent tiered caching, hybrid scopes, advanced pooling, automatic memory management, explicit error handling, runtime validation, automatic monitoring, comprehensive Editor tools, rule-based automation system with 8 filter types and extensible providers, Layout Rule Editor, Layout Viewer with conflict detection, CLI tools for CI/CD, auto-apply on import, semantic versioning, composite rule merging, batch operations, custom inspectors, and real-time dashboard.",
   "unity": "2022.3",
