@@ -251,16 +251,22 @@ namespace AddressableManager.Editor.Cdn
                 isSatisfied: () => settings.OverridePlayerVersion == RequiredOverridePlayerVersion,
                 fix: () => { settings.OverridePlayerVersion = RequiredOverridePlayerVersion; EditorUtility.SetDirty(settings); }));
 
-            // Not part of "Fix All" - moving this also changes .gitignore (task 0.4), so it stays a
-            // human decision. Rendered as a warning (▲), not a hard failure, per design doc §5.10.
+            // Automated via literal path (not a profile variable) because ContentStateBuildPath is
+            // project-global, not environment-specific. Platform subfolders are appended automatically
+            // by GetContentStateBuildPath() via PlatformMappingService.GetPlatformPathSubFolder()
+            // (AddressableAssetSettings.cs:1207). The build system creates the directory as part of
+            // the content build process (CcdBuildEvents.cs:568-570), not the settings fix.
             rules.Add(new SettingsRule(
                 id: "settings.ContentStateBuildPath",
-                description: "addressables_content_state.bin must build outside Assets/ (task 0.4) so it survives a clean and CI can archive it independently. Losing it permanently ends delta updates for that app version. Moving it also touches .gitignore, so this stays manual.",
+                description: "addressables_content_state.bin must build outside Assets/ (task 0.4) so it survives a clean and CI can archive it independently. Losing it permanently ends delta updates for that app version.",
                 readCurrent: () => settings.ContentStateBuildPath,
                 expectedDisplay: "a path outside Assets/",
                 isSatisfied: () => IsOutsideAssetsFolder(settings.ContentStateBuildPath),
-                fix: null,
-                isWarningOnly: true));
+                fix: () =>
+                {
+                    settings.ContentStateBuildPath = "ServerData/ContentState";
+                    EditorUtility.SetDirty(settings);
+                }));
 
             rules.Add(new SettingsRule(
                 id: "settings.BundleRetryCount",
