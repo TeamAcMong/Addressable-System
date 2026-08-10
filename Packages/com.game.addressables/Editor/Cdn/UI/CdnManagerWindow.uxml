@@ -1,0 +1,12 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="cdn-root" class="cdn-root">
+        <ui:VisualElement name="cdn-header" class="cdn-header">
+            <ui:Label text="CDN Manager" name="cdn-header-title" class="cdn-header-title" />
+            <ui:Label text="" name="cdn-header-context" class="cdn-header-context" />
+        </ui:VisualElement>
+
+        <uie:Toolbar name="cdn-tab-strip" class="cdn-tab-strip" />
+
+        <ui:VisualElement name="cdn-tab-body" class="cdn-tab-body" />
+    </ui:VisualElement>
+</ui:UXML>

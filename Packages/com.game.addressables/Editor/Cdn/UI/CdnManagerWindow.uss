@@ -1,0 +1,45 @@
+/*
+ * Shell chrome for CdnManagerWindow. Layout and spacing only - every colour comes from
+ * --unity-colors-* so the window matches the active Editor skin automatically (design doc §5.11).
+ * No CSS grid, ::before/::after, box-shadow, rem/em or @media - none of those exist in USS.
+ */
+
+.cdn-root {
+    flex-grow: 1;
+    background-color: var(--unity-colors-window-background);
+}
+
+.cdn-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+    flex-shrink: 0;
+}
+
+.cdn-header-title {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-header-context {
+    font-size: 11px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+}
+
+.cdn-tab-strip {
+    flex-shrink: 0;
+}
+
+.cdn-tab-toggle {
+    padding: 0 10px;
+}
+
+.cdn-tab-body {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
