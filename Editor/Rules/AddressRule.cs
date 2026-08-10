@@ -168,9 +168,20 @@ namespace AddressableManager.Editor.Rules
             if (group != null)
                 return group;
 
-            // Create new group
+            // Create new group.
+            // CreateGroup's schemasToCopy/types parameters are opt-in: passing null for
+            // schemasToCopy with no types (as this call used to) creates a group with an EMPTY
+            // schema set. Without a BundledAssetGroupSchema that group contributes nothing to a
+            // content build - silently (see Assets/AddressableAssetsData/AssetGroups/Scene.asset,
+            // which shipped exactly this way: two scene entries under
+            // m_SchemaSet: m_Schemas: []).
+            // AddressableGroupSchemaUtility.EnsureSchemas attaches the schemas a normal group
+            // needs right after creation; see its doc comment for why DefaultGroup's own schemas
+            // are preferred over fresh default-valued ones.
             Debug.Log($"[AddressRule] Creating new group: {_targetGroupName}");
-            return settings.CreateGroup(_targetGroupName, false, false, true, null);
+            var newGroup = settings.CreateGroup(_targetGroupName, false, false, true, null);
+            AddressableGroupSchemaUtility.EnsureSchemas(newGroup, settings);
+            return newGroup;
         }
 
         /// <summary>
