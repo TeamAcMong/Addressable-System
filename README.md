@@ -138,6 +138,12 @@ Window > Addressable Manager > Layout Rule Editor
 - **[Editor Tools Guide](Documentation/EDITOR_TOOLS_GUIDE.md)**: Detailed reference for all visual tools
 - **[Troubleshooting](Documentation/TROUBLESHOOTING.md)**: Common issues and solutions
 
+**CDN system** (proposed — see branch `feat/cdn-system`):
+
+- **[CDN Technical Design](Documentation/CDN_SYSTEM_DESIGN.md)**: Architecture, API surface, boot flows, error model
+- **[CDN Implementation Plan](Documentation/CDN_IMPLEMENTATION_PLAN.md)**: Phased rollout, risks, release plan
+- **[CDN Infrastructure Guide](Documentation/CDN_INFRASTRUCTURE_GUIDE.md)**: Storage layout, cache policy, CI/CD, runbook
+
 ---
 
 ## 🏗️ Architecture Overview
