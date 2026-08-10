@@ -16,20 +16,26 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
     /// production (risk R3, infra §3's cache policy matrix).
     /// </summary>
     /// <remarks>
-    /// This tab owns its <see cref="LocalContentServer"/> instance in a field on this class (not on the
-    /// view), so the server keeps running across tab switches and even after the window closes - exactly
-    /// like the existing "Tools ▸ Addressable Manager ▸ Start Local Content Server" menu
-    /// (<c>LocalContentServerMenu</c> in LocalContentServer.cs) already behaves. Per
-    /// <see cref="ICdnManagerTab"/>'s own doc remarks, only the *listening* (the
-    /// <see cref="LocalContentServer.RequestReceived"/> subscription and the drain tick) is scoped to the
-    /// view's lifetime via a TrickleDown <see cref="DetachFromPanelEvent"/> callback - not the server itself.
+    /// <c>_server</c> is <see cref="LocalContentServerMenu.Instance"/> - the same shared instance the
+    /// "Tools ▸ Addressable Manager ▸ Start/Stop Local Content Server" menu drives, not a private server
+    /// this tab owns. That makes this tab one of potentially several observers of a resource whose
+    /// lifetime it does not control:
     ///
-    /// <see cref="LocalContentServerMenu"/> exposes no accessor for its own instance, and this task's
-    /// brief is explicit that LocalContentServer.cs is not to be touched - so this tab cannot share that
-    /// instance and instead owns a second, independent one. Starting the server from the Tools menu will
-    /// not show as "running" in this tab (and vice versa), and starting both on the same port fails with
-    /// the port-in-use error LocalContentServer already logs to the console. See the task report for the
-    /// full list of surface gaps this uncovered.
+    /// <list type="bullet">
+    /// <item>Every visible control is re-derived from the shared instance's *live* state on every
+    /// refresh - <see cref="LocalContentServer.IsRunning"/>, <see cref="LocalContentServer.ActivePort"/>,
+    /// <see cref="LocalContentServer.ServerDataPath"/> - never cached in a field on this class. So
+    /// <see cref="OnShown"/> attaching to a server the Tools menu (or a previous window session) already
+    /// started shows the real running state, the real port and the real serving path immediately, not a
+    /// "not running" / default-port assumption.</item>
+    /// <item>This tab must never stop or dispose the shared server as a side effect of its own lifecycle.
+    /// <see cref="OnViewDetached"/> (tab switch or window close) unsubscribes from
+    /// <see cref="LocalContentServer.RequestReceived"/> and the drain tick only - it never calls
+    /// <c>_server.Stop()</c>. The only thing that stops the shared server from this tab is the user
+    /// explicitly clicking "Stop Server" (<see cref="OnServerToggleChanged"/>), exactly mirroring the
+    /// menu's own Stop item - and doing so stops it for every other observer too, which is the correct,
+    /// expected behaviour for a shared resource.</item>
+    /// </list>
     /// </remarks>
     public sealed class LocalServerTab : ICdnManagerTab
     {
@@ -47,7 +53,10 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
         /// </summary>
         private const int MaxLogEntries = 500;
 
-        private readonly LocalContentServer _server = new LocalContentServer();
+        // Shared, not owned - see the class remarks. LocalContentServerMenu.Instance lazily creates the
+        // one server the whole editor session uses, the same instance "Tools ▸ Addressable Manager ▸
+        // Start/Stop Local Content Server" drives.
+        private readonly LocalContentServer _server = LocalContentServerMenu.Instance;
 
         // The only thread-safe hand-off point in this file. LocalContentServer raises RequestReceived on
         // an HttpListener thread-pool thread and deliberately makes no Unity API calls itself (see its
@@ -61,7 +70,6 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
         // lose history. Newest entry first - see DrainPendingEvents.
         private readonly List<LogRow> _logEntries = new List<LogRow>();
 
-        private int _activePort;
         private int _unmatchedTotal;
         private Texture2D _warningIcon;
 
@@ -114,11 +122,12 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
 
             ConfigureLogList();
 
-            // Per ICdnManagerTab's own remarks: this tab owns long-lived state (the server, the pending-
-            // event queue) in a holder that outlives the view, and only listens for RequestReceived / polls
-            // the drain tick while its view is actually attached - stop when the view is torn down, whether
-            // that is a tab switch or the window closing, rather than relying on a teardown hook from the
-            // shell (CdnManagerWindow has none).
+            // Per ICdnManagerTab's own remarks: long-lived state (the shared server, the pending-event
+            // queue) lives in a holder that outlives the view, and this tab only listens for
+            // RequestReceived / polls the drain tick while its view is actually attached - stop LISTENING
+            // when the view is torn down, whether that is a tab switch or the window closing, rather than
+            // relying on a teardown hook from the shell (CdnManagerWindow has none). See OnViewDetached for
+            // why this must not also stop the server itself.
             root.RegisterCallback<DetachFromPanelEvent>(OnViewDetached, TrickleDown.TrickleDown);
 
             return root;
@@ -140,6 +149,13 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             RefreshLogView();
         }
 
+        /// <summary>
+        /// Stops this tab from listening - never stops or disposes <c>_server</c>. <c>_server</c> is
+        /// shared (<see cref="LocalContentServerMenu.Instance"/>), so tearing down this tab's view (a tab
+        /// switch, or the window closing) must not affect whether the server is running for the Tools
+        /// menu or any other observer. Only <see cref="OnServerToggleChanged"/>'s explicit "Stop Server"
+        /// path is allowed to call <c>_server.Stop()</c>.
+        /// </summary>
         private void OnViewDetached(DetachFromPanelEvent evt)
         {
             _server.RequestReceived -= OnRequestReceived;
@@ -189,7 +205,6 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                     return;
                 }
 
-                _activePort = port;
                 _server.Start(port);
             }
             else
@@ -208,10 +223,15 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             RefreshServerState();
         }
 
-        /// <summary>Re-derives every visible control from <see cref="LocalContentServer.IsRunning"/> - the
-        /// toggle's own event value is never trusted as ground truth, so a failed Start() (bad port, port
-        /// already in use, access denied - LocalContentServer logs the reason) correctly snaps the UI back
-        /// to "stopped" instead of showing a toggle stuck "on" for a server that never started.</summary>
+        /// <summary>
+        /// Re-derives every visible control from the shared server's *live* state - never a value cached
+        /// on this class - so this correctly handles both a failed Start() (bad port, port already in use,
+        /// access denied - LocalContentServer logs the reason; snaps the toggle back to "stopped" instead
+        /// of showing it stuck "on" for a server that never started) and attaching to a server some other
+        /// observer already had running (the Tools menu, or this same tab in an earlier window session) -
+        /// the port field picks up <see cref="LocalContentServer.ActivePort"/> instead of showing whatever
+        /// default or stale value it last displayed.
+        /// </summary>
         private void RefreshServerState()
         {
             bool running = _server.IsRunning;
@@ -226,17 +246,21 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                 return;
             }
 
+            // Only overwritten while running - while stopped this must not clobber a port the user is
+            // mid-typing for the next Start().
+            _portField.SetValueWithoutNotify(_server.ActivePort.ToString());
+
             if (_unmatchedTotal > 0)
             {
                 _statusBox.messageType = HelpBoxMessageType.Warning;
-                _statusBox.text = $"Serving ServerData/ on http://localhost:{_activePort}. {_unmatchedTotal} " +
-                    $"request{(_unmatchedTotal == 1 ? "" : "s")} did not match the infra §3 cache policy matrix " +
-                    "(highlighted below).";
+                _statusBox.text = $"Serving {_server.ServerDataPath} on http://localhost:{_server.ActivePort}. " +
+                    $"{_unmatchedTotal} request{(_unmatchedTotal == 1 ? "" : "s")} did not match the infra §3 " +
+                    "cache policy matrix (highlighted below).";
             }
             else
             {
                 _statusBox.messageType = HelpBoxMessageType.Info;
-                _statusBox.text = $"Serving ServerData/ on http://localhost:{_activePort}.";
+                _statusBox.text = $"Serving {_server.ServerDataPath} on http://localhost:{_server.ActivePort}.";
             }
         }
 
