@@ -157,10 +157,79 @@ td code,th code{font-size:.83em; white-space:nowrap}
 .crit{color:var(--danger); font-weight:650}
 .yes{color:var(--ok); font-weight:600}
 .no{color:var(--fg-subtle)}
+.ui{color:var(--accent); background:var(--accent-soft); padding:.03em .32em; border-radius:3px; font-weight:500}
+
+/* ---------- Mockup cửa sổ Unity Editor ---------- */
+.mock{margin:0 0 1.6rem}
+.mock-cap{font-size:.76rem; color:var(--fg-subtle); margin-bottom:.4rem; font-family:var(--mono)}
+.mock-scroll{overflow-x:auto}
+.u-win{
+  background:#383838; border:1px solid #1c1c1c; border-radius:5px; overflow:hidden;
+  font-family:var(--sans); font-size:12px; color:#c4c4c4; line-height:1.5;
+  box-shadow:0 2px 12px rgba(0,0,0,.28); min-width:560px;
+}
+.u-title{
+  background:#3c3c3c; border-bottom:1px solid #232323; padding:.34rem .65rem;
+  font-size:11px; color:#b8b8b8; display:flex; justify-content:space-between; align-items:center;
+}
+.u-title .u-dim{color:#7e7e7e; font-family:var(--mono); font-size:10.5px}
+.u-tabs{display:flex; background:#2b2b2b; border-bottom:1px solid #232323}
+.u-tab{padding:.34rem .8rem; font-size:11px; color:#8f8f8f; white-space:nowrap; border-right:1px solid #232323}
+.u-tab.active{background:#4a4a4a; color:#e6e6e6; box-shadow:inset 0 -2px 0 #4a8fd0}
+.u-body{padding:.75rem .8rem}
+.u-sec{
+  margin:.9rem 0 .4rem; padding-bottom:.25rem; border-bottom:1px solid #2f2f2f;
+  font-size:10px; color:#8a8a8a; text-transform:uppercase; letter-spacing:.08em;
+}
+.u-sec:first-child{margin-top:0}
+.u-row{display:flex; align-items:center; gap:.55rem; padding:.2rem 0}
+.u-row .u-grow{flex:1; min-width:0}
+.u-ok,.u-bad,.u-warn{flex-shrink:0; width:13px; text-align:center; font-size:11px}
+.u-ok{color:#6cc36c}
+.u-bad{color:#e0736b}
+.u-warn{color:#e0b050}
+.u-key{color:#c8c8c8; font-family:var(--mono); font-size:11px}
+.u-val{color:#8a8a8a; font-family:var(--mono); font-size:11px}
+.u-val.hi{color:#e0b050}
+.u-btn{
+  display:inline-block; background:#585858; border:1px solid #2e2e2e; border-radius:3px;
+  padding:.18rem .65rem; font-size:11px; color:#dadada; white-space:nowrap;
+}
+.u-btn.primary{background:#4a6f9c; border-color:#2f4b6d; color:#fff}
+.u-btn.sm{padding:.08rem .45rem; font-size:10px}
+.u-btn.off{color:#767676; background:#454545}
+.u-field{
+  background:#2b2b2b; border:1px solid #1f1f1f; border-radius:2px; padding:.14rem .45rem;
+  font-family:var(--mono); font-size:11px; color:#c8c8c8; display:inline-block;
+}
+.u-drop::after{content:" ▾"; color:#8a8a8a}
+.u-bar{height:7px; background:#252525; border-radius:4px; overflow:hidden; border:1px solid #1f1f1f}
+.u-bar > i{display:block; height:100%; background:#4a8fd0}
+.u-bar > i.warnfill{background:#c08a30}
+.u-help{
+  background:#2f2f2f; border-left:2px solid #4a6f9c; padding:.4rem .6rem;
+  font-size:11px; color:#a6a6a6; margin-top:.55rem; border-radius:0 3px 3px 0;
+}
+.u-help.bad{border-left-color:#c05a52; background:#332b2a}
+.u-help.warn{border-left-color:#c08a30; background:#332f26}
+.u-list{background:#303030; border:1px solid #242424; border-radius:3px; padding:.3rem 0; margin-top:.35rem}
+.u-list .u-row{padding:.16rem .55rem}
+.u-list .u-row + .u-row{border-top:1px solid #2a2a2a}
+.u-actions{display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.7rem; padding-top:.6rem; border-top:1px solid #2f2f2f}
+.u-pill{
+  font-family:var(--mono); font-size:10px; padding:.05rem .35rem; border-radius:3px;
+  background:#454545; color:#a8a8a8; border:1px solid #2e2e2e;
+}
+.u-pill.new{background:#25402c; color:#7ec98a; border-color:#2f5638}
+.u-pill.chg{background:#3d3520; color:#d9b463; border-color:#54492c}
+.u-pill.stat{background:#3d2725; color:#e0736b; border-color:#553330}
 
 @media (max-width:1000px){
   .layout{grid-template-columns:1fr}
-  .sidebar{position:static; height:auto; border-right:none; border-bottom:1px solid var(--border)}
+  .sidebar{
+    position:static; height:auto; max-height:45vh; overflow-y:auto;
+    border-right:none; border-bottom:1px solid var(--border);
+  }
   main{padding:2rem 1.25rem 5rem}
   .pagehead h1{font-size:1.5rem}
 }
@@ -403,7 +472,19 @@ Editor/Cdn/
 ├── ContentStateManager.cs              định vị, kiểm tra, lưu trữ addressables_content_state.bin
 ├── CdnProfileManager.cs                đổi profile + tiêm đường dẫn Remote
 ├── CatalogVerifier.cs                  kiểm tra catalog sau build
-└── CdnSettingsInspector.cs</code></pre>
+├── ContentDiff.cs                      so hai bản build → mới/đổi/bỏ + dung lượng patch
+├── SettingsContract.cs                 luật §9 dạng dữ liệu; dùng chung cho verifier VÀ UI validator
+├── Inspectors/
+│   └── CdnSettingsInspector.cs
+└── Windows/
+    ├── CdnManagerWindow.cs             cửa sổ chính, chia tab
+    └── Tabs/
+        ├── SettingsValidatorTab.cs     checklist §9 + Fix All
+        ├── LocalServerTab.cs           bật/tắt, port, log request
+        ├── UpdatePreviewTab.cs         GatherModifiedEntries trước khi build
+        ├── BuildTab.cs                 trạng thái content-state, build full/update, patch diff
+        ├── CatalogInspectorTab.cs      đọc catalog đã build, tìm kiếm, dependency
+        └── RuntimeMonitorTab.cs        play mode: env, catalog, cache, download trực tiếp</code></pre>
 
 <h3 id="d-modules">5. Đặc tả từng module</h3>
 
@@ -545,6 +626,171 @@ Addressables.InternalIdTransformFunc = location =&gt;
     void OnCacheCleaned(long bytesFreed);
 }</code></pre>
 <p>Các chỉ số nên suy ra: tỉ lệ download thành công, thời lượng p50/p95 theo nhóm dung lượng, phân bố mã lỗi, số byte phục vụ theo từng app version. Không có mấy con số này thì không phân biệt được lỗi CDN với lỗi client.</p>
+
+<h4>5.9 Bộ công cụ Editor</h4>
+<p>Mọi năng lực ở trên đều gọi được từ dòng lệnh. Điều đó là cần cho CI, nhưng chưa đủ cho một team: pipeline chỉ có CLI khiến mọi lần build content, mọi lần đổi môi trường, và mọi câu hỏi "patch này bao nhiêu MB" đều phải đi qua một programmer.</p>
+<p>Nó cũng lệch với chính quy ước của package — hệ rule có <code>LayoutRuleEditorWindow</code> và <code>LayoutViewerWindow</code>, monitoring có <code>MemoryGraphView</code>. CDN được một <code>CdnManagerWindow</code> riêng, ngang hàng.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Tab</th><th>Làm gì</th><th>Phase</th></tr></thead>
+<tbody>
+<tr><td>Settings Validator</td><td>Hiện ràng buộc <a href="#d-config">§9</a> dạng checklist đạt/không đạt kèm nút <em>Fix All</em> tự ghi đúng giá trị. Chặn ngay nguồn gốc của R3, R5 và mục "patch to bằng bản full" trong runbook trước khi chúng kịp xảy ra.</td><td>0</td></tr>
+<tr><td>Local Server</td><td>Bật/tắt server test, chọn port, log request kèm mã trạng thái và header cache — để lỗi header lộ ra ở máy local thay vì trên production.</td><td>0</td></tr>
+<tr><td>Update Preview</td><td>Chạy <code>GatherModifiedEntries</code> <strong>trước khi</strong> build và liệt kê asset/group đã đổi, đánh dấu đỏ mọi thay đổi ở group static. Biến cái fail-sau-build của task 1.4 thành câu trả lời tức thì.</td><td>1</td></tr>
+<tr><td>Build</td><td>Trạng thái content-state, chọn platform/profile, Build Full / Build Update, và <strong>dung lượng patch dự kiến</strong> — con số mà hiện tại không ai lấy được trước lúc deploy.</td><td>1</td></tr>
+<tr><td>Catalog Inspector</td><td>Đọc catalog đã build: tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Dựng trên <code>AddressablesTools</code>.</td><td>5</td></tr>
+<tr><td>Runtime Monitor</td><td>Play mode: môi trường đang chạy, id catalog, cache đã dùng/còn trống, download trực tiếp theo byte thật, nút clear cache / clean obsolete.</td><td>4</td></tr>
+</tbody></table></div>
+<div class="note">
+<span class="tag">Nguyên tắc thiết kế</span>
+<p>Mỗi tab chỉ là <strong>một lớp view mỏng trên đúng những service và class Editor mà CLI đang dùng</strong>. Không có logic nào nằm trong cửa sổ. Đây là thứ giữ cho GUI và CLI không trôi lệch nhau — và cũng là lý do <code>SettingsContract.cs</code> tồn tại như dữ liệu dùng chung cho cả <code>CatalogVerifier</code> (CI) lẫn <code>SettingsValidatorTab</code> (GUI), thay vì viết luật hai lần.</p>
+</div>
+<p><code>CdnManagerWindow</code> là cửa sổ riêng (<code>Tools ▸ Addressable Manager ▸ CDN Manager</code>), không phải nhét thêm sáu tab vào <code>AddressableManagerWindow</code> — dashboard đó chỉ nhận một dải trạng thái CDN gọn kèm nút mở cửa sổ này.</p>
+
+<h4>5.10 Mockup UI Editor</h4>
+<p>Đây là wireframe, không phải ảnh chụp — mô tả bố cục và thứ bậc thông tin, không phải pixel cuối cùng. Chúng được vẽ bằng HTML/CSS có chủ đích: <code>USS</code> của UI Toolkit là một tập con của CSS và <code>UXML</code> là XML, nên chúng chuyển sang implementation thật gần như 1:1 chứ không phải vẽ lại.</p>
+
+<div class="mock">
+<div class="mock-cap">Settings Validator — ràng buộc §9 dưới dạng checklist</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab active">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Addressable Asset Settings</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">BuildRemoteCatalog</span><span class="u-val">true</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleRetryCount</span><span class="u-val hi">0 → 3</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleTimeout</span><span class="u-val hi">0 → 30</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">MaxConcurrentWebRequests</span><span class="u-val hi">3 → 6</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">MonoScriptBundleNaming</span><span class="u-val hi">Disabled → Project Name</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">InternalIdNamingMode</span><span class="u-val hi">Full Path → Filename</span></div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">OverridePlayerVersion</span><span class="u-val">[PlayerSettings.bundleVersion]</span></div>
+    <div class="u-row"><span class="u-warn">▲</span><span class="u-key u-grow">ContentStateBuildPath</span><span class="u-val hi">đang nằm trong Assets/</span></div>
+    <div class="u-sec">Group schema — 2 remote group</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">UseAssetBundleCrc</span><span class="u-val">tất cả group</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleNaming · Stage_Content</span><span class="u-val hi">Filename → phải có hash</span></div>
+    <div class="u-help warn">6 vi phạm. <strong>Fix All</strong> ghi đúng giá trị và đánh dấu settings dirty. <code style="background:none;border:none;color:#c9a86a">ContentStateBuildPath</code> bị loại trừ — di chuyển nó còn kéo theo <code style="background:none;border:none;color:#c9a86a">.gitignore</code>, nên để làm tay.</div>
+    <div class="u-actions"><span class="u-btn primary">Fix All (6)</span><span class="u-btn">Kiểm lại</span><span class="u-btn">Copy báo cáo</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Update Preview — bắt được thay đổi ở group static <em>trước khi</em> build chạy</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab active">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Content state</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">addressables_content_state.bin</span><span class="u-val">app 1.4.1 · 2026-08-04 11:22</span></div>
+    <div class="u-sec">Entry đã thay đổi — GatherModifiedEntries</div>
+    <div class="u-list">
+      <div class="u-row"><span class="u-key u-grow">Assets/Art/UI/shop_banner.png</span><span class="u-val">Stage_Content</span><span class="u-pill chg">đổi</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Art/UI/pack_icon_03.png</span><span class="u-val">Stage_Content</span><span class="u-pill new">mới</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Prefabs/Boss_04.prefab</span><span class="u-val">Stage_Content</span><span class="u-pill chg">đổi</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Config/balance.asset</span><span class="u-val">Core_Static</span><span class="u-pill stat">STATIC</span></div>
+    </div>
+    <div class="u-help bad"><strong>Core_Static là group static.</strong> Content update không thể đưa thay đổi này tới người chơi hiện tại — cần một player build mới. Chuyển entry sang group dynamic, hoặc ship binary.</div>
+    <div class="u-actions"><span class="u-btn">Quét lại</span><span class="u-btn">Chuyển 1 entry sang group dynamic</span><span class="u-btn off">Build Content Update</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Build — dung lượng patch dự kiến, trả lời được trước khi deploy</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab active">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Đích</div>
+    <div class="u-row"><span class="u-key" style="width:88px">Platform</span><span class="u-field u-drop">Android</span><span class="u-key" style="width:52px">Profile</span><span class="u-field u-drop">Prod</span><span class="u-key">App version</span><span class="u-val">1.4.1</span></div>
+    <div class="u-sec">Content state</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">ServerData/ContentState/Android/</span><span class="u-val">app 1.4.1 · 2026-08-04 11:22</span></div>
+    <div class="u-actions" style="border-top:none; padding-top:.5rem"><span class="u-btn">Build Full Content</span><span class="u-btn primary">Build Content Update</span></div>
+    <div class="u-sec">Build gần nhất — content update · 2026-08-10 09:41 · 00:02:18</div>
+    <div class="u-row"><span class="u-key u-grow">bundle không đổi</span><span class="u-val">184</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundle thay đổi</span><span class="u-val">3</span><span class="u-pill chg">đổi</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundle mới</span><span class="u-val">1</span><span class="u-pill new">mới</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundle bị bỏ</span><span class="u-val">0</span></div>
+    <div class="u-row" style="margin-top:.4rem"><span class="u-key u-grow" style="color:#e6e6e6">dung lượng patch dự kiến</span><span class="u-val" style="color:#7ec98a; font-size:12px">4.7 MB</span><span class="u-val">/ 812 MB bản full</span></div>
+    <div class="u-bar" style="margin-top:.3rem"><i style="width:2%"></i></div>
+    <div class="u-actions"><span class="u-btn">Mở thư mục output</span><span class="u-btn">Copy manifest</span><span class="u-btn">Verify catalog</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Runtime Monitor — play mode, byte thật</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">● Play mode</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab active">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Phiên</div>
+    <div class="u-row"><span class="u-key" style="width:100px">Môi trường</span><span class="u-val u-grow">prod</span><span class="u-btn sm">Đổi ▾</span></div>
+    <div class="u-row"><span class="u-key" style="width:100px">Catalog</span><span class="u-val u-grow">catalog_1.4.1 · 8f3a…c91</span></div>
+    <div class="u-row"><span class="u-key" style="width:100px">Kiểm gần nhất</span><span class="u-val u-grow">12 giây trước · không có update</span></div>
+    <div class="u-row"><span class="u-key" style="width:100px">Kết nối</span><span class="u-val u-grow">Online · WiFi (không tính phí)</span></div>
+    <div class="u-sec">Download — preload_core</div>
+    <div class="u-bar"><i style="width:62%"></i></div>
+    <div class="u-row"><span class="u-val u-grow">48.3 MB / 78.1 MB · 2.4 MB/s · còn 12 giây</span><span class="u-val">lần 1/3</span><span class="u-btn sm">Hủy</span></div>
+    <div class="u-sec">Bundle cache</div>
+    <div class="u-bar"><i class="warnfill" style="width:34%"></i></div>
+    <div class="u-row"><span class="u-val u-grow">đã dùng 1.2 GB · còn trống 8.4 GB</span></div>
+    <div class="u-row"><span class="u-warn">▲</span><span class="u-key u-grow">bundle lỗi thời</span><span class="u-val hi">6 · 142 MB</span></div>
+    <div class="u-actions"><span class="u-btn">Kiểm tra update</span><span class="u-btn primary">Dọn bundle lỗi thời (142 MB)</span><span class="u-btn">Xóa cache</span></div>
+  </div>
+</div></div>
+</div>
+
+<h4>5.11 Chuyển mockup sang UI Toolkit</h4>
+<p>Thiết kế mấy màn này bằng công cụ design web rồi port sang là khả thi — <code>UXML</code> là XML còn <code>USS</code> mang hình dạng CSS, nên mô hình tư duy chuyển được. Nhưng <strong>USS là một tập con, và những chỗ thiếu nằm đúng vào nơi mà một công cụ hướng web sẽ tự nhiên dẫn bạn tới.</strong> Thiết kế bám theo tập con này ngay từ đầu thì việc port là cơ học; thiết kế thả tự do thì port thành viết lại bố cục.</p>
+
+<h5>Khả năng port CSS → USS</h5>
+<div class="tablewrap"><table>
+<thead><tr><th>Tính năng</th><th>USS</th><th>Ghi chú</th></tr></thead>
+<tbody>
+<tr><td>Flexbox</td><td class="yes">có</td><td>Mô hình bố cục duy nhất. <code>display:flex</code> là <em>mặc định</em> trên mọi element.</td></tr>
+<tr><td>CSS Grid</td><td class="no">không</td><td>Hoàn toàn không có. Phải dựng bằng flex lồng nhau.</td></tr>
+<tr><td><code>px</code>, <code>%</code></td><td class="yes">có</td><td>Hai đơn vị độ dài duy nhất.</td></tr>
+<tr><td><code>rem</code>, <code>em</code>, <code>vh</code>, <code>vw</code>, <code>ch</code></td><td class="no">không</td><td>Phải quy về <code>px</code> lúc port.</td></tr>
+<tr><td><code>::before</code> / <code>::after</code> + <code>content</code></td><td class="no">không</td><td>Không có pseudo-element. Icon trạng thái phải là element <code>Image</code> thật.</td></tr>
+<tr><td><code>box-shadow</code>, <code>text-shadow</code></td><td class="no">không</td><td>Giả lập bằng border hoặc một element lồng bên trong.</td></tr>
+<tr><td>Gradient</td><td class="no">không</td><td>Rất hạn chế ở bản mới; cứ coi như phải dùng texture.</td></tr>
+<tr><td><code>@media</code></td><td class="no">không</td><td>Phản ứng theo kích thước bằng C# qua <code>GeometryChangedEvent</code>.</td></tr>
+<tr><td><code>border-radius</code>, <code>opacity</code>, <code>transition</code>, <code>transform</code></td><td class="yes">có</td><td>Port thẳng.</td></tr>
+<tr><td>Custom property <code>--x</code></td><td class="yes">có</td><td>Và Unity có sẵn <code>--unity-colors-*</code> — dùng những biến đó thay vì màu cứng.</td></tr>
+<tr><td><code>:hover :active :focus :checked :disabled</code></td><td class="yes">có</td><td></td></tr>
+<tr><td><code>:nth-child</code>, <code>+</code>, <code>~</code>, selector theo attribute</td><td class="no">không</td><td>Chỉ có selector theo class và theo cấp con.</td></tr>
+<tr><td><code>position: sticky</code> / <code>fixed</code></td><td class="no">không</td><td><code>absolute</code> và <code>relative</code> thì có.</td></tr>
+<tr><td>Vùng cuộn</td><td>—</td><td>Không phải là style. Dùng element <code>ScrollView</code>.</td></tr>
+</tbody></table></div>
+<div class="note warn">
+<span class="tag">Về mấy mockup ở trên</span>
+<p>§5.10 render trong browser nên nó dùng ba thứ <strong>không port được</strong>: <code>::before</code> để vẽ dấu ✔/✖/▲, <code>box-shadow</code> ở khung cửa sổ, và đơn vị <code>rem</code>. Hãy coi mockup chỉ là bố cục và thứ bậc thông tin — mấy ký tự đánh dấu sẽ thành element <code>Image</code> lấy từ <code>EditorGUIUtility.IconContent</code>, còn khung cửa sổ chính là cửa sổ Editor.</p>
+</div>
+
+<h5>Dùng control của Unity, đừng tự style lại</h5>
+<p>Điểm này quan trọng hơn cả chuyện tập con CSS. Một cửa sổ Editor mang ngôn ngữ thị giác riêng sẽ trông lạc lõng giữa phần còn lại của Editor, và vỡ ngay khi người dùng chuyển giữa skin sáng và tối. Giá trị của bước thiết kế ở đây là <strong>bố cục và thứ bậc thông tin — không phải phong cách thị giác</strong>, vì phong cách thị giác phải là của Unity.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Phần tử trong mockup</th><th>Control thật</th></tr></thead>
+<tbody>
+<tr><td>Dải tab</td><td><code>Toolbar</code> + <code>ToolbarToggle</code></td></tr>
+<tr><td>Dấu trạng thái ✔ / ✖ / ▲</td><td><code>Image</code> với <code>EditorGUIUtility.IconContent("TestPassed" | "TestFailed" | "Warning")</code></td></tr>
+<tr><td>Chọn platform / profile</td><td><code>EnumField</code>, <code>PopupField&lt;T&gt;</code> hoặc <code>DropdownField</code></td></tr>
+<tr><td>Ô nhập port / đường dẫn</td><td><code>TextField</code>; nếu trỏ tới asset thì <code>ObjectField</code></td></tr>
+<tr><td>Nút bấm</td><td><code>Button</code> — Unity tự style, đừng ghi đè</td></tr>
+<tr><td>Thanh tiến trình</td><td><code>ProgressBar</code></td></tr>
+<tr><td>Khối thông báo / cảnh báo / lỗi</td><td><code>HelpBox</code></td></tr>
+<tr><td>Danh sách entry đã đổi và danh sách catalog</td><td><code>ListView</code> — có virtualization, và <strong>bắt buộc</strong> với catalog hàng nghìn entry</td></tr>
+<tr><td>Panel kéo giãn được</td><td><code>TwoPaneSplitView</code></td></tr>
+</tbody></table></div>
+<p>Hệ quả thực tế cho kế hoạch: dù công cụ nào sinh ra bản thiết kế, thứ cần bàn giao vẫn là <strong>một khung UXML kèm một file USS mỏng chỉ đặt bố cục và khoảng cách</strong>, còn mọi màu sắc lấy từ <code>--unity-colors-*</code>. Task 5.10 kiểm chứng điều này bằng cách đổi skin lúc đang chạy, chứ không phải bằng cách so ảnh chụp.</p>
 
 <h3 id="d-api">6. API công khai</h3>
 <p>Ba tầng, khớp với cách chia <code>Assets</code> / <code>StandardAPI</code> / <code>Advanced</code> hiện có.</p>
@@ -737,7 +983,8 @@ lần 2 → thành công
 <tr><td><code>AddressablePreloadConfig</code></td><td>Khai báo cái gì cần preload</td><td>Thêm cờ <code>RemoteOnly</code> để danh sách preload lái thẳng được <code>DownloadRequest</code></td></tr>
 <tr><td><code>LoadError</code> / <code>LoadResult</code></td><td>Lỗi lúc load</td><td>Không đổi. <code>CdnError</code> là anh em, không phải bản thay thế. Thêm <code>LoadErrorCode.ContentNotDownloaded</code> cho tình huống "asset có trong catalog nhưng bundle chưa có ở máy".</td></tr>
 <tr><td>Scope / pooling / tiered cache</td><td>Nằm trên tầng CDN</td><td>Không</td></tr>
-<tr><td><code>AddressableManagerWindow</code></td><td>Dashboard trong Editor</td><td>Thêm tab "CDN": môi trường hiện tại, thống kê cache, id catalog, nút clear/clean thủ công</td></tr>
+<tr><td><code>AddressableManagerWindow</code></td><td>Dashboard trong Editor</td><td>Thêm một dải trạng thái CDN gọn (môi trường, id catalog, cache) kèm nút mở <code>CdnManagerWindow</code> — không nhét thêm sáu tab vào dashboard</td></tr>
+<tr><td><code>CdnManagerWindow</code></td><td>Cửa sổ mới, riêng</td><td>Sáu tab (<a href="#d-modules">§5.9</a>), mỗi tab là lớp view mỏng trên đúng những service và class Editor mà CLI đang dùng</td></tr>
 <tr><td><code>AddressableCLI</code></td><td>CLI trong Editor</td><td>Thêm <code>CdnBuildCLI</code> song song; giữ nguyên các lệnh rule hiện có</td></tr>
 </tbody></table></div>
 <p><code>AddressableManager.asmdef</code> không cần thêm reference nào — mọi thứ dùng tới đều nằm trong <code>Unity.Addressables</code>, <code>Unity.ResourceManager</code> và <code>UnityEngine.Networking</code> (thuộc engine).</p>
@@ -844,14 +1091,18 @@ lần 2 → thành công
 <div class="tablewrap"><table>
 <thead><tr><th>Phase</th><th>Trọng tâm</th><th>Công sức</th><th>Chặn</th><th>Phát hành dạng</th></tr></thead>
 <tbody>
-<tr><td>0</td><td>Nâng cấp, ràng buộc cấu hình, profile, server test cục bộ</td><td>3 ngày</td><td>tất cả</td><td>4.1.0-pre</td></tr>
-<tr><td>1</td><td>CLI build + content update, vòng đời content-state</td><td>5 ngày</td><td>2, 3</td><td>4.1.0</td></tr>
+<tr><td>0</td><td>Nâng cấp, ràng buộc cấu hình, profile, server test cục bộ, <span class="ui">tab Validator + Server</span></td><td>4 ngày</td><td>tất cả</td><td>4.1.0-pre</td></tr>
+<tr><td>1</td><td>CLI build + content update, vòng đời content-state, <span class="ui">tab Preview + Build, patch diff</span></td><td>8 ngày</td><td>2, 3</td><td>4.1.0</td></tr>
 <tr><td>2</td><td><code>CdnRuntime</code>, catalog service, decorator, fallback offline</td><td>5 ngày</td><td>3, 4</td><td>4.2.0</td></tr>
 <tr><td>3</td><td>Download service, retry, hủy, progress theo byte</td><td>6 ngày</td><td>4</td><td>4.3.0</td></tr>
-<tr><td>4</td><td>Cache service, phân loại lỗi, telemetry, tab Editor</td><td>4 ngày</td><td>5</td><td>4.4.0</td></tr>
-<tr><td>5</td><td>Ma trận test, kiểm chứng trên máy, tài liệu, dọn deprecated</td><td>5 ngày</td><td>—</td><td>5.0.0</td></tr>
+<tr><td>4</td><td>Cache service, phân loại lỗi, telemetry, <span class="ui">tab Runtime Monitor</span></td><td>5 ngày</td><td>5</td><td>4.4.0</td></tr>
+<tr><td>5</td><td>Ma trận test, kiểm chứng trên máy, tài liệu, dọn deprecated, <span class="ui">tab Catalog Inspector</span></td><td>7 ngày</td><td>—</td><td>5.0.0</td></tr>
 </tbody></table></div>
-<p><strong>Tổng: ~28 ngày lý tưởng.</strong> Phase 1 và 2 chồng lấn được một phần nếu có hai người — Phase 2 chỉ cần <em>định dạng đầu ra</em> của Phase 1, không cần công cụ đã hoàn thiện.</p>
+<p><strong>Tổng: ~35 ngày lý tưởng</strong>, trong đó <span class="ui">7 ngày là Editor tooling</span> (đánh dấu ở trên; xem <a href="#d-modules">thiết kế §5.9–5.11</a>). Phase 1 và 2 chồng lấn được một phần nếu có hai người — Phase 2 chỉ cần <em>định dạng đầu ra</em> của Phase 1, không cần công cụ đã hoàn thiện.</p>
+<div class="note">
+<span class="tag">Về 7 ngày tooling</span>
+<p>Bảy ngày đó không phải để làm cho đẹp. Settings Validator và Update Preview mỗi cái biến một loại lỗi hiện đang tốn trọn một chu kỳ build — hoặc lọt ra tới production — thành câu trả lời tức thì; còn Patch Diff sinh ra con số "người chơi sẽ tải bao nhiêu MB" mà không phần nào khác của kế hoạch tạo ra được trước lúc deploy.</p>
+</div>
 
 <h3 id="p-phase0">Phase 0 — Nền móng</h3>
 <p><strong>Mục tiêu:</strong> project được cấu hình sao cho remote content thậm chí là khả thi, và có một môi trường cục bộ để test mà không đụng tới hạ tầng thật.</p>
@@ -868,12 +1119,15 @@ lần 2 → thành công
 <tr><td>0.6</td><td>Tách đường dẫn catalog khỏi đường dẫn bundle</td><td><code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> trỏ vào thư mục theo app version; <code>LoadPath</code> của group trỏ vào thư mục bundle dùng chung. Đây là quyết định bố cục then chốt — xem <a href="#i-layout">hạ tầng §2</a>.</td></tr>
 <tr><td>0.7</td><td>HTTP server tĩnh cục bộ để test</td><td>Một menu item trong Editor phục vụ <code>ServerData/</code> trên <code>localhost:8080</code> với header <code>Cache-Control</code> đúng. Khoảng 100 dòng dùng <code>HttpListener</code>.</td></tr>
 <tr><td>0.8</td><td>Tạo một group test remote</td><td>Vài asset thật đánh dấu Remote để có cái mà tải.</td></tr>
+<tr><td class="ui">0.9</td><td><code>SettingsContract.cs</code> + khung <code>CdnManagerWindow</code> + tab Settings Validator</td><td>Mã hoá luật <a href="#d-config">§9</a> một lần dưới dạng dữ liệu, dùng chung cho <code>CatalogVerifier</code> (CI) và UI validator. Tab hiện đạt/không đạt kèm nút <em>Fix All</em>. Cái này thay cho việc làm task 0.3 bằng tay — và giữ cho nó không âm thầm trôi ngược về sau. Mockup: <a href="#d-modules">thiết kế §5.10</a>.</td></tr>
+<tr><td class="ui">0.10</td><td>Tab Local Server</td><td>Bật/tắt, ô nhập port, log request kèm mã trạng thái và header <code>Cache-Control</code>. Làm cho lỗi header lộ ra ở máy local thay vì trên production (R3).</td></tr>
 </tbody></table></div>
 
 <h4>Tiêu chí thoát</h4>
 <ul>
 <li>Một player build dùng profile <code>Local</code> boot lên, lấy catalog từ <code>localhost:8080</code>, và load được một remote asset — mà <strong>không viết một dòng code runtime nào</strong>. Việc này chứng minh cấu hình đã đúng trước khi chồng bất kỳ lớp trừu tượng nào lên trên.</li>
 <li>Toàn bộ test PlayMode/EditMode hiện có vẫn pass sau khi nâng Addressables.</li>
+<li class="ui">Settings Validator xanh hết, và cố tình chỉnh sai một setting thì nó đỏ lại — chứng minh ràng buộc đang thực sự được đọc chứ không phải hardcode.</li>
 </ul>
 
 <h4>Rủi ro</h4>
@@ -884,11 +1138,15 @@ lần 2 → thành công
 
 <h4>Sản phẩm giao</h4>
 <pre><code>Editor/Cdn/
-├── CdnBuildCLI.cs           điểm vào batchmode
-├── CdnBuildPipeline.cs      wrapper BuildPlayerContent / BuildContentUpdate
-├── ContentStateManager.cs   định vị, kiểm tra, lưu trữ content_state.bin
-├── CdnProfileManager.cs     đổi profile + tiêm đường dẫn Remote
-└── CatalogVerifier.cs       kiểm tra sau build</code></pre>
+├── CdnBuildCLI.cs                điểm vào batchmode
+├── CdnBuildPipeline.cs           wrapper BuildPlayerContent / BuildContentUpdate
+├── ContentStateManager.cs        định vị, kiểm tra, lưu trữ content_state.bin
+├── CdnProfileManager.cs          đổi profile + tiêm đường dẫn Remote
+├── CatalogVerifier.cs            kiểm tra sau build
+├── ContentDiff.cs                so hai bản build → mới/đổi/bỏ + dung lượng patch
+└── Windows/Tabs/
+    ├── UpdatePreviewTab.cs       GatherModifiedEntries trước khi build
+    └── BuildTab.cs               trạng thái content-state, nút build, patch diff</code></pre>
 
 <h4>Công việc</h4>
 <div class="tablewrap"><table>
@@ -902,11 +1160,18 @@ lần 2 → thành công
 <tr><td>1.6</td><td><code>CatalogVerifier</code></td><td>Kiểm tra: ràng buộc cấu hình (<a href="#d-config">thiết kế §9</a>) được thỏa; tên file catalog khớp <code>catalog_&lt;appVersion&gt;</code>; mọi bundle mà catalog tham chiếu đều tồn tại trong thư mục output.</td></tr>
 <tr><td>1.7</td><td>Xuất build manifest</td><td>Ghi <code>build-manifest.json</code> cạnh output: app version, tên catalog, số lượng bundle, tổng byte, git SHA, timestamp, loại build (full | update). Phục vụ bước upload và cho team một dấu vết kiểm toán.</td></tr>
 <tr><td>1.8</td><td>Workflow GitHub Actions</td><td>Hai job: <code>content-full</code> và <code>content-update</code>. Xem <a href="#i-cicd">hạ tầng §7</a>.</td></tr>
+<tr><td class="ui">1.9</td><td>Tab Update Preview</td><td>Chạy <code>GatherModifiedEntries</code> theo yêu cầu và liệt kê asset đã đổi kèm group và loại thay đổi, đánh đỏ entry thuộc group static và khoá nút build. Cùng một lệnh gọi như task 1.4 — khác ở chỗ nó trả lời <em>trước khi</em> tiêu tốn một chu kỳ build, và nó chỉ đích danh entry gây lỗi thay vì chỉ báo fail.</td></tr>
+<tr><td class="ui">1.10</td><td>Tab Build</td><td>Chọn platform/profile, panel trạng thái content-state (có không? app version nào? build lúc nào?), nút Build Full / Build Update, log build trực tiếp. Cho phép QA và producer chạy được một bản content build mà không cần programmer.</td></tr>
+<tr><td class="ui">1.11</td><td><code>ContentDiff</code> + màn patch diff</td><td>So hai bản build gần nhất: bundle mới / đổi / bị bỏ, và <strong>dung lượng patch dự kiến</strong> mà một người chơi đang ở bản trước sẽ phải tải. Hiển thị trong tab Build và ghi vào <code>build-manifest.json</code> để CI cũng kiểm tra được.</td></tr>
 </tbody></table></div>
 
 <h4>Tiêu chí thoát</h4>
 <p><strong>Cái đo được:</strong> sửa vặt một remote asset, chạy <code>BuildContentUpdate</code>, và xác nhận tập bundle kết quả chỉ khác bản build trước ở đúng (những) bundle bị ảnh hưởng. Mục tiêu: thay đổi asset 2 MB tạo ra ≤ 2.5 MB bundle thay đổi.</p>
 <p>Ngoài ra: <code>CatalogVerifier</code> làm fail build khi cố tình xóa một bundle khỏi output.</p>
+<ul>
+<li class="ui">Update Preview bắt được một group static bị sửa có chủ đích và chặn build — <em>mà không</em> phải chạy build trước.</li>
+<li class="ui">Dung lượng dự kiến của patch diff khớp với chênh lệch byte thực tế đã upload, sai số trong 5%.</li>
+</ul>
 
 <h4>Rủi ro</h4>
 <div class="tablewrap"><table>
@@ -1015,7 +1280,8 @@ lần 2 → thành công
 <tr><td>4.3</td><td>Cảnh báo ngưỡng cache</td><td>Bắn event khi dung lượng đã dùng vượt ngưỡng cấu hình được, để game hỏi người dùng.</td></tr>
 <tr><td>4.4</td><td><code>ICdnTelemetry</code> + <code>CdnDiagnostics</code></td><td>Chỉ interface; không kèm tầng truyền tải. Implementation mặc định ghi log theo cờ verbosity của <code>DebugSettings</code> sẵn có.</td></tr>
 <tr><td>4.5</td><td><code>LoadErrorCode.ContentNotDownloaded</code></td><td>Mã mới cho tình huống "asset có trong catalog nhưng bundle chưa có ở máy" — hiện không phân biệt được với lỗi chung chung.</td></tr>
-<tr><td>4.6</td><td>Tab CDN trong <code>AddressableManagerWindow</code></td><td>Môi trường, id catalog, cache đã dùng/còn trống, lần kiểm tra gần nhất, lỗi gần nhất; nút kiểm tra update, xóa cache, dọn bundle lỗi thời.</td></tr>
+<tr><td class="ui">4.6</td><td>Tab Runtime Monitor</td><td>Play mode: môi trường, id catalog, tình trạng kết nối, cache đã dùng/còn trống, số bundle lỗi thời, download trực tiếp theo byte thật kèm nút hủy; nút kiểm tra update, dọn bundle lỗi thời, xóa cache. Mockup: <a href="#d-modules">thiết kế §5.10</a>.</td></tr>
+<tr><td class="ui">4.8</td><td>Dải trạng thái CDN trong <code>AddressableManagerWindow</code></td><td>Một hàng gọn (môi trường · catalog · cache) kèm nút mở <code>CdnManagerWindow</code>. Giữ cho dashboard hiện có khỏi phình thêm sáu tab.</td></tr>
 <tr><td>4.7</td><td>Mục CDN trong tài liệu khắc phục sự cố</td><td>Mỗi <code>CdnErrorCode</code> một mục: triệu chứng, nguyên nhân, cách sửa.</td></tr>
 </tbody></table></div>
 
@@ -1041,6 +1307,8 @@ lần 2 → thành công
 <tr><td>5.6</td><td>Cập nhật <code>README</code> + <code>CHANGELOG</code></td></tr>
 <tr><td>5.7</td><td>Gỡ phần <code>[Obsolete]</code> → 5.0.0</td></tr>
 <tr><td>5.8</td><td>Ghi chú migration cho những nơi đã tích hợp</td></tr>
+<tr><td class="ui">5.9</td><td>Tab Catalog Inspector — đọc catalog đã build, tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Dựng trên <code>AddressablesTools</code> (phải ở phiên bản đọc được catalog nhị phân, vì <code>EnableJsonCatalog</code> đang là false).</td></tr>
+<tr><td class="ui">5.10</td><td>Rà soát UI cả sáu tab: skin Editor sáng/tối, thu nhỏ cửa sổ xuống 560 px, điều hướng bằng bàn phím</td></tr>
 </tbody></table></div>
 
 <h4>Tiêu chí thoát</h4>
@@ -1048,13 +1316,15 @@ lần 2 → thành công
 <li>Một thay đổi chỉ về content đi từ commit tới live trên staging qua CI mà không cần bước thủ công nào trong Unity Editor.</li>
 <li>Một máy đã cài bản trước chỉ nhận về phần delta.</li>
 <li>Tỉ lệ cache hit ở edge ≥ 95% cho bundle sau khi làm nóng.</li>
+<li class="ui">Mọi tab hiển thị đúng ở cả hai skin Editor và ở bề rộng cửa sổ nhỏ nhất — kiểm bằng cách đổi skin lúc đang chạy, không phải bằng ảnh chụp.</li>
+<li class="ui">Một người không phải programmer chạy được một bản content build lên staging chỉ bằng <code>CdnManagerWindow</code>.</li>
 </ul>
 
 <h3 id="p-release">9. Kế hoạch release</h3>
 <div class="tablewrap"><table>
 <thead><tr><th>Phiên bản</th><th>Nội dung</th><th>Breaking</th></tr></thead>
 <tbody>
-<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Chỉ Editor/CI — không đổi API runtime. Addressables nâng lên 2.9.x.</td><td>Nâng Addressables; TMP chuyển thành optional</td></tr>
+<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Chỉ Editor/CI — không đổi API runtime. Addressables nâng lên 2.9.x. Kèm <code>CdnManagerWindow</code> với các tab Validator, Server, Preview và Build.</td><td>Nâng Addressables; TMP chuyển thành optional</td></tr>
 <tr><td><code>4.2.0</code></td><td>Phase 2. API boot của <code>Cdn</code>. Chỉ thêm mới.</td><td>không</td></tr>
 <tr><td><code>4.3.0</code></td><td>Phase 3. API download; API cũ bị deprecated.</td><td><code>DownloadWithProgressAsync</code> giờ báo tốc độ/byte thật (sửa hành vi)</td></tr>
 <tr><td><code>4.4.0</code></td><td>Phase 4. Cache, telemetry, tab Editor. Chỉ thêm mới.</td><td>không</td></tr>
@@ -1096,6 +1366,7 @@ lần 2 → thành công
 <li>Dung lượng đĩa không phình lên qua các lần content update liên tiếp.</li>
 <li>Rollback một bản deploy content xấu mất một lần upload và dưới một phút.</li>
 <li>Telemetry trả lời được câu "tuần này tỉ lệ download thành công là bao nhiêu, và lỗi tập trung ở đâu".</li>
+<li class="ui">Một người không phải programmer chạy được content build, thấy được dung lượng patch dự kiến, và biết trước khi build rằng thay đổi đó có delta được hay không — mà không cần chạm vào dòng lệnh.</li>
 </ol>
 
 </section>

@@ -160,10 +160,81 @@ td code,th code{font-size:.83em; white-space:nowrap}
 .crit{color:var(--danger); font-weight:650}
 .yes{color:var(--ok); font-weight:600}
 .no{color:var(--fg-subtle)}
+.ui{color:var(--accent); background:var(--accent-soft); padding:.03em .32em; border-radius:3px; font-weight:500}
+
+/* ---------- Unity Editor window mockups ---------- */
+.mock{margin:0 0 1.6rem}
+.mock-cap{font-size:.76rem; color:var(--fg-subtle); margin-bottom:.4rem; font-family:var(--mono)}
+.mock-scroll{overflow-x:auto}
+.u-win{
+  background:#383838; border:1px solid #1c1c1c; border-radius:5px; overflow:hidden;
+  font-family:var(--sans); font-size:12px; color:#c4c4c4; line-height:1.5;
+  box-shadow:0 2px 12px rgba(0,0,0,.28); min-width:560px;
+}
+.u-title{
+  background:#3c3c3c; border-bottom:1px solid #232323; padding:.34rem .65rem;
+  font-size:11px; color:#b8b8b8; display:flex; justify-content:space-between; align-items:center;
+}
+.u-title .u-dim{color:#7e7e7e; font-family:var(--mono); font-size:10.5px}
+.u-tabs{display:flex; background:#2b2b2b; border-bottom:1px solid #232323}
+.u-tab{padding:.34rem .8rem; font-size:11px; color:#8f8f8f; white-space:nowrap; border-right:1px solid #232323}
+.u-tab.active{background:#4a4a4a; color:#e6e6e6; box-shadow:inset 0 -2px 0 #4a8fd0}
+.u-body{padding:.75rem .8rem}
+.u-sec{
+  margin:.9rem 0 .4rem; padding-bottom:.25rem; border-bottom:1px solid #2f2f2f;
+  font-size:10px; color:#8a8a8a; text-transform:uppercase; letter-spacing:.08em;
+}
+.u-sec:first-child{margin-top:0}
+.u-row{display:flex; align-items:center; gap:.55rem; padding:.2rem 0}
+.u-row .u-grow{flex:1; min-width:0}
+.u-ok,.u-bad,.u-warn{flex-shrink:0; width:13px; text-align:center; font-size:11px}
+.u-ok{color:#6cc36c}
+.u-bad{color:#e0736b}
+.u-warn{color:#e0b050}
+.u-key{color:#c8c8c8; font-family:var(--mono); font-size:11px}
+.u-val{color:#8a8a8a; font-family:var(--mono); font-size:11px}
+.u-val.hi{color:#e0b050}
+.u-btn{
+  display:inline-block; background:#585858; border:1px solid #2e2e2e; border-radius:3px;
+  padding:.18rem .65rem; font-size:11px; color:#dadada; white-space:nowrap;
+}
+.u-btn.primary{background:#4a6f9c; border-color:#2f4b6d; color:#fff}
+.u-btn.sm{padding:.08rem .45rem; font-size:10px}
+.u-btn.off{color:#767676; background:#454545}
+.u-field{
+  background:#2b2b2b; border:1px solid #1f1f1f; border-radius:2px; padding:.14rem .45rem;
+  font-family:var(--mono); font-size:11px; color:#c8c8c8; display:inline-block;
+}
+.u-field.grow{display:block}
+.u-drop::after{content:" ▾"; color:#8a8a8a}
+.u-bar{height:7px; background:#252525; border-radius:4px; overflow:hidden; border:1px solid #1f1f1f}
+.u-bar > i{display:block; height:100%; background:#4a8fd0}
+.u-bar > i.warnfill{background:#c08a30}
+.u-help{
+  background:#2f2f2f; border-left:2px solid #4a6f9c; padding:.4rem .6rem;
+  font-size:11px; color:#a6a6a6; margin-top:.55rem; border-radius:0 3px 3px 0;
+}
+.u-help.bad{border-left-color:#c05a52; background:#332b2a}
+.u-help.warn{border-left-color:#c08a30; background:#332f26}
+.u-list{background:#303030; border:1px solid #242424; border-radius:3px; padding:.3rem 0; margin-top:.35rem}
+.u-list .u-row{padding:.16rem .55rem}
+.u-list .u-row + .u-row{border-top:1px solid #2a2a2a}
+.u-actions{display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.7rem; padding-top:.6rem; border-top:1px solid #2f2f2f}
+.u-pill{
+  font-family:var(--mono); font-size:10px; padding:.05rem .35rem; border-radius:3px;
+  background:#454545; color:#a8a8a8; border:1px solid #2e2e2e;
+}
+.u-pill.new{background:#25402c; color:#7ec98a; border-color:#2f5638}
+.u-pill.chg{background:#3d3520; color:#d9b463; border-color:#54492c}
+.u-pill.del{background:#3d2725; color:#d98b83; border-color:#553330}
+.u-pill.stat{background:#3d2725; color:#e0736b; border-color:#553330}
 
 @media (max-width:1000px){
   .layout{grid-template-columns:1fr}
-  .sidebar{position:static; height:auto; max-height:none; border-right:none; border-bottom:1px solid var(--border)}
+  .sidebar{
+    position:static; height:auto; max-height:45vh; overflow-y:auto;
+    border-right:none; border-bottom:1px solid var(--border);
+  }
   main{padding:2rem 1.25rem 5rem}
   .pagehead h1{font-size:1.5rem}
 }
@@ -406,7 +477,19 @@ Editor/Cdn/
 ├── ContentStateManager.cs              locate, validate, archive addressables_content_state.bin
 ├── CdnProfileManager.cs                profile switching + Remote path injection
 ├── CatalogVerifier.cs                  post-build catalog validation
-└── CdnSettingsInspector.cs</code></pre>
+├── ContentDiff.cs                      compare two builds → new/changed/removed + patch size
+├── SettingsContract.cs                 the §9 rules as data; used by verifier AND validator UI
+├── Inspectors/
+│   └── CdnSettingsInspector.cs
+└── Windows/
+    ├── CdnManagerWindow.cs             host window, tabbed
+    └── Tabs/
+        ├── SettingsValidatorTab.cs     §9 checklist + Fix All
+        ├── LocalServerTab.cs           start/stop, port, request log
+        ├── UpdatePreviewTab.cs         GatherModifiedEntries before building
+        ├── BuildTab.cs                 content-state status, build full/update, patch diff
+        ├── CatalogInspectorTab.cs      read built catalog, search, dependencies
+        └── RuntimeMonitorTab.cs        play mode: env, catalog, cache, live download</code></pre>
 
 <h3 id="d-modules">5. Module Specifications</h3>
 
@@ -548,6 +631,171 @@ Addressables.InternalIdTransformFunc = location =&gt;
     void OnCacheCleaned(long bytesFreed);
 }</code></pre>
 <p>Recommended metrics to derive: download success rate, p50/p95 duration by size bucket, error code distribution, bytes served per app version. Without these you cannot tell a CDN problem from a client bug.</p>
+
+<h4>5.9 Editor tooling surface</h4>
+<p>Every capability above is reachable from the command line. That is necessary for CI, and not sufficient for a team: a CLI-only pipeline routes every content build, environment switch, and "how big is this patch" question through a programmer.</p>
+<p>It is also inconsistent with the package's own convention — the rule engine has <code>LayoutRuleEditorWindow</code> and <code>LayoutViewerWindow</code>, monitoring has <code>MemoryGraphView</code>. CDN gets a dedicated <code>CdnManagerWindow</code> on the same footing.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Tab</th><th>What it does</th><th>Phase</th></tr></thead>
+<tbody>
+<tr><td>Settings Validator</td><td>Renders the <a href="#d-config">§9</a> contract as a pass/fail checklist with a <em>Fix All</em> button that writes the expected values. Blocks the root cause of R3, R5 and the "full-size patch" runbook entry before they can happen.</td><td>0</td></tr>
+<tr><td>Local Server</td><td>Start/stop the test server, port, and a request log showing status codes and cache headers — so header mistakes surface locally instead of in production.</td><td>0</td></tr>
+<tr><td>Update Preview</td><td>Runs <code>GatherModifiedEntries</code> <strong>before</strong> building and lists changed assets and groups, flagging any static-group change. Turns task 1.4's post-build failure into an immediate answer.</td><td>1</td></tr>
+<tr><td>Build</td><td>Content-state status, platform/profile pickers, Build Full / Build Update, and the resulting <strong>projected patch size</strong> — the number nobody can currently obtain before deploying.</td><td>1</td></tr>
+<tr><td>Catalog Inspector</td><td>Reads a built catalog: search entries, inspect bundle dependencies, cross-check against the bundle output set. Built on <code>AddressablesTools</code>.</td><td>5</td></tr>
+<tr><td>Runtime Monitor</td><td>Play mode: active environment, catalog id, cache occupied/free, live download in real bytes, clear cache / clean obsolete.</td><td>4</td></tr>
+</tbody></table></div>
+<div class="note">
+<span class="tag">Design rule</span>
+<p>Every tab is a <strong>thin view over the same services and Editor classes the CLI uses</strong>. No logic lives in the window. This is what keeps GUI and CLI from drifting — and it is why <code>SettingsContract.cs</code> exists as data consumed by both <code>CatalogVerifier</code> (CI) and <code>SettingsValidatorTab</code> (GUI), rather than the rules being written twice.</p>
+</div>
+<p><code>CdnManagerWindow</code> is a separate window (<code>Tools ▸ Addressable Manager ▸ CDN Manager</code>), not more tabs bolted onto <code>AddressableManagerWindow</code> — that dashboard gets a compact CDN status strip and a button that opens this one.</p>
+
+<h4>5.10 Editor UI mockups</h4>
+<p>Wireframes, not screenshots — layout and information hierarchy, not final pixels. They are drawn in HTML/CSS deliberately: UI Toolkit's <code>USS</code> is a CSS subset and <code>UXML</code> is XML, so these translate close to 1:1 into the real implementation rather than needing a redraw.</p>
+
+<div class="mock">
+<div class="mock-cap">Settings Validator — the §9 contract as a checklist</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab active">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Addressable Asset Settings</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">BuildRemoteCatalog</span><span class="u-val">true</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleRetryCount</span><span class="u-val hi">0 → 3</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleTimeout</span><span class="u-val hi">0 → 30</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">MaxConcurrentWebRequests</span><span class="u-val hi">3 → 6</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">MonoScriptBundleNaming</span><span class="u-val hi">Disabled → Project Name</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">InternalIdNamingMode</span><span class="u-val hi">Full Path → Filename</span></div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">OverridePlayerVersion</span><span class="u-val">[PlayerSettings.bundleVersion]</span></div>
+    <div class="u-row"><span class="u-warn">▲</span><span class="u-key u-grow">ContentStateBuildPath</span><span class="u-val hi">inside Assets/</span></div>
+    <div class="u-sec">Group schemas — 2 remote groups</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">UseAssetBundleCrc</span><span class="u-val">all groups</span></div>
+    <div class="u-row"><span class="u-bad">✖</span><span class="u-key u-grow">BundleNaming · Stage_Content</span><span class="u-val hi">Filename → must include hash</span></div>
+    <div class="u-help warn">6 violations. <strong>Fix All</strong> writes the expected values and marks the settings dirty. <code style="background:none;border:none;color:#c9a86a">ContentStateBuildPath</code> is excluded — moving it also changes <code style="background:none;border:none;color:#c9a86a">.gitignore</code>, so it stays manual.</div>
+    <div class="u-actions"><span class="u-btn primary">Fix All (6)</span><span class="u-btn">Re-check</span><span class="u-btn">Copy report</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Update Preview — catches a static-group change <em>before</em> the build runs</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab active">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Content state</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">addressables_content_state.bin</span><span class="u-val">app 1.4.1 · 2026-08-04 11:22</span></div>
+    <div class="u-sec">Modified entries — GatherModifiedEntries</div>
+    <div class="u-list">
+      <div class="u-row"><span class="u-key u-grow">Assets/Art/UI/shop_banner.png</span><span class="u-val">Stage_Content</span><span class="u-pill chg">changed</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Art/UI/pack_icon_03.png</span><span class="u-val">Stage_Content</span><span class="u-pill new">new</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Prefabs/Boss_04.prefab</span><span class="u-val">Stage_Content</span><span class="u-pill chg">changed</span></div>
+      <div class="u-row"><span class="u-key u-grow">Assets/Config/balance.asset</span><span class="u-val">Core_Static</span><span class="u-pill stat">STATIC</span></div>
+    </div>
+    <div class="u-help bad"><strong>Core_Static is a static group.</strong> A content update cannot deliver this change to existing players — it needs a new player build. Move the entry to a dynamic group, or ship a binary.</div>
+    <div class="u-actions"><span class="u-btn">Re-scan</span><span class="u-btn">Move 1 entry to dynamic group</span><span class="u-btn off">Build Content Update</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Build — projected patch size, answerable before deploying</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">Prod · Android · 1.4.1</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab active">Build</span><span class="u-tab">Catalog</span><span class="u-tab">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Target</div>
+    <div class="u-row"><span class="u-key" style="width:110px">Platform</span><span class="u-field u-drop">Android</span><span class="u-key" style="width:56px">Profile</span><span class="u-field u-drop">Prod</span><span class="u-key">App version</span><span class="u-val">1.4.1</span></div>
+    <div class="u-sec">Content state</div>
+    <div class="u-row"><span class="u-ok">✔</span><span class="u-key u-grow">ServerData/ContentState/Android/</span><span class="u-val">app 1.4.1 · 2026-08-04 11:22</span></div>
+    <div class="u-actions" style="border-top:none; padding-top:.5rem"><span class="u-btn">Build Full Content</span><span class="u-btn primary">Build Content Update</span></div>
+    <div class="u-sec">Last build — content update · 2026-08-10 09:41 · 00:02:18</div>
+    <div class="u-row"><span class="u-key u-grow">bundles unchanged</span><span class="u-val">184</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundles changed</span><span class="u-val">3</span><span class="u-pill chg">changed</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundles new</span><span class="u-val">1</span><span class="u-pill new">new</span></div>
+    <div class="u-row"><span class="u-key u-grow">bundles removed</span><span class="u-val">0</span></div>
+    <div class="u-row" style="margin-top:.4rem"><span class="u-key u-grow" style="color:#e6e6e6">projected patch size</span><span class="u-val" style="color:#7ec98a; font-size:12px">4.7 MB</span><span class="u-val">of 812 MB full</span></div>
+    <div class="u-bar" style="margin-top:.3rem"><i style="width:2%"></i></div>
+    <div class="u-actions"><span class="u-btn">Open output</span><span class="u-btn">Copy manifest</span><span class="u-btn">Verify catalog</span></div>
+  </div>
+</div></div>
+</div>
+
+<div class="mock">
+<div class="mock-cap">Runtime Monitor — play mode, real bytes</div>
+<div class="mock-scroll"><div class="u-win">
+  <div class="u-title"><span>CDN Manager</span><span class="u-dim">● Play mode</span></div>
+  <div class="u-tabs">
+    <span class="u-tab">Validator</span><span class="u-tab">Server</span><span class="u-tab">Preview</span><span class="u-tab">Build</span><span class="u-tab">Catalog</span><span class="u-tab active">Monitor</span>
+  </div>
+  <div class="u-body">
+    <div class="u-sec">Session</div>
+    <div class="u-row"><span class="u-key" style="width:110px">Environment</span><span class="u-val u-grow">prod</span><span class="u-btn sm">Switch ▾</span></div>
+    <div class="u-row"><span class="u-key" style="width:110px">Catalog</span><span class="u-val u-grow">catalog_1.4.1 · 8f3a…c91</span></div>
+    <div class="u-row"><span class="u-key" style="width:110px">Last check</span><span class="u-val u-grow">12s ago · no update</span></div>
+    <div class="u-row"><span class="u-key" style="width:110px">Reachability</span><span class="u-val u-grow">Online · WiFi (unmetered)</span></div>
+    <div class="u-sec">Download — preload_core</div>
+    <div class="u-bar"><i style="width:62%"></i></div>
+    <div class="u-row"><span class="u-val u-grow">48.3 MB / 78.1 MB · 2.4 MB/s · ETA 12s</span><span class="u-val">attempt 1/3</span><span class="u-btn sm">Cancel</span></div>
+    <div class="u-sec">Bundle cache</div>
+    <div class="u-bar"><i class="warnfill" style="width:34%"></i></div>
+    <div class="u-row"><span class="u-val u-grow">occupied 1.2 GB · free 8.4 GB</span></div>
+    <div class="u-row"><span class="u-warn">▲</span><span class="u-key u-grow">obsolete bundles</span><span class="u-val hi">6 · 142 MB</span></div>
+    <div class="u-actions"><span class="u-btn">Check for update</span><span class="u-btn primary">Clean obsolete (142 MB)</span><span class="u-btn">Clear cache</span></div>
+  </div>
+</div></div>
+</div>
+
+<h4>5.11 Porting mockups to UI Toolkit</h4>
+<p>Designing these screens in a web design tool and porting the result is workable — <code>UXML</code> is XML and <code>USS</code> is CSS-shaped, so the mental model carries over. But <strong>USS is a subset, and the gaps sit exactly where a web-oriented tool naturally leads you.</strong> Author against the subset from the start and the port is mechanical; author freely and the port is a layout rewrite.</p>
+
+<h5>CSS → USS portability</h5>
+<div class="tablewrap"><table>
+<thead><tr><th>Feature</th><th>USS</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Flexbox</td><td class="yes">yes</td><td>The only layout model. <code>display:flex</code> is the <em>default</em> on every element.</td></tr>
+<tr><td>CSS Grid</td><td class="no">no</td><td>Not implemented at all. Compose with nested flex containers.</td></tr>
+<tr><td><code>px</code>, <code>%</code></td><td class="yes">yes</td><td>The only length units.</td></tr>
+<tr><td><code>rem</code>, <code>em</code>, <code>vh</code>, <code>vw</code>, <code>ch</code></td><td class="no">no</td><td>Convert to <code>px</code> during the port.</td></tr>
+<tr><td><code>::before</code> / <code>::after</code> + <code>content</code></td><td class="no">no</td><td>No pseudo-elements. Status icons must be real <code>Image</code> elements.</td></tr>
+<tr><td><code>box-shadow</code>, <code>text-shadow</code></td><td class="no">no</td><td>Approximate with a border or a nested element.</td></tr>
+<tr><td>Gradients</td><td class="no">no</td><td>Very limited in newer versions; assume a texture instead.</td></tr>
+<tr><td><code>@media</code></td><td class="no">no</td><td>Respond to size in C# via the <code>GeometryChangedEvent</code>.</td></tr>
+<tr><td><code>border-radius</code>, <code>opacity</code>, <code>transition</code>, <code>transform</code></td><td class="yes">yes</td><td>Port directly.</td></tr>
+<tr><td>Custom properties <code>--x</code></td><td class="yes">yes</td><td>And Unity ships <code>--unity-colors-*</code> — use those instead of literal colors.</td></tr>
+<tr><td><code>:hover :active :focus :checked :disabled</code></td><td class="yes">yes</td><td></td></tr>
+<tr><td><code>:nth-child</code>, <code>+</code>, <code>~</code>, attribute selectors</td><td class="no">no</td><td>Class and descendant selectors only.</td></tr>
+<tr><td><code>position: sticky</code> / <code>fixed</code></td><td class="no">no</td><td><code>absolute</code> and <code>relative</code> are supported.</td></tr>
+<tr><td>Scrolling regions</td><td>—</td><td>Not a style. Use the <code>ScrollView</code> element.</td></tr>
+</tbody></table></div>
+<div class="note warn">
+<span class="tag">About the mockups above</span>
+<p>§5.10 is rendered in a browser, so it uses three things that <strong>do not port</strong>: <code>::before</code> for the ✔/✖/▲ markers, <code>box-shadow</code> on the window frame, and <code>rem</code> units. Treat the mockups as layout and information hierarchy only — the marker glyphs become <code>Image</code> elements fed by <code>EditorGUIUtility.IconContent</code>, and the frame is the Editor window itself.</p>
+</div>
+
+<h5>Use Unity's controls, not restyled ones</h5>
+<p>This matters more than the CSS subset. An Editor window that carries its own visual language looks foreign next to the rest of the Editor and breaks the moment the user switches between the light and dark skin. The design step's value here is <strong>layout and information hierarchy — not visual style</strong>, because the visual style should be Unity's.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Mockup element</th><th>Real control</th></tr></thead>
+<tbody>
+<tr><td>Tab strip</td><td><code>Toolbar</code> + <code>ToolbarToggle</code></td></tr>
+<tr><td>✔ / ✖ / ▲ status marker</td><td><code>Image</code> with <code>EditorGUIUtility.IconContent("TestPassed" | "TestFailed" | "Warning")</code></td></tr>
+<tr><td>Platform / profile picker</td><td><code>EnumField</code>, <code>PopupField&lt;T&gt;</code> or <code>DropdownField</code></td></tr>
+<tr><td>Port / path field</td><td><code>TextField</code>; asset targets use <code>ObjectField</code></td></tr>
+<tr><td>Buttons</td><td><code>Button</code> — Unity styles it; do not override</td></tr>
+<tr><td>Progress bars</td><td><code>ProgressBar</code></td></tr>
+<tr><td>Info / warning / error callouts</td><td><code>HelpBox</code></td></tr>
+<tr><td>Modified-entry and catalog lists</td><td><code>ListView</code> — virtualized, and <strong>required</strong> for catalogs with thousands of entries</td></tr>
+<tr><td>Resizable panels</td><td><code>TwoPaneSplitView</code></td></tr>
+</tbody></table></div>
+<p>Practical consequence for the plan: whichever tool produces the design, the deliverable that matters is a <strong>UXML skeleton plus a thin USS that only sets layout and spacing</strong>, with every colour drawn from <code>--unity-colors-*</code>. Task 5.10 verifies this by switching skin at runtime rather than by comparing screenshots.</p>
 
 <h3 id="d-api">6. Public API Surface</h3>
 <p>Three tiers, matching the existing <code>Assets</code> / <code>StandardAPI</code> / <code>Advanced</code> split.</p>
@@ -740,7 +988,8 @@ attempt 2 → success
 <tr><td><code>AddressablePreloadConfig</code></td><td>Declares what to preload</td><td>Extend with a <code>RemoteOnly</code> flag so preload lists can drive <code>DownloadRequest</code> directly</td></tr>
 <tr><td><code>LoadError</code> / <code>LoadResult</code></td><td>Load-time errors</td><td>Unchanged. <code>CdnError</code> is a sibling, not a replacement. Add <code>LoadErrorCode.ContentNotDownloaded</code> for "asset exists in catalog but bundle is not local".</td></tr>
 <tr><td>Scopes / pooling / tiered cache</td><td>Above the CDN layer</td><td>None</td></tr>
-<tr><td><code>AddressableManagerWindow</code></td><td>Editor dashboard</td><td>Add a "CDN" tab: current environment, cache stats, catalog id, manual clear/clean</td></tr>
+<tr><td><code>AddressableManagerWindow</code></td><td>Editor dashboard</td><td>Add a compact CDN status strip (environment, catalog id, cache) with a button that opens <code>CdnManagerWindow</code> — not six more tabs on the dashboard</td></tr>
+<tr><td><code>CdnManagerWindow</code></td><td>New dedicated window</td><td>Six tabs (<a href="#d-modules">§5.9</a>), each a thin view over the same services and Editor classes the CLI drives</td></tr>
 <tr><td><code>AddressableCLI</code></td><td>Editor CLI</td><td>New <code>CdnBuildCLI</code> alongside it; keep the existing rule commands untouched</td></tr>
 </tbody></table></div>
 <p><code>AddressableManager.asmdef</code> needs no new references — everything used is in <code>Unity.Addressables</code>, <code>Unity.ResourceManager</code>, and <code>UnityEngine.Networking</code> (part of the engine).</p>
@@ -847,14 +1096,18 @@ attempt 2 → success
 <div class="tablewrap"><table>
 <thead><tr><th>Phase</th><th>Focus</th><th>Effort</th><th>Blocks</th><th>Ships as</th></tr></thead>
 <tbody>
-<tr><td>0</td><td>Upgrade, settings contract, profiles, local test server</td><td>3 d</td><td>everything</td><td>4.1.0-pre</td></tr>
-<tr><td>1</td><td>Build + content-update CLI, content-state lifecycle</td><td>5 d</td><td>2, 3</td><td>4.1.0</td></tr>
+<tr><td>0</td><td>Upgrade, settings contract, profiles, local test server, <span class="ui">Validator + Server tabs</span></td><td>4 d</td><td>everything</td><td>4.1.0-pre</td></tr>
+<tr><td>1</td><td>Build + content-update CLI, content-state lifecycle, <span class="ui">Preview + Build tabs, patch diff</span></td><td>8 d</td><td>2, 3</td><td>4.1.0</td></tr>
 <tr><td>2</td><td><code>CdnRuntime</code>, catalog service, decorator, offline fallback</td><td>5 d</td><td>3, 4</td><td>4.2.0</td></tr>
 <tr><td>3</td><td>Download service, retry, cancel, byte progress</td><td>6 d</td><td>4</td><td>4.3.0</td></tr>
-<tr><td>4</td><td>Cache service, error taxonomy, telemetry, editor tab</td><td>4 d</td><td>5</td><td>4.4.0</td></tr>
-<tr><td>5</td><td>Test matrix, device validation, docs, deprecation cleanup</td><td>5 d</td><td>—</td><td>5.0.0</td></tr>
+<tr><td>4</td><td>Cache service, error taxonomy, telemetry, <span class="ui">Runtime Monitor tab</span></td><td>5 d</td><td>5</td><td>4.4.0</td></tr>
+<tr><td>5</td><td>Test matrix, device validation, docs, deprecation cleanup, <span class="ui">Catalog Inspector tab</span></td><td>7 d</td><td>—</td><td>5.0.0</td></tr>
 </tbody></table></div>
-<p><strong>Total: ~28 ideal days.</strong> Phases 1 and 2 can partially overlap if two people are available — Phase 2 only needs Phase 1's <em>output format</em>, not its finished tooling.</p>
+<p><strong>Total: ~35 ideal days</strong>, of which <span class="ui">7 are Editor tooling</span> (highlighted above; see <a href="#d-modules">design §5.9–5.10</a>). Phases 1 and 2 can partially overlap if two people are available — Phase 2 only needs Phase 1's <em>output format</em>, not its finished tooling.</p>
+<div class="note">
+<span class="tag">On the tooling budget</span>
+<p>The 7 days are not polish. Settings Validator and Update Preview each convert a failure that currently costs a full build cycle — or reaches production — into an immediate answer, and Patch Diff produces a number (how many MB will a player download) that no other part of the plan can produce before deploy.</p>
+</div>
 
 <h3 id="p-phase0">Phase 0 — Foundations</h3>
 <p><strong>Goal:</strong> the project is configured such that remote content is even possible, and there is a local environment to test against without touching real infrastructure.</p>
@@ -871,12 +1124,15 @@ attempt 2 → success
 <tr><td>0.6</td><td>Split catalog path from bundle path</td><td><code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> point at the per-app-version folder; group <code>LoadPath</code> points at the shared bundle folder. This is the key layout decision — see <a href="#i-layout">infra §2</a>.</td></tr>
 <tr><td>0.7</td><td>Local static HTTP server for testing</td><td>Editor menu item that serves <code>ServerData/</code> on <code>localhost:8080</code> with correct <code>Cache-Control</code> headers. ~100 lines over <code>HttpListener</code>.</td></tr>
 <tr><td>0.8</td><td>Create a remote test group</td><td>A handful of real assets marked Remote so there is something to actually download.</td></tr>
+<tr><td class="ui">0.9</td><td><code>SettingsContract.cs</code> + <code>CdnManagerWindow</code> shell + Settings Validator tab</td><td>Encode the <a href="#d-config">§9</a> rules once as data, consumed by both <code>CatalogVerifier</code> (CI) and the validator UI. Tab renders pass/fail with a <em>Fix All</em> button. This replaces doing task 0.3 by hand — and keeps it from silently regressing later. Mockup: <a href="#d-modules">design §5.10</a>.</td></tr>
+<tr><td class="ui">0.10</td><td>Local Server tab</td><td>Start/stop, port field, request log with status codes and <code>Cache-Control</code> headers. Makes header mistakes visible locally rather than in production (R3).</td></tr>
 </tbody></table></div>
 
 <h4>Exit criteria</h4>
 <ul>
 <li>A player build with <code>Local</code> profile boots, fetches its catalog from <code>localhost:8080</code>, and loads a remote asset — with <strong>zero new runtime code written</strong>. This proves the configuration is right before any abstraction is layered on it.</li>
 <li>All existing PlayMode/EditMode tests still pass after the Addressables upgrade.</li>
+<li class="ui">Settings Validator shows all green, and deliberately reverting one setting turns it red again — proving the contract is actually being read, not hardcoded.</li>
 </ul>
 
 <h4>Risks</h4>
@@ -887,11 +1143,15 @@ attempt 2 → success
 
 <h4>Deliverables</h4>
 <pre><code>Editor/Cdn/
-├── CdnBuildCLI.cs           batchmode entry points
-├── CdnBuildPipeline.cs      BuildPlayerContent / BuildContentUpdate wrappers
-├── ContentStateManager.cs   locate, validate, archive content_state.bin
-├── CdnProfileManager.cs     profile switching + Remote path injection
-└── CatalogVerifier.cs       post-build validation</code></pre>
+├── CdnBuildCLI.cs                batchmode entry points
+├── CdnBuildPipeline.cs           BuildPlayerContent / BuildContentUpdate wrappers
+├── ContentStateManager.cs        locate, validate, archive content_state.bin
+├── CdnProfileManager.cs          profile switching + Remote path injection
+├── CatalogVerifier.cs            post-build validation
+├── ContentDiff.cs                compare two builds → new/changed/removed + patch size
+└── Windows/Tabs/
+    ├── UpdatePreviewTab.cs       GatherModifiedEntries before building
+    └── BuildTab.cs               content-state status, build buttons, patch diff</code></pre>
 
 <h4>Tasks</h4>
 <div class="tablewrap"><table>
@@ -905,11 +1165,18 @@ attempt 2 → success
 <tr><td>1.6</td><td><code>CatalogVerifier</code></td><td>Assert: settings contract (<a href="#d-config">design §9</a>) holds; catalog filename matches expected <code>catalog_&lt;appVersion&gt;</code>; every bundle referenced by the catalog exists in the output directory.</td></tr>
 <tr><td>1.7</td><td>Build manifest emission</td><td>Write <code>build-manifest.json</code> next to the output: app version, catalog name, bundle count, total bytes, git SHA, timestamp, build type (full | update). Feeds the upload step and gives the team an audit trail.</td></tr>
 <tr><td>1.8</td><td>GitHub Actions workflow</td><td>Two jobs: <code>content-full</code> and <code>content-update</code>. See <a href="#i-cicd">infra §7</a>.</td></tr>
+<tr><td class="ui">1.9</td><td>Update Preview tab</td><td>Runs <code>GatherModifiedEntries</code> on demand and lists changed assets with their group and change kind, flagging static-group entries in red and disabling the build button. Same call as task 1.4 — the difference is it answers <em>before</em> a build cycle is spent, and it names the offending entry instead of just failing.</td></tr>
+<tr><td class="ui">1.10</td><td>Build tab</td><td>Platform/profile pickers, content-state status panel (present? which app version? built when?), Build Full / Build Update buttons, live build log. Lets QA and producers run a content build without a programmer.</td></tr>
+<tr><td class="ui">1.11</td><td><code>ContentDiff</code> + patch diff view</td><td>Compare the last two builds: bundles new / changed / removed, and the <strong>projected patch size</strong> a player on the previous build will download. Surfaced in the Build tab and written into <code>build-manifest.json</code> so CI can assert on it too.</td></tr>
 </tbody></table></div>
 
 <h4>Exit criteria</h4>
 <p><strong>The measurable one:</strong> make a trivial change to one remote asset, run <code>BuildContentUpdate</code>, and confirm the resulting bundle set differs from the previous build by only the affected bundle(s). Target: a 2 MB asset change produces ≤ 2.5 MB of changed bundles.</p>
 <p>Also: <code>CatalogVerifier</code> fails the build when a bundle is deliberately deleted from the output.</p>
+<ul>
+<li class="ui">Update Preview flags a deliberately-modified static group and blocks the build — <em>without</em> running a build first.</li>
+<li class="ui">Patch diff's projected size matches the actual uploaded byte delta within 5%.</li>
+</ul>
 
 <h4>Risks</h4>
 <div class="tablewrap"><table>
@@ -1018,7 +1285,8 @@ attempt 2 → success
 <tr><td>4.3</td><td>Cache budget warning</td><td>Raise an event when occupied exceeds a configurable threshold so the game can prompt.</td></tr>
 <tr><td>4.4</td><td><code>ICdnTelemetry</code> + <code>CdnDiagnostics</code></td><td>Interface only; no transport bundled. Default implementation logs under the existing <code>DebugSettings</code> verbosity flags.</td></tr>
 <tr><td>4.5</td><td><code>LoadErrorCode.ContentNotDownloaded</code></td><td>New code for "the asset is in the catalog but its bundle is not local" — currently indistinguishable from a generic failure.</td></tr>
-<tr><td>4.6</td><td>CDN tab in <code>AddressableManagerWindow</code></td><td>Environment, catalog id, cache occupied/free, last check time, last error; buttons for check-update, clear cache, clean obsolete.</td></tr>
+<tr><td class="ui">4.6</td><td>Runtime Monitor tab</td><td>Play mode: environment, catalog id, reachability, cache occupied/free, obsolete-bundle count, live download in real bytes with cancel; buttons for check-update, clean obsolete, clear cache. Mockup: <a href="#d-modules">design §5.10</a>.</td></tr>
+<tr><td class="ui">4.8</td><td>CDN status strip in <code>AddressableManagerWindow</code></td><td>One compact row (environment · catalog · cache) plus a button that opens <code>CdnManagerWindow</code>. Keeps the existing dashboard from growing six tabs.</td></tr>
 <tr><td>4.7</td><td><code>TROUBLESHOOTING</code> — CDN section</td><td>One entry per <code>CdnErrorCode</code>: symptom, cause, fix.</td></tr>
 </tbody></table></div>
 
@@ -1044,6 +1312,8 @@ attempt 2 → success
 <tr><td>5.6</td><td><code>README</code> + <code>CHANGELOG</code> updates</td></tr>
 <tr><td>5.7</td><td>Remove the <code>[Obsolete]</code> surface → 5.0.0</td></tr>
 <tr><td>5.8</td><td>Migration note for existing integrators</td></tr>
+<tr><td class="ui">5.9</td><td>Catalog Inspector tab — read a built catalog, search entries, inspect bundle dependencies, cross-check against the bundle output set. Built on <code>AddressablesTools</code> (must be on a version that reads binary catalogs, since <code>EnableJsonCatalog</code> is false).</td></tr>
+<tr><td class="ui">5.10</td><td>UI pass on all six tabs: dark/light Editor skin, window resize down to 560 px, keyboard navigation</td></tr>
 </tbody></table></div>
 
 <h4>Exit criteria</h4>
@@ -1051,13 +1321,15 @@ attempt 2 → success
 <li>A content-only change goes from commit to live on staging via CI with no manual Unity Editor step.</li>
 <li>A device with the previous build installed receives only the delta.</li>
 <li>Edge cache hit ratio ≥ 95% for bundles after warm-up.</li>
+<li class="ui">Every tab renders correctly in both Editor skins and at minimum window width — verified by switching skin at runtime, not just by screenshot.</li>
+<li class="ui">Someone who is not a programmer runs a content build to staging using only <code>CdnManagerWindow</code>.</li>
 </ul>
 
 <h3 id="p-release">9. Release Plan</h3>
 <div class="tablewrap"><table>
 <thead><tr><th>Version</th><th>Contents</th><th>Breaking</th></tr></thead>
 <tbody>
-<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Editor/CI only — no runtime API change. Addressables upgraded to 2.9.x.</td><td>Addressables upgrade; TMP moved to optional</td></tr>
+<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Editor/CI only — no runtime API change. Addressables upgraded to 2.9.x. Ships <code>CdnManagerWindow</code> with Validator, Server, Preview and Build tabs.</td><td>Addressables upgrade; TMP moved to optional</td></tr>
 <tr><td><code>4.2.0</code></td><td>Phase 2. <code>Cdn</code> boot APIs. Additive.</td><td>none</td></tr>
 <tr><td><code>4.3.0</code></td><td>Phase 3. Download APIs; old surface deprecated.</td><td><code>DownloadWithProgressAsync</code> now reports real speed/bytes (behaviour fix)</td></tr>
 <tr><td><code>4.4.0</code></td><td>Phase 4. Cache, telemetry, editor tab. Additive.</td><td>none</td></tr>
@@ -1099,6 +1371,7 @@ attempt 2 → success
 <li>Disk usage does not grow across consecutive content updates.</li>
 <li>Rolling back a bad content deploy takes one upload and under a minute.</li>
 <li>Telemetry can answer "what is our download success rate this week, and where are failures concentrated".</li>
+<li class="ui">A non-programmer can run a content build, see the projected patch size, and know before building whether the change is delta-able — without touching a command line.</li>
 </ol>
 
 </section>
