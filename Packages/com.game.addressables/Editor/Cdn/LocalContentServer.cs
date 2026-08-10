@@ -37,6 +37,8 @@ namespace AddressableManager.Editor.Cdn
 
         public event EventHandler<RequestEventArgs> RequestReceived;
         public bool IsRunning => _isRunning;
+        public int ActivePort => _currentPort;
+        public string ServerDataPath => _serverDataPath;
 
         public LocalContentServer()
         {
@@ -169,14 +171,16 @@ namespace AddressableManager.Editor.Cdn
                 if (!fullPath.StartsWith(fullServerPath))
                 {
                     SendErrorResponse(context, 403, "Forbidden");
-                    RaiseRequestEvent(request.HttpMethod, requestPath, 403, null);
+                    var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
+                    RaiseRequestEvent(request.HttpMethod, requestPath, 403, cacheControl, 0, matchesPolicy);
                     return;
                 }
 
                 if (!File.Exists(filePath))
                 {
                     SendErrorResponse(context, 404, "Not Found");
-                    RaiseRequestEvent(request.HttpMethod, requestPath, 404, null);
+                    var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
+                    RaiseRequestEvent(request.HttpMethod, requestPath, 404, cacheControl, 0, matchesPolicy);
                     return;
                 }
 
@@ -219,7 +223,10 @@ namespace AddressableManager.Editor.Cdn
                 Debug.LogError($"Error processing request: {ex.Message}");
                 try
                 {
+                    var requestPath = context.Request.Url.AbsolutePath;
+                    var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
                     SendErrorResponse(context, 500, "Internal Server Error");
+                    RaiseRequestEvent(context.Request.HttpMethod, requestPath, 500, cacheControl, 0, matchesPolicy);
                 }
                 catch { }
             }
@@ -374,7 +381,7 @@ namespace AddressableManager.Editor.Cdn
             context.Response.OutputStream.Write(buffer, 0, buffer.Length);
         }
 
-        private void RaiseRequestEvent(string method, string path, int statusCode, string cacheControl, long bytesSent = 0, bool pathMatchesInfraPolicy = true)
+        private void RaiseRequestEvent(string method, string path, int statusCode, string cacheControl, long bytesSent, bool pathMatchesInfraPolicy)
         {
             RequestReceived?.Invoke(this, new RequestEventArgs
             {
@@ -392,33 +399,41 @@ namespace AddressableManager.Editor.Cdn
     /// <summary>
     /// Editor menu for LocalContentServer.
     /// Uses [InitializeOnLoad] to ensure cleanup hooks are registered even if the menu is never touched.
+    /// Exposes a shared Instance that both menu and UI tabs use.
     /// </summary>
     [InitializeOnLoad]
     public static class LocalContentServerMenu
     {
-        private static LocalContentServer _server;
+        private static LocalContentServer _instance;
         private const int DefaultPort = 8080;
+
+        /// <summary>
+        /// Shared server instance used by menu and UI tabs.
+        /// </summary>
+        public static LocalContentServer Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new LocalContentServer();
+                }
+                return _instance;
+            }
+        }
 
         static LocalContentServerMenu()
         {
             // Initialize server (creates cleanup hooks) even if menu is never touched
-            if (_server == null)
-            {
-                _server = new LocalContentServer();
-            }
+            _ = Instance;
         }
 
         [MenuItem("Tools/Addressable Manager/Start Local Content Server")]
         private static void StartServer()
         {
-            if (_server == null)
+            if (!Instance.IsRunning)
             {
-                _server = new LocalContentServer();
-            }
-
-            if (!_server.IsRunning)
-            {
-                _server.Start(DefaultPort);
+                Instance.Start(DefaultPort);
             }
             else
             {
@@ -429,9 +444,9 @@ namespace AddressableManager.Editor.Cdn
         [MenuItem("Tools/Addressable Manager/Stop Local Content Server")]
         private static void StopServer()
         {
-            if (_server?.IsRunning == true)
+            if (Instance.IsRunning)
             {
-                _server.Stop();
+                Instance.Stop();
             }
             else
             {
@@ -442,7 +457,7 @@ namespace AddressableManager.Editor.Cdn
         [MenuItem("Tools/Addressable Manager/Stop Local Content Server", validate = true)]
         private static bool ValidateStopServer()
         {
-            return _server?.IsRunning == true;
+            return Instance.IsRunning;
         }
     }
 }
