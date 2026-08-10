@@ -1,0 +1,174 @@
+/*
+ * Local Server tab (design doc §5.9/§5.10 mockups, task 0.10). Layout/spacing only, colours from
+ * --unity-colors-* (design doc §5.11 / repo Invariant 5). The request log uses ListView so the number of
+ * live VisualElements stays bounded to roughly what fits on screen no matter how long a test session
+ * runs - see LocalServerTab.cs for the matching cap on the backing data. Unmatched-policy rows are
+ * flagged with a real Image icon (EditorGUIUtility.IconContent, not ::before/::after - not supported by
+ * USS) plus an explicit text tag, not colour alone, and only reuse --unity-colors-* tokens already
+ * proven elsewhere in this folder (CdnManagerWindow.uss, SettingsValidatorTab.uss) rather than
+ * introducing new ones this package has not already relied on.
+ */
+
+.cdn-tab-page {
+    flex-grow: 1;
+    flex-direction: column;
+    padding: 8px;
+}
+
+.cdn-server-status {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-server-toolbar {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.cdn-server-port-label {
+    -unity-text-align: middle-left;
+    padding: 0 6px;
+}
+
+.cdn-server-port-field {
+    width: 70px;
+}
+
+.cdn-server-toggle {
+    margin-left: 8px;
+}
+
+/* Request log - a header band (below) plus a virtualized ListView (LocalServerTab.cs). Both share the
+   .cdn-log-row column layout so header labels line up with body cells. */
+
+.cdn-log-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-log-row:hover {
+    background-color: var(--unity-colors-highlight-background-inactive);
+}
+
+.cdn-log-row-unmatched {
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.cdn-log-header {
+    flex-shrink: 0;
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.cdn-log-header-text {
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-log-icon {
+    width: 13px;
+    height: 13px;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.cdn-log-time {
+    width: 52px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-log-method {
+    width: 42px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-log-path {
+    flex-grow: 1;
+    flex-shrink: 1;
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 6px;
+}
+
+.cdn-log-status {
+    width: 32px;
+    flex-shrink: 0;
+    font-size: 10px;
+    -unity-text-align: middle-right;
+    color: var(--unity-colors-default-text);
+    margin-right: 6px;
+}
+
+.cdn-log-status-error {
+    -unity-font-style: bold;
+}
+
+.cdn-log-cache-control {
+    width: 160px;
+    flex-shrink: 1;
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 6px;
+}
+
+.cdn-log-size {
+    width: 56px;
+    flex-shrink: 0;
+    font-size: 10px;
+    -unity-text-align: middle-right;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-log-tag-unmatched {
+    margin-left: 6px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    font-size: 9px;
+    color: var(--unity-colors-default-text);
+    flex-shrink: 0;
+}
+
+.cdn-server-log {
+    flex-grow: 1;
+    flex-shrink: 1;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+}
+
+.cdn-actions-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    align-items: center;
+    padding-top: 6px;
+    justify-content: flex-end;
+}
+
+.cdn-server-log-count {
+    flex-grow: 1;
+    flex-shrink: 1;
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-left;
+}
+
+.cdn-btn {
+    min-width: 80px;
+    margin-left: 6px;
+}
