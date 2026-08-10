@@ -104,10 +104,9 @@ namespace AddressableManager.Editor.Cdn.Windows
         }
 
         /// <summary>
-        /// Tab registration point. Task 0.9 registers Validator only. Append new tabs here as later
-        /// tasks land - do not replace this method's contents wholesale, and do not register any tab
-        /// anywhere else:
-        ///   task 0.10  Local Server tab       (LocalContentServer.cs already exists in this folder)
+        /// Tab registration point. Tasks 0.9-0.10 register Validator and Local Server. Append new tabs
+        /// here as later tasks land - do not replace this method's contents wholesale, and do not
+        /// register any tab anywhere else:
         ///   task 1.9   Update Preview tab
         ///   task 1.10  Build tab
         ///   task 4.6   Runtime Monitor tab
@@ -117,6 +116,7 @@ namespace AddressableManager.Editor.Cdn.Windows
         {
             _tabs.Clear();
             _tabs.Add(new SettingsValidatorTab());
+            _tabs.Add(new LocalServerTab());
         }
 
         private void BuildTabStrip()

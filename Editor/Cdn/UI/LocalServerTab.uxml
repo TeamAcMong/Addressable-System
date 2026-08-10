@@ -1,0 +1,31 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="server-root" class="cdn-tab-page">
+        <ui:HelpBox name="server-status" text="Checking..." class="cdn-server-status" />
+
+        <!-- server-toggle (ToolbarToggle) is added in LocalServerTab.cs, the same way CdnManagerWindow
+             builds its own tab-strip toggles - kept out of markup since ToolbarToggle has no proven UXML
+             factory usage elsewhere in this package, only proven C# construction (CdnManagerWindow.cs). -->
+        <uie:Toolbar name="server-toolbar" class="cdn-server-toolbar">
+            <ui:Label text="Port" class="cdn-server-port-label" />
+            <!-- 8080 matches LocalContentServerMenu.DefaultPort (LocalContentServer.cs) -->
+            <ui:TextField name="server-port-field" value="8080" class="cdn-server-port-field" />
+        </uie:Toolbar>
+
+        <ui:VisualElement name="server-log-header" class="cdn-log-row cdn-log-header">
+            <ui:VisualElement class="cdn-log-icon" />
+            <ui:Label text="Time" class="cdn-log-time cdn-log-header-text" />
+            <ui:Label text="Method" class="cdn-log-method cdn-log-header-text" />
+            <ui:Label text="Path" class="cdn-log-path cdn-log-header-text" />
+            <ui:Label text="Status" class="cdn-log-status cdn-log-header-text" />
+            <ui:Label text="Cache-Control" class="cdn-log-cache-control cdn-log-header-text" />
+            <ui:Label text="Size" class="cdn-log-size cdn-log-header-text" />
+        </ui:VisualElement>
+
+        <ui:ListView name="server-log-list" class="cdn-server-log" />
+
+        <ui:VisualElement name="server-actions" class="cdn-actions-row">
+            <ui:Label name="server-log-count" text="0 requests" class="cdn-server-log-count" />
+            <ui:Button name="server-clear-log-btn" text="Clear Log" class="cdn-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
