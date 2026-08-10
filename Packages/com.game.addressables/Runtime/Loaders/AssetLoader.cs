@@ -794,14 +794,17 @@ namespace AddressableManager.Loaders
         }
 
         /// <summary>
-        /// Determine specific error code from operation exception
+        /// Classify an exception message into a specific error code.
+        /// This static method extracts the classification logic for testability.
+        /// The substring matching is a known flaw that will be
+        /// replaced with status-code based classification in Phase 3.
         /// </summary>
-        private LoadErrorCode DetermineErrorCode<T>(AsyncOperationHandle<T> operation)
+        public static LoadErrorCode ClassifyErrorMessage(string exceptionMessage)
         {
-            if (operation.OperationException == null)
+            if (exceptionMessage == null)
                 return LoadErrorCode.OperationFailed;
 
-            var exceptionMsg = operation.OperationException.Message.ToLower();
+            var exceptionMsg = exceptionMessage.ToLower();
 
             // Check for specific error patterns
             if (exceptionMsg.Contains("not found") || exceptionMsg.Contains("no location"))
@@ -817,6 +820,14 @@ namespace AddressableManager.Loaders
                 return LoadErrorCode.NetworkError;
 
             return LoadErrorCode.OperationFailed;
+        }
+
+        /// <summary>
+        /// Determine specific error code from operation exception
+        /// </summary>
+        private LoadErrorCode DetermineErrorCode<T>(AsyncOperationHandle<T> operation)
+        {
+            return ClassifyErrorMessage(operation.OperationException?.Message);
         }
 
         #endregion
