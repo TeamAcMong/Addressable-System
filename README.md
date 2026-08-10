@@ -140,9 +140,7 @@ Window > Addressable Manager > Layout Rule Editor
 
 **CDN system** (proposed — see branch `feat/cdn-system`):
 
-- **[CDN Technical Design](Documentation/CDN_SYSTEM_DESIGN.md)**: Architecture, API surface, boot flows, error model
-- **[CDN Implementation Plan](Documentation/CDN_IMPLEMENTATION_PLAN.md)**: Phased rollout, risks, release plan
-- **[CDN Infrastructure Guide](Documentation/CDN_INFRASTRUCTURE_GUIDE.md)**: Storage layout, cache policy, CI/CD, runbook
+- **[CDN System](Documentation/CDN_SYSTEM.html)** — [Tiếng Việt](Documentation/CDN_SYSTEM_VI.html) *(open in a browser)*: single document covering technical design (architecture, API surface, boot flows, error model), implementation plan (phases, risks, release plan), and infrastructure &amp; operations (storage layout, cache policy, CI/CD, runbook). Language switcher in the sidebar keeps your reading position.
 
 ---
 

@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hệ thống CDN — Thiết kế, Kế hoạch &amp; Vận hành · com.game.addressables</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-elev:#f7f8fa; --bg-code:#f3f4f6; --bg-sidebar:#fafbfc;
+  --fg:#1a1d21; --fg-muted:#5a626e; --fg-subtle:#868e9a;
+  --border:#e4e7ea; --border-strong:#ccd1d7;
+  --accent:#2f6feb; --accent-soft:#eaf1fe; --accent-border:#b9d0fb;
+  --warn:#a25c00; --warn-soft:#fdf4e6; --warn-border:#f0d8ad;
+  --danger:#bf3b30; --danger-soft:#fdeeec; --danger-border:#f3c6c1;
+  --ok:#1b7a4b; --ok-soft:#eaf7f0;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#131619; --bg-elev:#191d21; --bg-code:#1d2126; --bg-sidebar:#101316;
+    --fg:#e3e7ea; --fg-muted:#98a1ac; --fg-subtle:#727b87;
+    --border:#282e35; --border-strong:#3a424b;
+    --accent:#74a4ff; --accent-soft:#17233a; --accent-border:#2d4470;
+    --warn:#e0a558; --warn-soft:#2a2115; --warn-border:#4d3c1e;
+    --danger:#f08078; --danger-soft:#2d1a18; --danger-border:#573029;
+    --ok:#5ec48d; --ok-soft:#152a20;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#ffffff; --bg-elev:#f7f8fa; --bg-code:#f3f4f6; --bg-sidebar:#fafbfc;
+  --fg:#1a1d21; --fg-muted:#5a626e; --fg-subtle:#868e9a;
+  --border:#e4e7ea; --border-strong:#ccd1d7;
+  --accent:#2f6feb; --accent-soft:#eaf1fe; --accent-border:#b9d0fb;
+  --warn:#a25c00; --warn-soft:#fdf4e6; --warn-border:#f0d8ad;
+  --danger:#bf3b30; --danger-soft:#fdeeec; --danger-border:#f3c6c1;
+  --ok:#1b7a4b; --ok-soft:#eaf7f0;
+}
+:root[data-theme="dark"]{
+  --bg:#131619; --bg-elev:#191d21; --bg-code:#1d2126; --bg-sidebar:#101316;
+  --fg:#e3e7ea; --fg-muted:#98a1ac; --fg-subtle:#727b87;
+  --border:#282e35; --border-strong:#3a424b;
+  --accent:#74a4ff; --accent-soft:#17233a; --accent-border:#2d4470;
+  --warn:#e0a558; --warn-soft:#2a2115; --warn-border:#4d3c1e;
+  --danger:#f08078; --danger-soft:#2d1a18; --danger-border:#573029;
+  --ok:#5ec48d; --ok-soft:#152a20;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:1.5rem}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--sans); font-size:15.5px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+.layout{display:grid; grid-template-columns:290px minmax(0,1fr); min-height:100vh}
+
+.sidebar{
+  background:var(--bg-sidebar); border-right:1px solid var(--border);
+  position:sticky; top:0; height:100vh; overflow-y:auto; padding:1.5rem 0 3rem;
+}
+.brand{padding:0 1.25rem 1rem; border-bottom:1px solid var(--border); margin-bottom:.75rem}
+.brand h1{font-size:.98rem; margin:0 0 .2rem; letter-spacing:-.01em}
+.brand p{margin:0; font-size:.76rem; color:var(--fg-subtle); font-family:var(--mono)}
+.nav-doc{
+  display:block; padding:.55rem 1.25rem .35rem; margin-top:.6rem;
+  font-size:.7rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--fg-subtle); text-decoration:none;
+}
+.nav-doc:hover{color:var(--accent)}
+.sidebar nav a.item{
+  display:block; padding:.28rem 1.25rem .28rem 1.6rem; font-size:.83rem;
+  color:var(--fg-muted); text-decoration:none; border-left:2px solid transparent;
+}
+.sidebar nav a.item:hover{color:var(--fg); background:var(--bg-elev)}
+.sidebar nav a.item.active{color:var(--accent); border-left-color:var(--accent); background:var(--accent-soft); font-weight:500}
+.side-actions{display:flex; gap:.5rem; margin:1.25rem 1.25rem 0; flex-wrap:wrap}
+.sbtn{
+  padding:.35rem .7rem; font-size:.78rem; cursor:pointer; text-decoration:none;
+  background:var(--bg-elev); color:var(--fg-muted); border:1px solid var(--border); border-radius:6px;
+  font-family:var(--sans); display:inline-block;
+}
+.sbtn:hover{color:var(--fg); border-color:var(--border-strong)}
+.sbtn.lang{background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent); font-weight:500}
+
+main{padding:2.5rem 3rem 8rem; max-width:960px; min-width:0}
+.pagehead{border-bottom:1px solid var(--border); padding-bottom:1.5rem; margin-bottom:2rem}
+.pagehead h1{font-size:1.9rem; margin:0 0 .4rem; letter-spacing:-.02em; line-height:1.3}
+.pagehead .sub{color:var(--fg-muted); margin:0 0 .9rem}
+.meta{display:flex; flex-wrap:wrap; gap:.4rem}
+.badge{
+  display:inline-block; padding:.16rem .55rem; border-radius:999px; font-size:.73rem;
+  font-family:var(--mono); border:1px solid var(--border-strong); color:var(--fg-muted); background:var(--bg-elev);
+}
+.badge.status{background:var(--warn-soft); border-color:var(--warn-border); color:var(--warn)}
+.badge.branch{background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent)}
+
+section.doc{padding-top:1rem}
+section.doc + section.doc{margin-top:4.5rem; border-top:2px solid var(--border-strong); padding-top:3rem}
+.doc-label{
+  font-size:.7rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--accent); margin-bottom:.4rem;
+}
+h2{font-size:1.55rem; margin:0 0 .3rem; letter-spacing:-.015em; scroll-margin-top:1.5rem}
+h3{
+  font-size:1.15rem; margin:2.6rem 0 .8rem; letter-spacing:-.01em;
+  scroll-margin-top:1.5rem; border-top:1px solid var(--border); padding-top:1.4rem;
+}
+h3:first-of-type{border-top:none; padding-top:0}
+h4{font-size:.97rem; margin:1.8rem 0 .6rem; color:var(--fg)}
+h5{font-size:.87rem; margin:1.3rem 0 .5rem; color:var(--fg-muted); font-weight:600}
+p{margin:0 0 1rem}
+ul,ol{margin:0 0 1rem; padding-left:1.4rem}
+li{margin-bottom:.4rem}
+li>ul,li>ol{margin-top:.4rem}
+a{color:var(--accent)}
+strong{font-weight:650}
+
+code{
+  font-family:var(--mono); font-size:.855em; background:var(--bg-code);
+  padding:.12em .38em; border-radius:4px; border:1px solid var(--border);
+  word-break:break-word;
+}
+pre{
+  background:var(--bg-code); border:1px solid var(--border); border-radius:8px;
+  padding:1rem 1.1rem; overflow-x:auto; margin:0 0 1.2rem; line-height:1.55;
+}
+pre code{background:none; border:none; padding:0; font-size:.83rem; white-space:pre}
+pre.diagram code{font-size:.775rem; line-height:1.45}
+
+.tablewrap{overflow-x:auto; margin:0 0 1.3rem; border:1px solid var(--border); border-radius:8px}
+table{border-collapse:collapse; width:100%; font-size:.875rem; min-width:520px}
+th,td{padding:.55rem .8rem; text-align:left; vertical-align:top; border-bottom:1px solid var(--border)}
+th{background:var(--bg-elev); font-weight:650; font-size:.8rem; white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-elev)}
+td code,th code{font-size:.83em; white-space:nowrap}
+
+.note{
+  border-left:3px solid var(--accent); background:var(--accent-soft);
+  padding:.85rem 1.1rem; border-radius:0 6px 6px 0; margin:0 0 1.3rem;
+}
+.note.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+.note.danger{border-left-color:var(--danger); background:var(--danger-soft)}
+.note p:last-child{margin-bottom:0}
+.note .tag{
+  display:block; font-size:.7rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; margin-bottom:.3rem; color:var(--accent);
+}
+.note.warn .tag{color:var(--warn)}
+.note.danger .tag{color:var(--danger)}
+
+.toc{background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; margin:1.5rem 0 2.5rem}
+.toc ol{margin:0; padding-left:1.3rem; columns:2; column-gap:2rem}
+.toc li{margin-bottom:.22rem; font-size:.875rem; break-inside:avoid}
+@media (max-width:760px){.toc ol{columns:1}}
+
+.crit{color:var(--danger); font-weight:650}
+.yes{color:var(--ok); font-weight:600}
+.no{color:var(--fg-subtle)}
+
+@media (max-width:1000px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:static; height:auto; border-right:none; border-bottom:1px solid var(--border)}
+  main{padding:2rem 1.25rem 5rem}
+  .pagehead h1{font-size:1.5rem}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand">
+    <h1>Hệ thống CDN</h1>
+    <p>com.game.addressables</p>
+  </div>
+  <nav id="nav">
+    <a class="nav-doc" href="#design">I · Thiết kế kỹ thuật</a>
+    <a class="item" href="#d-goals">1. Mục tiêu &amp; phạm vi</a>
+    <a class="item" href="#d-audit">2. Đánh giá hiện trạng</a>
+    <a class="item" href="#d-principles">3. Nguyên tắc thiết kế</a>
+    <a class="item" href="#d-arch">4. Tổng quan kiến trúc</a>
+    <a class="item" href="#d-modules">5. Đặc tả từng module</a>
+    <a class="item" href="#d-api">6. API công khai</a>
+    <a class="item" href="#d-flows">7. Luồng boot &amp; download</a>
+    <a class="item" href="#d-errors">8. Mô hình lỗi</a>
+    <a class="item" href="#d-config">9. Ràng buộc cấu hình</a>
+    <a class="item" href="#d-integration">10. Tích hợp hệ thống cũ</a>
+    <a class="item" href="#d-compat">11. Tương thích ngược</a>
+    <a class="item" href="#d-testing">12. Chiến lược test</a>
+    <a class="item" href="#d-questions">13. Câu hỏi còn mở</a>
+
+    <a class="nav-doc" href="#plan">II · Kế hoạch triển khai</a>
+    <a class="item" href="#p-strategy">1. Chiến lược</a>
+    <a class="item" href="#p-overview">2. Tổng quan các phase</a>
+    <a class="item" href="#p-phase0">Phase 0 — Nền móng</a>
+    <a class="item" href="#p-phase1">Phase 1 — Pipeline build</a>
+    <a class="item" href="#p-phase2">Phase 2 — Runtime bootstrap</a>
+    <a class="item" href="#p-phase3">Phase 3 — Download</a>
+    <a class="item" href="#p-phase4">Phase 4 — Cache &amp; lỗi</a>
+    <a class="item" href="#p-phase5">Phase 5 — Kiểm chứng</a>
+    <a class="item" href="#p-release">9. Kế hoạch release</a>
+    <a class="item" href="#p-risks">10. Sổ rủi ro</a>
+    <a class="item" href="#p-rollback">11. Quy trình rollback</a>
+    <a class="item" href="#p-dod">12. Định nghĩa hoàn thành</a>
+
+    <a class="nav-doc" href="#infra">III · Hạ tầng &amp; vận hành</a>
+    <a class="item" href="#i-topology">1. Kiến trúc hạ tầng</a>
+    <a class="item" href="#i-layout">2. Bố cục lưu trữ</a>
+    <a class="item" href="#i-cache">3. Chính sách cache</a>
+    <a class="item" href="#i-envs">4. Môi trường</a>
+    <a class="item" href="#i-deploy">5. Quy trình deploy</a>
+    <a class="item" href="#i-state">6. Vòng đời content state</a>
+    <a class="item" href="#i-cicd">7. Tham chiếu CI/CD</a>
+    <a class="item" href="#i-rollback">8. Rollback</a>
+    <a class="item" href="#i-security">9. Bảo mật</a>
+    <a class="item" href="#i-monitoring">10. Giám sát</a>
+    <a class="item" href="#i-cost">11. Mô hình chi phí</a>
+    <a class="item" href="#i-runbook">12. Runbook</a>
+  </nav>
+  <div class="side-actions">
+    <a class="sbtn lang" id="langLink" href="CDN_SYSTEM.html">English</a>
+    <button class="sbtn" id="themeBtn" type="button">Sáng / Tối</button>
+  </div>
+</aside>
+
+<main>
+
+<div class="pagehead">
+  <h1>Hệ thống CDN — Thiết kế, Kế hoạch triển khai &amp; Vận hành</h1>
+  <p class="sub">Phân phối nội dung từ xa cho <code>com.game.addressables</code>. Ba tài liệu: xây cái gì, triển khai ra sao, và host — vận hành thế nào.</p>
+  <div class="meta">
+    <span class="badge status">Trạng thái: Đề xuất — chờ duyệt</span>
+    <span class="badge branch">branch: feat/cdn-system</span>
+    <span class="badge">Target: 4.1.0 → 5.0.0</span>
+    <span class="badge">08/2026</span>
+  </div>
+</div>
+
+<div class="note">
+  <span class="tag">Đọc cái này trước</span>
+  <p>Package hiện tại <strong>chưa có hệ thống CDN</strong> — chỉ có ba wrapper mỏng quanh API download của Addressables, không có đường cập nhật catalog, không có pipeline build content-update, và <code>BuildRemoteCatalog</code> đang tắt trong project settings. <strong>Mỗi lần build là một full build, nên người chơi phải tải lại 100% remote content cho mỗi bản patch.</strong> Đây là nút thắt quyết định, và cũng là lý do kế hoạch triển khai đặt pipeline build lên trước mọi việc runtime.</p>
+</div>
+
+<!-- ==================================================================== -->
+<!-- TÀI LIỆU I — THIẾT KẾ KỸ THUẬT                                       -->
+<!-- ==================================================================== -->
+<section class="doc" id="design">
+<div class="doc-label">Tài liệu I</div>
+<h2>Thiết kế kỹ thuật</h2>
+<p class="sub" style="color:var(--fg-muted)">Đặc tả kiến trúc và API cho việc phân phối nội dung từ xa.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#d-goals">Mục tiêu và phạm vi</a></li>
+<li><a href="#d-audit">Đánh giá hiện trạng</a></li>
+<li><a href="#d-principles">Nguyên tắc thiết kế</a></li>
+<li><a href="#d-arch">Tổng quan kiến trúc</a></li>
+<li><a href="#d-modules">Đặc tả từng module</a></li>
+<li><a href="#d-api">API công khai</a></li>
+<li><a href="#d-flows">Luồng boot và download</a></li>
+<li><a href="#d-errors">Mô hình lỗi</a></li>
+<li><a href="#d-config">Ràng buộc cấu hình Addressables</a></li>
+<li><a href="#d-integration">Tích hợp với hệ thống hiện có</a></li>
+<li><a href="#d-compat">Tương thích ngược</a></li>
+<li><a href="#d-testing">Chiến lược test</a></li>
+<li><a href="#d-questions">Câu hỏi còn mở</a></li>
+</ol>
+</div>
+
+<h3 id="d-goals">1. Mục tiêu và phạm vi</h3>
+
+<h4>Mục tiêu</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Mục tiêu</th><th>Thước đo thành công</th></tr></thead>
+<tbody>
+<tr><td>G1</td><td>Cập nhật nội dung mà không phải nộp lại store</td><td>Thay đổi chỉ về content đến được tay người chơi qua catalog update, không cần binary mới</td></tr>
+<tr><td>G2</td><td>Patch chỉ truyền phần thay đổi</td><td>Kích thước patch delta ≤ 10% tổng content với một thay đổi content thông thường</td></tr>
+<tr><td>G3</td><td>Boot không bao giờ chết cứng vì CDN không truy cập được</td><td>Boot offline thành công bằng catalog + bundle đã cache</td></tr>
+<tr><td>G4</td><td>UX download nói thật</td><td>Progress báo bằng byte thật; tốc độ và ETA suy ra từ byte, không phải từ phần trăm</td></tr>
+<tr><td>G5</td><td>Mọi lỗi đều phân loại được và hành động được</td><td>Mọi lỗi CDN ánh xạ về một <code>CdnErrorCode</code> có đường phục hồi xác định</td></tr>
+<tr><td>G6</td><td>Đổi môi trường không cần rebuild</td><td>Chọn Dev / Staging / Prod lúc runtime qua cơ chế rewrite host</td></tr>
+<tr><td>G7</td><td>Toàn bộ pipeline chạy được bằng CI</td><td>Build, content-update, verify và upload đều chạy trong <code>-batchmode</code></td></tr>
+</tbody></table></div>
+
+<h4>Ngoài phạm vi (giai đoạn này)</h4>
+<ul>
+<li><strong>Tích hợp Unity Cloud Content Delivery (CCD)</strong> — ta nhắm tới một HTTP origin bất kỳ (R2 + Cloudflare). CCD vẫn khả thi vì Addressables chỉ cần một URL, nhưng không viết code riêng cho CCD.</li>
+<li><strong>Play Asset Delivery / Android asset pack</strong> — hoãn lại; xem xét lại nếu APK vượt ngưỡng dung lượng của store.</li>
+<li><strong>Nội dung do người chơi tạo / MOD</strong> — ngoài phạm vi. Nếu cái này vào roadmap thì phải đánh giá lại YooAsset trước khi mở rộng thiết kế này.</li>
+<li><strong>WebGL</strong> — mô hình download/cache ở đây giả định có <code>Caching</code>; WebGL không có bundle cache nên cần một đường riêng.</li>
+<li><strong>Streaming từng asset hoặc transcode phía CDN.</strong></li>
+</ul>
+
+<h3 id="d-audit">2. Đánh giá hiện trạng</h3>
+<p>Đo trên code ở nhánh <code>main</code>, phiên bản <code>4.0.1</code>.</p>
+
+<h4>Cái gì đang có</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Ký hiệu</th><th>Vị trí</th><th>Nhận xét</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader.DownloadDependenciesAsync(string)</code></td><td><code>Runtime/Loaders/AssetLoader.cs:925</code></td><td>Wrapper mỏng. Không retry, không cancel, không progress, không lỗi có kiểu.</td></tr>
+<tr><td><code>AssetLoader.GetDownloadSizeAsync(string)</code></td><td><code>Runtime/Loaders/AssetLoader.cs:966</code></td><td>Trả <code>0</code> cho cả "không có gì để tải" lẫn "request thất bại".</td></tr>
+<tr><td><code>ProgressiveAssetLoader.DownloadWithProgressAsync</code></td><td><code>Runtime/Progress/ProgressiveAssetLoader.cs:100</code></td><td>Progress lấy từ <code>PercentComplete</code>; công thức tốc độ/ETA sai đơn vị.</td></tr>
+<tr><td><code>LoadErrorCode.NetworkError</code></td><td><code>Runtime/Core/LoadError.cs:56</code></td><td>Được gán đúng một chỗ, bằng cách so khớp chuỗi con trong message của exception (<code>AssetLoader.cs:816</code>). Nhánh download không bao giờ sinh ra nó.</td></tr>
+<tr><td><code>ProgressInfo.BytesDownloaded</code> / <code>.TotalBytes</code></td><td><code>Runtime/Progress/IProgressTracker.cs:12</code></td><td>Khai báo field nhưng không bao giờ được điền.</td></tr>
+</tbody></table></div>
+
+<h4>Cái gì không tồn tại</h4>
+<p>Grep toàn package trả về 0 kết quả cho tất cả những thứ sau:</p>
+<pre><code>Addressables.InitializeAsync   CheckForCatalogUpdates   UpdateCatalogs
+LoadContentCatalogAsync        WebRequestOverride       InternalIdTransformFunc
+ClearDependencyCacheAsync      CleanBundleCache         Caching.*
+GetDownloadStatus              Application.internetReachability
+CancellationToken (trong nhánh download)</code></pre>
+<p><code>Editor/CLI/AddressableCLI.cs</code> chỉ có <code>ApplyRules</code>, <code>ValidateLayoutRules</code>, <code>SetVersionExpression</code>, <code>DetectConflicts</code>. <strong>Không có</strong> <code>BuildPlayerContent</code> và <strong>không có</strong> điểm vào <code>ContentUpdateScript.BuildContentUpdate</code>.</p>
+
+<h4>Trạng thái cấu hình</h4>
+<p><code>Assets/AddressableAssetsData/AddressableAssetSettings.asset</code>:</p>
+<pre><code>m_BuildRemoteCatalog: 0            ← remote catalog đang tắt
+m_RemoteCatalogBuildPath: (rỗng)
+m_RemoteCatalogLoadPath:  (rỗng)
+m_BundleTimeout: 0
+m_BundleRetryCount: 0
+m_maxConcurrentWebRequests: 3
+m_ContentStateBuildPath: (rỗng → mặc định nằm trong Assets/)
+m_overridePlayerVersion: '[UnityEditor.PlayerSettings.bundleVersion]'   ← đã đúng</code></pre>
+<p>Chỉ có một profile (<code>Default</code>), với <code>Remote.LoadPath = &lt;undefined&gt;</code>.</p>
+
+<div class="note danger">
+<span class="tag">Hệ quả</span>
+<p>Không có <code>BuildContentUpdate</code> thì mỗi build là một full build: toàn bộ hash của bundle đổi hết, nên mỗi người chơi tải lại 100% remote content cho mỗi patch. <strong>Đây là nút thắt quyết định.</strong> Không có lượng code runtime nào cải thiện được điều đó — và đó là lý do pipeline được xếp đầu tiên trong kế hoạch triển khai.</p>
+</div>
+
+<h3 id="d-principles">3. Nguyên tắc thiết kế</h3>
+<ol>
+<li><strong>Giữ đúng phong cách package hiện tại.</strong> API phân tầng (facade <code>Cdn</code> → interface service → Addressables thuần), chữ ký kép <code>#if UNITASK_PRESENT</code>, config bằng <code>ScriptableObject</code>, và cặp <code>Result</code>/<code>Error</code> song song với <code>LoadResult&lt;T&gt;</code> / <code>LoadError</code> sẵn có.</li>
+<li><strong>Kết quả tường minh, không dùng giá trị sentinel.</strong> Mọi thao tác có thể thất bại đều trả <code>CdnResult&lt;T&gt;</code>. Không method nào trả <code>0</code>, <code>null</code> hay <code>false</code> để ám chỉ hai chuyện khác nhau.</li>
+<li><strong>Mặc định hủy được.</strong> Mọi điểm vào async của CDN đều nhận <code>CancellationToken</code>.</li>
+<li><strong>Byte, không phải phần trăm.</strong> Mọi progress hiển thị cho người dùng đều suy ra từ <code>AsyncOperationHandle.GetDownloadStatus()</code>.</li>
+<li><strong>Suy giảm, đừng sập.</strong> Lỗi mạng lúc boot thì suy giảm xuống dùng content đã cache. Chỉ trường hợp cài mới lần đầu mà vừa không mạng vừa không cache mới là điểm dừng cứng, và trạng thái đó phải được báo tường minh để game hiện màn hình riêng.</li>
+<li><strong>Service là interface.</strong> <code>ICatalogService</code>, <code>IDownloadService</code>, <code>ICacheService</code>, <code>ICdnTelemetry</code> — để test thay được bằng fake và game thay được bằng implementation riêng.</li>
+<li><strong>Không giấu singleton trong tầng service.</strong> Facade tĩnh <code>Cdn</code> chỉ là lớp tiện lợi bọc quanh <code>CdnRuntime</code> có thể inject; mọi thứ chạm được qua facade đều khởi tạo trực tiếp được.</li>
+</ol>
+
+<h3 id="d-arch">4. Tổng quan kiến trúc</h3>
+<pre class="diagram"><code>┌──────────────────────────────────────────────────────────────────┐
+│  Code game                                                       │
+│  Cdn.InitializeAsync() · Cdn.DownloadAsync() · Cdn.GetSizeAsync()│
+└───────────────────────────────┬──────────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────────┐
+│  Cdn (facade tĩnh)  →  CdnRuntime (composition root)             │
+└───────┬─────────────┬──────────────┬─────────────┬───────────────┘
+        │             │              │             │
+┌───────▼──────┐ ┌────▼───────┐ ┌────▼────────┐ ┌──▼─────────────┐
+│ Catalog      │ │ Download   │ │ Cache       │ │ Diagnostics    │
+│ Service      │ │ Service    │ │ Service     │ │ (telemetry)    │
+└───────┬──────┘ └────┬───────┘ └────┬────────┘ └────────────────┘
+        │             │              │
+        └─────────────┼──────────────┘
+                      │
+        ┌─────────────▼──────────────┐   ┌────────────────────────┐
+        │ RetryPolicy · NetworkPolicy│   │ CdnRequestDecorator     │
+        │ (backoff, chặn dùng 4G)    │   │ WebRequestOverride +    │
+        └─────────────┬──────────────┘   │ InternalIdTransformFunc │
+                      │                  └───────────┬─────────────┘
+┌─────────────────────▼──────────────────────────────▼─────────────┐
+│  Unity Addressables 2.x  /  ResourceManager  /  UnityWebRequest   │
+└───────────────────────────────────────────────────────────────────┘</code></pre>
+<p>Các hệ thống sẵn có (<code>AssetLoader</code>, scope, pooling, tiered cache) nằm <em>bên trên</em> tầng này và không đổi: tới lúc chúng chạy thì content đã nằm ở máy rồi.</p>
+
+<h4>Bố cục file đề xuất</h4>
+<pre><code>Runtime/Cdn/
+├── Cdn.cs                              facade tĩnh (soi gương Facade/Assets.cs)
+├── CdnRuntime.cs                       composition root; sở hữu các service
+├── Config/
+│   ├── CdnSettings.cs                  ScriptableObject, danh sách môi trường
+│   ├── CdnEnvironment.cs               [Serializable] name, baseUrl, catalogUrl, flag
+│   └── DownloadPolicy.cs               [Serializable] retry, backoff, timeout, concurrency, wifi-only
+├── Core/
+│   ├── CdnErrorCode.cs
+│   ├── CdnError.cs                     soi gương Core/LoadError.cs
+│   ├── CdnResult.cs                    soi gương Core/LoadResult.cs
+│   ├── DownloadRequest.cs              keys + MergeMode + override policy
+│   ├── DownloadProgress.cs             payload progress chính xác theo byte
+│   └── CatalogUpdateInfo.cs            id catalog, dung lượng, có update hay không
+├── Services/
+│   ├── ICatalogService.cs / CatalogService.cs
+│   ├── IDownloadService.cs / DownloadService.cs
+│   ├── ICacheService.cs  / CacheService.cs
+│   └── CdnRequestDecorator.cs
+├── Policy/
+│   ├── RetryPolicy.cs                  exponential backoff + jitter
+│   └── NetworkPolicy.cs                reachability + chặn kết nối tính phí
+└── Diagnostics/
+    ├── ICdnTelemetry.cs
+    └── CdnDiagnostics.cs
+
+Editor/Cdn/
+├── CdnBuildCLI.cs                      điểm vào -batchmode
+├── CdnBuildPipeline.cs                 wrapper BuildPlayerContent / BuildContentUpdate
+├── ContentStateManager.cs              định vị, kiểm tra, lưu trữ addressables_content_state.bin
+├── CdnProfileManager.cs                đổi profile + tiêm đường dẫn Remote
+├── CatalogVerifier.cs                  kiểm tra catalog sau build
+└── CdnSettingsInspector.cs</code></pre>
+
+<h3 id="d-modules">5. Đặc tả từng module</h3>
+
+<h4>5.1 <code>CdnSettings</code> (ScriptableObject)</h4>
+<p>Một asset duy nhất, nạp qua <code>Resources</code> hoặc một addressable ở địa chỉ cố định để chính nó cũng patch được.</p>
+<pre><code>[CreateAssetMenu(menuName = "Addressable Manager/CDN Settings")]
+public sealed class CdnSettings : ScriptableObject
+{
+    public List&lt;CdnEnvironment&gt; Environments;
+    public string DefaultEnvironmentId;          // ghi đè được lúc runtime
+    public DownloadPolicy DefaultPolicy;
+    public bool AutoCheckCatalogOnInitialize;    // mặc định true
+    public bool AutoApplyCatalogUpdate;          // mặc định true
+    public bool CleanBundleCacheAfterUpdate;     // mặc định true
+    public float CatalogRequestTimeoutSeconds;   // mặc định 15
+}
+
+[Serializable]
+public sealed class CdnEnvironment
+{
+    public string Id;              // "dev" | "staging" | "prod"
+    public string BundleBaseUrl;   // https://cdn.example.com/game/{platform}/bundles
+    public string CatalogBaseUrl;  // https://cdn.example.com/game/{platform}/{appVersion}
+    public bool RequiresAuthHeader;
+}</code></pre>
+<p><code>{platform}</code> và <code>{appVersion}</code> là token được <code>CdnRuntime</code> phân giải lúc runtime, nhờ vậy một asset settings phục vụ được mọi build target.</p>
+
+<h4>5.2 <code>DownloadPolicy</code></h4>
+<pre><code>[Serializable]
+public sealed class DownloadPolicy
+{
+    public int    MaxRetries            = 3;
+    public float  InitialBackoffSeconds = 1f;
+    public float  BackoffMultiplier     = 2f;
+    public float  MaxBackoffSeconds     = 30f;
+    public float  JitterRatio           = 0.2f;   // ±20% để tránh dồn tải cùng lúc
+    public int    BundleTimeoutSeconds  = 30;
+    public int    MaxConcurrentRequests = 6;
+    public bool   RequireUnmeteredNetwork = false; // "chỉ tải qua wifi"
+    public long   MinFreeDiskBytes      = 200L * 1024 * 1024;
+}</code></pre>
+<p>Retry áp cho <em>toàn bộ</em> thao tác download, không áp cho từng bundle — Addressables đã retry từng bundle qua <code>BundleRetryCount</code> rồi. Hai tầng bổ trợ nhau: <code>BundleRetryCount</code> xử lý một lỗi 5xx thoáng qua trên một bundle; <code>RetryPolicy</code> xử lý tình huống "thao tác thất bại, người dùng vừa có wifi lại, thử lại đi".</p>
+
+<h4>5.3 <code>ICatalogService</code></h4>
+<p>Nắm mọi thứ liên quan tới content catalog.</p>
+<pre><code>public interface ICatalogService
+{
+    UniTask&lt;CdnResult&lt;CdnInitReport&gt;&gt;      InitializeAsync(CancellationToken ct);
+    UniTask&lt;CdnResult&lt;CatalogUpdateInfo&gt;&gt;  CheckForUpdateAsync(CancellationToken ct);
+    UniTask&lt;CdnResult&lt;CatalogApplyReport&gt;&gt; ApplyUpdateAsync(CatalogUpdateInfo info, CancellationToken ct);
+}</code></pre>
+<p>Ghi chú triển khai:</p>
+<ul>
+<li><code>InitializeAsync</code> bọc <code>Addressables.InitializeAsync()</code> và <strong>await tường minh</strong> thay vì dựa vào việc khởi tạo ngầm bên trong lệnh load đầu tiên. Nhờ vậy lỗi init quan sát được.</li>
+<li><code>CheckForUpdateAsync</code> bọc <code>Addressables.CheckForCatalogUpdates(autoReleaseHandle: false)</code> để handle có thể được kiểm tra và release một cách xác định.</li>
+<li><code>ApplyUpdateAsync</code> bọc <code>Addressables.UpdateCatalogs(catalogs, autoReleaseHandle: false, autoCleanBundleCache: settings.CleanBundleCacheAfterUpdate)</code>.</li>
+<li><strong>Hành vi offline:</strong> nếu <code>NetworkPolicy</code> báo không có mạng, <code>CheckForUpdateAsync</code> trả <code>CdnResult.Success(CatalogUpdateInfo.None)</code> kèm <code>WasOfflineFallback = true</code> — đây không phải lỗi. Addressables sẽ phân giải catalog đã cache trước đó.</li>
+<li><strong>Cài mới mà offline:</strong> <code>InitializeAsync</code> phát hiện tình trạng "không có catalog cache và không có mạng" và trả <code>CdnErrorCode.NoContentAvailableOffline</code>. Đây là điểm dừng cứng hợp lệ duy nhất.</li>
+</ul>
+
+<h4>5.4 <code>IDownloadService</code></h4>
+<pre><code>public interface IDownloadService
+{
+    UniTask&lt;CdnResult&lt;long&gt;&gt;           GetDownloadSizeAsync(DownloadRequest req, CancellationToken ct);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(DownloadRequest req,
+                                                     IProgress&lt;DownloadProgress&gt; progress,
+                                                     CancellationToken ct);
+}
+
+public sealed class DownloadRequest
+{
+    public IReadOnlyList&lt;object&gt; Keys;          // address, label, hoặc AssetReference
+    public Addressables.MergeMode MergeMode = Addressables.MergeMode.Union;
+    public DownloadPolicy PolicyOverride;       // null → lấy mặc định từ settings
+}</code></pre>
+<p>Vòng lặp progress thay cho implementation dựa trên phần trăm hiện tại:</p>
+<pre><code>var status = handle.GetDownloadStatus();       // DownloadStatus { DownloadedBytes, TotalBytes, IsDone }
+long deltaBytes = status.DownloadedBytes - lastBytes;
+float deltaTime = Time.unscaledDeltaTime;      // delta thật của frame, không phải thời gian từ lúc bắt đầu
+// làm mượt bằng EMA để con số không nhấp nháy từng frame
+speedBytesPerSecond = Mathf.Lerp(speedBytesPerSecond, deltaBytes / deltaTime, 0.1f);
+eta = speedBytesPerSecond &gt; 0
+    ? (status.TotalBytes - status.DownloadedBytes) / speedBytesPerSecond
+    : -1f;                                     // -1 = chưa biết, tuyệt đối không bịa số</code></pre>
+<p>Callback progress được tiết chế (mặc định 4 Hz) thay vì bắn mỗi frame. Vì <code>DownloadProgress</code> là struct và callback là <code>IProgress&lt;T&gt;</code>, vòng lặp không sinh rác ở trạng thái ổn định.</p>
+<p>Kiểm tra trước khi bắt đầu, mỗi cái ánh xạ về một mã lỗi riêng:</p>
+<ol>
+<li>Mạng có kết nối, và không tính phí nếu bật <code>RequireUnmeteredNetwork</code>.</li>
+<li><code>Caching.defaultCache.spaceFree</code> ≥ dung lượng tải + <code>MinFreeDiskBytes</code>.</li>
+<li>Truy vấn dung lượng thành công (truy vấn thất bại không được coi là "0 byte cần tải").</li>
+</ol>
+
+<h4>5.5 <code>ICacheService</code></h4>
+<pre><code>public interface ICacheService
+{
+    CdnCacheStats                GetStats();                                   // đã dùng, còn trống, đường dẫn
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     ClearAsync(object key, CancellationToken ct);  // ClearDependencyCacheAsync
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     ClearAllAsync(CancellationToken ct);           // Caching.ClearCache
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     CleanObsoleteAsync(CancellationToken ct);      // Addressables.CleanBundleCache
+}</code></pre>
+<p><code>CleanObsoleteAsync</code> là cái quan trọng: sau khi cập nhật catalog, những bundle chỉ còn được catalog cũ tham chiếu sẽ nằm lại trên ổ đĩa vĩnh viễn nếu không dọn tường minh. Với một bản cài dùng lâu, đây chính là nguồn gốc của những lời than "sao game này chiếm 8 GB".</p>
+
+<h4>5.6 <code>CdnRequestDecorator</code></h4>
+<p>Hai hook của Addressables, cả hai đều được cài đúng một lần khi dựng <code>CdnRuntime</code>.</p>
+<pre><code>Addressables.WebRequestOverride = request =&gt;
+{
+    request.timeout = policy.BundleTimeoutSeconds;
+    if (environment.RequiresAuthHeader)
+        request.SetRequestHeader("Authorization", tokenProvider.Current);
+    request.SetRequestHeader("X-Client-Version", Application.version);
+};
+
+Addressables.InternalIdTransformFunc = location =&gt;
+{
+    // Đổi host đã ghi trong catalog lúc build sang host chọn lúc runtime.
+    // Cho phép: chuyển dev/staging/prod không cần rebuild, và failover CDN.
+    return hostRewriter.Rewrite(location.InternalId);
+};</code></pre>
+<p><code>InternalIdTransformFunc</code> chính là thứ tách catalog đã build ra khỏi một hostname cụ thể. Catalog được build với một host placeholder; runtime thay bằng host thật. Đây cũng là cơ chế failover: khi host A liên tục lỗi, <code>hostRewriter</code> nâng host B lên và lần retry sẽ phân giải sang origin khác.</p>
+<div class="note warn">
+<span class="tag">Ràng buộc thứ tự</span>
+<p><code>InternalIdTransformFunc</code> phải được cài <em>trước</em> <code>Addressables.InitializeAsync()</code>, nếu không thì chính request lấy catalog cũng không được rewrite. <code>CdnRuntime</code> đảm bảo thứ tự này.</p>
+</div>
+
+<h4>5.7 <code>NetworkPolicy</code> và <code>RetryPolicy</code></h4>
+<p><code>NetworkPolicy</code> bọc <code>Application.internetReachability</code> và expose <code>IsReachable</code>, <code>IsMetered</code> (<code>ReachableViaCarrierDataNetwork</code>), cùng helper <code>WaitForReachableAsync(ct)</code> dùng để nối lại một download đang tạm dừng khi có mạng trở lại.</p>
+<div class="note">
+<p><code>internetReachability</code> báo về <em>giao diện mạng</em>, không phải khả năng ra internet thật (captive portal vẫn báo là có mạng). Chỉ nên coi nó là phép kiểm tra âm tính nhanh: nếu nó báo không có mạng thì bỏ qua request; nếu nó báo có mạng thì vẫn phải xử lý lỗi bình thường.</p>
+</div>
+<p><code>RetryPolicy</code> tính <code>min(initial * multiplier^attempt, max) * (1 ± jitter)</code> và quyết định có retry hay không dựa trên bảng mã lỗi ở <a href="#d-errors">§8</a> — 5xx và timeout thì retry, 403/404 và CRC mismatch thì không.</p>
+
+<h4>5.8 <code>ICdnTelemetry</code></h4>
+<p>Hook kiểu bắn-rồi-quên để game tự chuyển tiếp sang hệ analytics của mình. Package không kèm tầng truyền tải nào.</p>
+<pre><code>public interface ICdnTelemetry
+{
+    void OnCatalogChecked(CatalogUpdateInfo info, TimeSpan duration, CdnError error);
+    void OnDownloadCompleted(DownloadReport report);
+    void OnDownloadFailed(DownloadRequest req, CdnError error, int attempt);
+    void OnCacheCleaned(long bytesFreed);
+}</code></pre>
+<p>Các chỉ số nên suy ra: tỉ lệ download thành công, thời lượng p50/p95 theo nhóm dung lượng, phân bố mã lỗi, số byte phục vụ theo từng app version. Không có mấy con số này thì không phân biệt được lỗi CDN với lỗi client.</p>
+
+<h3 id="d-api">6. API công khai</h3>
+<p>Ba tầng, khớp với cách chia <code>Assets</code> / <code>StandardAPI</code> / <code>Advanced</code> hiện có.</p>
+
+<h4>Tầng 1 — facade tĩnh <code>Cdn</code> (phủ ~90% nhu cầu)</h4>
+<pre><code>public static class Cdn
+{
+    // Boot
+    UniTask&lt;CdnResult&lt;CdnInitReport&gt;&gt; InitializeAsync(string environmentId = null, CancellationToken ct = default);
+
+    // Kiểm tra patch
+    UniTask&lt;CdnResult&lt;CatalogUpdateInfo&gt;&gt;  CheckForUpdateAsync(CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;CatalogApplyReport&gt;&gt; ApplyUpdateAsync(CancellationToken ct = default);
+
+    // Download
+    UniTask&lt;CdnResult&lt;long&gt;&gt;           GetDownloadSizeAsync(params object[] keys);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(object key,
+                                                     IProgress&lt;DownloadProgress&gt; progress = null,
+                                                     CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(DownloadRequest request,
+                                                     IProgress&lt;DownloadProgress&gt; progress = null,
+                                                     CancellationToken ct = default);
+
+    // Cache
+    CdnCacheStats            GetCacheStats();
+    UniTask&lt;CdnResult&lt;bool&gt;&gt; ClearCacheAsync(object key = null, CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;bool&gt;&gt; CleanObsoleteBundlesAsync(CancellationToken ct = default);
+
+    // Trạng thái
+    string  CurrentEnvironmentId { get; }
+    bool    IsInitialized        { get; }
+}</code></pre>
+
+<h4>Tầng 2 — service</h4>
+<p><code>CdnRuntime.Catalog</code>, <code>.Download</code>, <code>.Cache</code> expose các interface ở <a href="#d-modules">§5</a> cho những caller cần inject policy riêng theo từng lệnh gọi hoặc thay implementation.</p>
+
+<h4>Tầng 3 — nâng cao</h4>
+<p>Constructor của <code>CdnRuntime</code> nhận <code>(CdnSettings, ICatalogService, IDownloadService, ICacheService, ICdnTelemetry)</code>, nên game thay được bất kỳ phần nào. <code>CdnRequestDecorator</code> expose <code>IHostRewriter</code> và <code>IAuthTokenProvider</code> cho các phương án signed-URL hoặc refresh token.</p>
+
+<h4>Cách dùng chuẩn</h4>
+<pre><code>async UniTask BootAsync(CancellationToken ct)
+{
+    var init = await Cdn.InitializeAsync(ct: ct);
+    if (!init.IsSuccess)
+    {
+        if (init.Error.Code == CdnErrorCode.NoContentAvailableOffline)
+        { ShowFirstInstallNeedsInternetScreen(); return; }
+        // mọi lỗi init khác → chạy tiếp bằng content đã cache
+        Log.Warn(init.Error);
+    }
+
+    var update = await Cdn.CheckForUpdateAsync(ct);
+    if (update.IsSuccess &amp;&amp; update.Value.HasUpdate)
+    {
+        await Cdn.ApplyUpdateAsync(ct);
+
+        var size = await Cdn.GetDownloadSizeAsync("preload_core");
+        if (size.IsSuccess &amp;&amp; size.Value &gt; 0)
+        {
+            if (!await ConfirmDownloadAsync(size.Value)) return;
+
+            var progress = new Progress&lt;DownloadProgress&gt;(p =&gt;
+                patchUI.Set(p.NormalizedProgress, p.DownloadedBytes, p.TotalBytes,
+                            p.BytesPerSecond, p.EstimatedSecondsRemaining));
+
+            var result = await Cdn.DownloadAsync("preload_core", progress, ct);
+            if (!result.IsSuccess) ShowPatchFailed(result.Error);
+        }
+    }
+
+    await Cdn.CleanObsoleteBundlesAsync(ct);
+}</code></pre>
+<p>Để ý những gì caller làm được mà hôm nay chưa làm được: phân biệt "không có gì để tải" với "truy vấn dung lượng thất bại", hủy được, hiện số byte thật, và rẽ nhánh theo lỗi có kiểu.</p>
+
+<h3 id="d-flows">7. Luồng boot và download</h3>
+
+<h5>7.1 Boot nguội, có mạng, cài mới lần đầu</h5>
+<pre><code>Cài decorator (WebRequestOverride + InternalIdTransformFunc)
+  → Addressables.InitializeAsync()          lấy catalog từ CatalogBaseUrl
+  → CheckForUpdateAsync()                   chưa có catalog cache → HasUpdate = false
+  → GetDownloadSizeAsync(khóa preload)      dung lượng đầy đủ
+  → DownloadAsync(...)                      progress chính xác theo byte
+  → sẵn sàng</code></pre>
+
+<h5>7.2 Boot ấm, có mạng, content không đổi</h5>
+<pre><code>Initialize → CheckForUpdate → hash catalog khớp → HasUpdate = false → sẵn sàng</code></pre>
+<p>Chi phí: một request lấy file <code>.hash</code> (vài byte). Đây là lý do file <code>.hash</code> phải có TTL ngắn ở edge — xem <a href="#i-cache">hạ tầng §3</a>.</p>
+
+<h5>7.3 Boot ấm, có mạng, content đã đổi</h5>
+<pre><code>Initialize → CheckForUpdate → HasUpdate = true, catalogs = [id]
+  → ApplyUpdateAsync (UpdateCatalogs, autoCleanBundleCache = true)
+  → GetDownloadSizeAsync → chỉ phần delta, vì các bundle không đổi vẫn nằm trong cache và
+                            hash của chúng không đổi (đây chính là điều BuildContentUpdate đảm bảo)
+  → DownloadAsync → sẵn sàng</code></pre>
+
+<h5>7.4 Boot ấm, không mạng</h5>
+<pre><code>Initialize → NetworkPolicy.IsReachable == false
+  → Addressables phân giải catalog đã cache
+  → CheckForUpdate đoản mạch: Success(None, WasOfflineFallback = true)
+  → bỏ qua GetDownloadSize
+  → sẵn sàng, chạy bằng content đã cache</code></pre>
+<p>Không exception, không hộp thoại chặn. Game có thể hiện một chỉ báo "offline" thụ động.</p>
+
+<h5>7.5 Boot nguội, không mạng, cài mới lần đầu</h5>
+<pre><code>Initialize → không có catalog cache + không có mạng
+  → CdnResult.Failure(NoContentAvailableOffline)
+  → game hiện màn hình riêng "kết nối internet để hoàn tất cài đặt"</code></pre>
+
+<h5>7.6 Download có retry</h5>
+<pre><code>lần 0 → 503 trên bundle X
+  → RetryPolicy.ShouldRetry(ServerError) = true, chờ 1s ± 20%
+lần 1 → mất kết nối giữa chừng
+  → phần byte đã tải vẫn nằm trong cache của Unity; Addressables tiếp tục từ phần đã có
+  → chờ 2s ± 20%
+lần 2 → thành công
+  → DownloadReport { BytesDownloaded, Duration, Attempts = 3, ResumedFromPartial = true }</code></pre>
+
+<h5>7.7 Hủy giữa chừng</h5>
+<p>Khi <code>ct</code> bị hủy, vòng await dừng và handle được release. Số byte đã ghi vào cache của Unity được giữ lại — lần download sau tiếp tục chứ không tải lại từ đầu. Kết quả trả về là <code>CdnResult.Cancelled</code>, khác với thất bại, nên UI không hiện toast lỗi khi người dùng chủ động bấm Back.</p>
+
+<h5>7.8 Đầy ổ đĩa giữa chừng</h5>
+<p>Bước kiểm tra trước bắt được trường hợp phổ biến. Nếu máy đầy trong lúc đang truyền, Addressables sẽ báo lỗi caching; <code>DownloadService</code> ánh xạ nó sang <code>CdnErrorCode.InsufficientDiskSpace</code> và báo <code>RequiredBytes</code> / <code>AvailableBytes</code> để UI nói được cần giải phóng bao nhiêu.</p>
+
+<h3 id="d-errors">8. Mô hình lỗi</h3>
+<p><code>CdnError</code> soi gương <code>Core/LoadError.cs</code> (code, message, hint, exception) và thêm <code>HttpStatusCode</code>, <code>Url</code>, <code>IsRetryable</code>.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Mã</th><th>Kích hoạt khi</th><th>Retry được?</th><th>UX khuyến nghị</th></tr></thead>
+<tbody>
+<tr><td><code>None</code></td><td>thành công</td><td>—</td><td>—</td></tr>
+<tr><td><code>Offline</code></td><td>kiểm tra kết nối thất bại</td><td class="yes">có, khi có mạng lại</td><td>Chỉ báo thụ động; vẫn chơi tiếp bằng content đã cache</td></tr>
+<tr><td><code>NoContentAvailableOffline</code></td><td>cài mới, không cache, không mạng</td><td class="yes">có, khi có mạng lại</td><td>Màn hình setup chặn</td></tr>
+<tr><td><code>MeteredNetworkBlocked</code></td><td>bật <code>RequireUnmeteredNetwork</code> mà đang dùng 4G</td><td>người dùng quyết định</td><td>Hỏi "Tải bằng dữ liệu di động?"</td></tr>
+<tr><td><code>CatalogNotFound</code></td><td>404 ở catalog hoặc <code>.hash</code></td><td class="no">không</td><td>Lỗi nặng — bản deploy hỏng. Báo về telemetry.</td></tr>
+<tr><td><code>CatalogParseFailed</code></td><td>catalog sai định dạng / bị cắt cụt</td><td class="no">không</td><td>Xóa cache catalog, thử lại một lần, rồi báo lỗi nặng</td></tr>
+<tr><td><code>CatalogVersionIncompatible</code></td><td>catalog build cho player version khác</td><td class="no">không</td><td>Bắt buộc cập nhật từ store</td></tr>
+<tr><td><code>BundleNotFound</code></td><td>404 ở một bundle</td><td class="no">không</td><td>Deploy thiếu — catalog được upload trước bundle</td></tr>
+<tr><td><code>BundleCrcMismatch</code></td><td>kiểm tra CRC/hash thất bại</td><td class="yes">có, sau khi loại bỏ bundle đó</td><td>Tự sửa: xóa dependency đó, thử lại một lần</td></tr>
+<tr><td><code>ServerError</code></td><td>5xx</td><td class="yes">có, kèm backoff</td><td>Retry im lặng, sau đó báo "máy chủ đang bận"</td></tr>
+<tr><td><code>Timeout</code></td><td>request vượt <code>BundleTimeoutSeconds</code></td><td class="yes">có, kèm backoff</td><td>Retry im lặng</td></tr>
+<tr><td><code>Unauthorized</code></td><td>401/403</td><td>chỉ sau khi refresh token</td><td>Refresh token qua <code>IAuthTokenProvider</code>, rồi thử lại một lần</td></tr>
+<tr><td><code>InsufficientDiskSpace</code></td><td>kiểm tra trước hoặc lỗi caching</td><td>sau khi người dùng dọn ổ</td><td>"Giải phóng N MB để tiếp tục"</td></tr>
+<tr><td><code>Cancelled</code></td><td>caller chủ động hủy</td><td>không áp dụng</td><td>Không hiện UI lỗi</td></tr>
+<tr><td><code>Unknown</code></td><td>chưa ánh xạ được</td><td class="no">không</td><td>Log kèm exception đầy đủ</td></tr>
+</tbody></table></div>
+<p>Việc phân loại lấy từ <code>RemoteProviderException</code> và mã HTTP kèm theo, <strong>không</strong> phải từ so khớp chuỗi con trong message — đó chính là điểm yếu của <code>DetermineErrorCode</code> hiện tại (<code>AssetLoader.cs:804</code>). So khớp chuỗi chỉ giữ lại làm phương án cuối cho <code>Unknown</code>.</p>
+<div class="note warn">
+<span class="tag">Ghi chú triển khai</span>
+<p>Cần xác minh chính xác kiểu exception và tên property chứa mã phản hồi trên phiên bản Addressables đã ghim, ở Phase 3; cây phân cấp exception của <code>ResourceManager</code> đã thay đổi giữa 1.x và 2.x.</p>
+</div>
+
+<h3 id="d-config">9. Ràng buộc cấu hình Addressables</h3>
+<p>Code runtime chỉ đúng nếu project settings khớp. Những mục này trở thành assertion trong <code>CatalogVerifier</code> và được kiểm tra trong CI.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Cấu hình</th><th>Giá trị bắt buộc</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td><code>BuildRemoteCatalog</code></td><td><code>true</code></td><td>Không có nó thì chẳng có remote catalog nào để cập nhật</td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code> / <code>LoadPath</code></td><td>Biến profile Remote</td><td>Catalog phải tách được khỏi bundle (<a href="#i-layout">hạ tầng §2</a>)</td></tr>
+<tr><td><code>OverridePlayerVersion</code></td><td><code>[UnityEditor.PlayerSettings.bundleVersion]</code></td><td>Tên file catalog ổn định theo từng app version. <strong>Hiện đã đúng.</strong> Nếu để timestamp thì content update sẽ vỡ — player cũ đi tìm một tên file không còn tồn tại.</td></tr>
+<tr><td><code>ContentStateBuildPath</code></td><td>Đường dẫn <strong>ngoài</strong> <code>Assets/</code>, được CI lưu trữ</td><td>Mất <code>addressables_content_state.bin</code> là chấm dứt vĩnh viễn khả năng delta update cho app version đó</td></tr>
+<tr><td><code>BundleRetryCount</code></td><td><code>2–3</code> (hiện <code>0</code>)</td><td>Phục hồi lỗi thoáng qua ở mức từng bundle</td></tr>
+<tr><td><code>BundleTimeout</code></td><td><code>30</code> (hiện <code>0</code> = vô hạn)</td><td>Ngăn một request treo làm kẹt boot mãi mãi</td></tr>
+<tr><td><code>MaxConcurrentWebRequests</code></td><td><code>4–8</code> (hiện <code>3</code>)</td><td>Để 3 là chưa tận dụng hết băng thông; đặt quá cao lại hại trên mobile</td></tr>
+<tr><td><code>MonoScriptBundleNaming</code></td><td><code>Project Name</code> (hiện <code>Disabled</code>)</td><td>Giữ tên MonoScript bundle ổn định giữa các build để nó không đổi liên tục mỗi lần content update</td></tr>
+<tr><td><code>InternalIdNamingMode</code></td><td><code>Filename</code> hoặc <code>Dynamic</code> (hiện <code>Full Path</code>)</td><td>Giảm dung lượng catalog và không để lộ cấu trúc thư mục project cho bất kỳ ai tải catalog về</td></tr>
+<tr><td><code>UniqueBundleIds</code></td><td><code>false</code> (đã đúng)</td><td>Đúng khi dùng content update bài bản; bật lên chỉ làm phồng mọi build</td></tr>
+<tr><td><code>EnableJsonCatalog</code></td><td><code>false</code> (đã đúng)</td><td>Catalog nhị phân nhẹ hơn. Lưu ý: <code>AddressablesTools</code> phải ở phiên bản đọc được catalog nhị phân để verify trong CI.</td></tr>
+<tr><td>Group <code>UseAssetBundleCrc</code></td><td><code>true</code> (đã đúng)</td><td>Phát hiện file tải về bị hỏng</td></tr>
+<tr><td>Group <code>UseAssetBundleCrcForCachedBundles</code></td><td><code>true</code> (đã đúng)</td><td>Phát hiện bundle đã cache bị hỏng</td></tr>
+</tbody></table></div>
+
+<h4>Profile</h4>
+<p>Bốn profile, do <code>CdnProfileManager</code> tạo và kiểm tra:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Profile</th><th><code>Remote.BuildPath</code></th><th><code>Remote.LoadPath</code></th></tr></thead>
+<tbody>
+<tr><td><code>Local</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>http://localhost:8080/[BuildTarget]</code></td></tr>
+<tr><td><code>Dev</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn-dev.&lt;domain&gt;/...</code></td></tr>
+<tr><td><code>Staging</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn-stg.&lt;domain&gt;/...</code></td></tr>
+<tr><td><code>Prod</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn.&lt;domain&gt;/...</code></td></tr>
+</tbody></table></div>
+<p>Vì <code>InternalIdTransformFunc</code> rewrite host lúc runtime, profile <em>lúc build</em> không quan trọng bằng bình thường — nhưng nó vẫn quyết định cái gì được nướng vào catalog làm phương án dự phòng, nên vẫn phải đúng với ring đang nhắm tới.</p>
+
+<h3 id="d-integration">10. Tích hợp với hệ thống hiện có</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Hệ thống</th><th>Tương tác</th><th>Cần thay đổi gì</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader</code></td><td>Load asset khi content đã ở máy</td><td>Đánh dấu deprecated cho <code>DownloadDependenciesAsync</code> / <code>GetDownloadSizeAsync</code>; chuyển tiếp sang <code>IDownloadService</code></td></tr>
+<tr><td><code>ProgressiveAssetLoader</code></td><td><code>DownloadWithProgressAsync</code></td><td>Thay implementation bằng <code>DownloadService</code>; giữ nguyên chữ ký trong thời gian deprecated</td></tr>
+<tr><td><code>ProgressInfo</code></td><td>Đã có sẵn <code>BytesDownloaded</code> / <code>TotalBytes</code></td><td>Điền giá trị vào; thêm adapter từ <code>DownloadProgress</code></td></tr>
+<tr><td><code>AddressablePreloadConfig</code></td><td>Khai báo cái gì cần preload</td><td>Thêm cờ <code>RemoteOnly</code> để danh sách preload lái thẳng được <code>DownloadRequest</code></td></tr>
+<tr><td><code>LoadError</code> / <code>LoadResult</code></td><td>Lỗi lúc load</td><td>Không đổi. <code>CdnError</code> là anh em, không phải bản thay thế. Thêm <code>LoadErrorCode.ContentNotDownloaded</code> cho tình huống "asset có trong catalog nhưng bundle chưa có ở máy".</td></tr>
+<tr><td>Scope / pooling / tiered cache</td><td>Nằm trên tầng CDN</td><td>Không</td></tr>
+<tr><td><code>AddressableManagerWindow</code></td><td>Dashboard trong Editor</td><td>Thêm tab "CDN": môi trường hiện tại, thống kê cache, id catalog, nút clear/clean thủ công</td></tr>
+<tr><td><code>AddressableCLI</code></td><td>CLI trong Editor</td><td>Thêm <code>CdnBuildCLI</code> song song; giữ nguyên các lệnh rule hiện có</td></tr>
+</tbody></table></div>
+<p><code>AddressableManager.asmdef</code> không cần thêm reference nào — mọi thứ dùng tới đều nằm trong <code>Unity.Addressables</code>, <code>Unity.ResourceManager</code> và <code>UnityEngine.Networking</code> (thuộc engine).</p>
+
+<h3 id="d-compat">11. Tương thích ngược</h3>
+<p>Ba method liên quan CDN hiện có vẫn giữ nguyên hành vi, được đánh <code>[Obsolete]</code> kèm chỉ dẫn sang bản thay thế:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Hiện có</th><th>Trạng thái ở 4.1.0</th><th>Gỡ ở</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader.DownloadDependenciesAsync(string)</code></td><td>Obsolete (warning). Chuyển tiếp sang <code>IDownloadService</code>. Vẫn trả <code>bool</code>.</td><td>5.0.0</td></tr>
+<tr><td><code>AssetLoader.GetDownloadSizeAsync(string)</code></td><td>Obsolete (warning). Vẫn trả <code>long</code>, vẫn <code>0</code> khi lỗi — chính sự nhập nhằng đó là lý do nó bị deprecated.</td><td>5.0.0</td></tr>
+<tr><td><code>ProgressiveAssetLoader.DownloadWithProgressAsync</code></td><td>Viết lại trên nền <code>DownloadService</code>. <strong>Thay đổi hành vi:</strong> <code>DownloadSpeed</code> trở thành KB/s thật và <code>BytesDownloaded</code>/<code>TotalBytes</code> được điền.</td><td>giữ lại</td></tr>
+<tr><td><code>Assets.Download</code> / <code>Assets.GetDownloadSize</code></td><td>Obsolete (warning).</td><td>5.0.0</td></tr>
+<tr><td><code>StandardAPI.DownloadDependencies</code> / <code>GetDownloadSize</code></td><td>Obsolete (warning).</td><td>5.0.0</td></tr>
+</tbody></table></div>
+<p>Về mặt kỹ thuật, thay đổi ở <code>DownloadSpeed</code> là breaking với ai đã căn chỉnh UI theo con số cũ (vốn vô nghĩa). Điều này được ghi rõ trong changelog như một bản sửa lỗi, không phải một tính năng.</p>
+
+<h3 id="d-testing">12. Chiến lược test</h3>
+
+<h4>Unit (EditMode, không mạng)</h4>
+<ul>
+<li><code>RetryPolicy</code>: dãy backoff, biên jitter, khả năng retry theo từng mã lỗi.</li>
+<li><code>HostRewriter</code>: rewrite URL qua các môi trường, nâng host failover, input sai định dạng.</li>
+<li>Ánh xạ lỗi: cho một <code>RemoteProviderException</code> giả với status N → <code>CdnErrorCode</code> mong đợi.</li>
+<li>Toán progress: dãy byte/thời gian cố định → tốc độ và ETA mong đợi, gồm cả trường hợp chia cho 0 và truyền bị đứng.</li>
+</ul>
+
+<h4>Integration (PlayMode, HTTP server cục bộ)</h4>
+<p>Một server tĩnh nhỏ chạy trong Editor phục vụ catalog + bundle thật đã build, có tiêm lỗi:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Kịch bản</th><th>Cách tiêm lỗi</th></tr></thead>
+<tbody>
+<tr><td>Đường thuận lợi</td><td>không tiêm</td></tr>
+<tr><td>Catalog 404</td><td>xóa catalog</td></tr>
+<tr><td>Bundle 404</td><td>xóa một bundle sau khi đã upload catalog</td></tr>
+<tr><td>503 rồi thành công</td><td>làm hỏng N request đầu</td></tr>
+<tr><td>Truyền chậm</td><td>bóp còn 50 KB/s, kiểm tra ETA hội tụ</td></tr>
+<tr><td>Đứt kết nối giữa chừng</td><td>đóng kết nối ở mốc 50%</td></tr>
+<tr><td>Bundle hỏng</td><td>lật một byte, kiểm tra ra <code>BundleCrcMismatch</code> và tự sửa</td></tr>
+<tr><td>Hủy</td><td>hủy ở mốc 30%, kiểm tra ra <code>Cancelled</code> và cache một phần được giữ lại</td></tr>
+</tbody></table></div>
+
+<h4>Ma trận thủ công / thiết bị</h4>
+<p>Chạy luồng patch thật trên máy vật lý qua WiFi, qua 4G, bật chế độ máy bay giữa lúc tải, và với máy sắp đầy bộ nhớ.</p>
+
+<h4>Cổng kiểm tra trong CI</h4>
+<p><code>CatalogVerifier</code> chạy ở mọi content build và làm fail job khi: vi phạm ràng buộc cấu hình (<a href="#d-config">§9</a>), catalog tham chiếu tới một bundle không có trong tập upload, hoặc tên file catalog thay đổi bất thường với một app version đã tồn tại.</p>
+
+<h3 id="d-questions">13. Câu hỏi còn mở</h3>
+<ol>
+<li><strong>Phiên bản Addressables.</strong> Package đang ghim <code>com.unity.addressables: 2.3.1</code>; bản hiện tại là 2.9.x. Nâng cấp trước khi viết code này thì tránh phải làm lại, nhưng cần một lượt kiểm tra hồi quy trên các loader hiện có. <em>Khuyến nghị: nâng ở Phase 0.</em></li>
+<li><strong><code>CdnSettings</code> đặt ở đâu?</strong> <code>Resources</code> (luôn có trong build, đơn giản) hay một addressable local (patch được, nhưng vướng bài toán con gà quả trứng với khâu khởi tạo). <em>Khuyến nghị: <code>Resources</code>, và cho phép ghi đè môi trường bằng tham số runtime để QA trỏ build prod sang staging được.</em></li>
+<li><strong>Signed URL hay token header?</strong> Signed URL đồng nghĩa catalog không chứa được URL cuối, buộc mọi thứ phải rewrite qua <code>InternalIdTransformFunc</code> kèm bước ký cho từng request. Bearer header qua <code>WebRequestOverride</code> đơn giản hơn nhiều. <em>Khuyến nghị: dùng header, trừ khi có yêu cầu cứng phải chặn chia sẻ link.</em></li>
+<li><strong>Có cần ưu tiên tải theo từng bundle không?</strong> Addressables không expose độ ưu tiên hàng đợi cho việc tải dependency. Chỉ đạt được bằng cách tách thành nhiều lệnh <code>DownloadAsync</code> tuần tự theo label. <em>Khuyến nghị: mô hình hóa độ ưu tiên bằng các nhóm label có thứ tự, không xây scheduler.</em></li>
+<li><strong><code>ProgressInfo</code> hay <code>DownloadProgress</code>?</strong> Có hai kiểu progress là một vết gợn. Gộp lại thì đổi ngữ nghĩa <code>ProgressInfo</code> với caller hiện tại. <em>Khuyến nghị: giữ cả hai suốt 4.x, có adapter giữa chúng, gộp ở 5.0.0.</em></li>
+</ol>
+
+</section>
+
+<!-- ==================================================================== -->
+<!-- TÀI LIỆU II — KẾ HOẠCH TRIỂN KHAI                                    -->
+<!-- ==================================================================== -->
+<section class="doc" id="plan">
+<div class="doc-label">Tài liệu II</div>
+<h2>Kế hoạch triển khai</h2>
+<p class="sub" style="color:var(--fg-muted)">Chiến lược triển khai theo từng phase cho hệ thống CDN.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#p-strategy">Chiến lược</a></li>
+<li><a href="#p-overview">Tổng quan các phase</a></li>
+<li><a href="#p-phase0">Phase 0 — Nền móng</a></li>
+<li><a href="#p-phase1">Phase 1 — Pipeline build &amp; content update</a></li>
+<li><a href="#p-phase2">Phase 2 — Runtime bootstrap</a></li>
+<li><a href="#p-phase3">Phase 3 — Điều phối download</a></li>
+<li><a href="#p-phase4">Phase 4 — Cache, lỗi, chẩn đoán</a></li>
+<li><a href="#p-phase5">Phase 5 — Kiểm chứng &amp; phát hành</a></li>
+<li><a href="#p-release">Kế hoạch release</a></li>
+<li><a href="#p-risks">Sổ rủi ro</a></li>
+<li><a href="#p-rollback">Quy trình rollback</a></li>
+<li><a href="#p-dod">Định nghĩa hoàn thành</a></li>
+</ol>
+</div>
+
+<h3 id="p-strategy">1. Chiến lược</h3>
+
+<h4>Lý do chọn thứ tự này</h4>
+<p>Bản năng là bắt tay vào code runtime trước, vì đó là nơi có API nhìn thấy được. Ở đây thì đó là thứ tự sai.</p>
+<p>Hôm nay mỗi build là một full build. Hash bundle đổi hàng loạt, nên người chơi tải 100% remote content cho mỗi patch. <strong>Chừng nào <code>BuildContentUpdate</code> chưa được nối vào, một download service dựng công phu cỡ nào cũng chỉ đang tải toàn bộ mọi thứ — nhanh và có thanh progress đẹp.</strong> Pipeline là nút thắt, nên nó đi đầu.</p>
+<p>Lý do thứ hai: pipeline sinh ra các artifact (catalog thật, bundle thật, một file <code>addressables_content_state.bin</code> thật) mà Phase 2–4 cần để test bằng thứ gì đó ngoài mock. Xây nó trước nghĩa là mọi phase sau đều kiểm chứng được đầu-cuối ngay từ ngày đầu.</p>
+
+<h4>Nguyên tắc xuyên suốt</h4>
+<ol>
+<li><strong>Mỗi phase đều giao được thứ dùng được.</strong> Không phase nào để lại nhánh ở trạng thái tệ hơn <code>main</code>.</li>
+<li><strong>Không làm vỡ gì trên <code>main</code>.</strong> API hiện có vẫn chạy suốt cả kế hoạch; đánh dấu deprecated ở 4.1.0 và không gỡ trước 5.0.0.</li>
+<li><strong>Hạ tầng và code tiến cùng nhau.</strong> Một tính năng runtime không có content đã deploy để test thì chưa gọi là xong.</li>
+<li><strong>Mỗi phase có tiêu chí thoát kiểm chứng được.</strong> "Nó chạy được" không phải tiêu chí thoát; "thay đổi content 2 MB tạo ra patch ≤ 2.5 MB, đã kiểm trên máy thật" mới là.</li>
+</ol>
+
+<h4>Cơ sở ước lượng</h4>
+<p>Công sức tính bằng ngày-người lý tưởng cho một dev đã quen Addressables, chưa tính thời gian chờ review và chờ cấp phát hạ tầng. Bạn tự nhân thêm hệ số của mình.</p>
+
+<h3 id="p-overview">2. Tổng quan các phase</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Phase</th><th>Trọng tâm</th><th>Công sức</th><th>Chặn</th><th>Phát hành dạng</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Nâng cấp, ràng buộc cấu hình, profile, server test cục bộ</td><td>3 ngày</td><td>tất cả</td><td>4.1.0-pre</td></tr>
+<tr><td>1</td><td>CLI build + content update, vòng đời content-state</td><td>5 ngày</td><td>2, 3</td><td>4.1.0</td></tr>
+<tr><td>2</td><td><code>CdnRuntime</code>, catalog service, decorator, fallback offline</td><td>5 ngày</td><td>3, 4</td><td>4.2.0</td></tr>
+<tr><td>3</td><td>Download service, retry, hủy, progress theo byte</td><td>6 ngày</td><td>4</td><td>4.3.0</td></tr>
+<tr><td>4</td><td>Cache service, phân loại lỗi, telemetry, tab Editor</td><td>4 ngày</td><td>5</td><td>4.4.0</td></tr>
+<tr><td>5</td><td>Ma trận test, kiểm chứng trên máy, tài liệu, dọn deprecated</td><td>5 ngày</td><td>—</td><td>5.0.0</td></tr>
+</tbody></table></div>
+<p><strong>Tổng: ~28 ngày lý tưởng.</strong> Phase 1 và 2 chồng lấn được một phần nếu có hai người — Phase 2 chỉ cần <em>định dạng đầu ra</em> của Phase 1, không cần công cụ đã hoàn thiện.</p>
+
+<h3 id="p-phase0">Phase 0 — Nền móng</h3>
+<p><strong>Mục tiêu:</strong> project được cấu hình sao cho remote content thậm chí là khả thi, và có một môi trường cục bộ để test mà không đụng tới hạ tầng thật.</p>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th><th>Ghi chú</th></tr></thead>
+<tbody>
+<tr><td>0.1</td><td>Nâng <code>com.unity.addressables</code> 2.3.1 → 2.9.x</td><td>Kiểm tra hồi quy trên loader, scope, pooling hiện có. Ghim đúng phiên bản trong <code>package.json</code>.</td></tr>
+<tr><td>0.2</td><td>Quyết định về dependency TMP</td><td>Bỏ <code>com.unity.textmeshpro</code> khỏi <code>dependencies</code> cứng — versionDefine <code>TMP_PRESENT</code> đã lo việc đó rồi. Không liên quan CDN nhưng sửa luôn cho rẻ vì đang mở <code>package.json</code>.</td></tr>
+<tr><td>0.3</td><td>Áp ràng buộc cấu hình</td><td><code>BuildRemoteCatalog = true</code>, <code>BundleRetryCount = 3</code>, <code>BundleTimeout = 30</code>, <code>MaxConcurrentWebRequests = 6</code>, <code>MonoScriptBundleNaming = Project Name</code>, <code>InternalIdNamingMode = Filename</code>. Xem <a href="#d-config">thiết kế §9</a>.</td></tr>
+<tr><td>0.4</td><td>Chuyển <code>ContentStateBuildPath</code> ra ngoài <code>Assets/</code></td><td>Đích: <code>ServerData/ContentState/[BuildTarget]/</code>. Thêm vào <code>.gitignore</code>; để CI lưu trữ thay vì commit.</td></tr>
+<tr><td>0.5</td><td>Tạo profile <code>Local</code> / <code>Dev</code> / <code>Staging</code> / <code>Prod</code></td><td>Điền <code>Remote.LoadPath</code> cho từng môi trường.</td></tr>
+<tr><td>0.6</td><td>Tách đường dẫn catalog khỏi đường dẫn bundle</td><td><code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> trỏ vào thư mục theo app version; <code>LoadPath</code> của group trỏ vào thư mục bundle dùng chung. Đây là quyết định bố cục then chốt — xem <a href="#i-layout">hạ tầng §2</a>.</td></tr>
+<tr><td>0.7</td><td>HTTP server tĩnh cục bộ để test</td><td>Một menu item trong Editor phục vụ <code>ServerData/</code> trên <code>localhost:8080</code> với header <code>Cache-Control</code> đúng. Khoảng 100 dòng dùng <code>HttpListener</code>.</td></tr>
+<tr><td>0.8</td><td>Tạo một group test remote</td><td>Vài asset thật đánh dấu Remote để có cái mà tải.</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<ul>
+<li>Một player build dùng profile <code>Local</code> boot lên, lấy catalog từ <code>localhost:8080</code>, và load được một remote asset — mà <strong>không viết một dòng code runtime nào</strong>. Việc này chứng minh cấu hình đã đúng trước khi chồng bất kỳ lớp trừu tượng nào lên trên.</li>
+<li>Toàn bộ test PlayMode/EditMode hiện có vẫn pass sau khi nâng Addressables.</li>
+</ul>
+
+<h4>Rủi ro</h4>
+<p>Addressables 2.3 → 2.9 có thể đổi kiểu exception của <code>ResourceManager</code> mà <code>AssetLoader.DetermineErrorCode</code> đang dùng. Dự trù nửa ngày để xử lý hệ quả.</p>
+
+<h3 id="p-phase1">Phase 1 — Pipeline build và content update</h3>
+<p><strong>Mục tiêu:</strong> CI tạo được cả full build <em>lẫn</em> delta content update, một cách xác định, từ dòng lệnh, với file content-state được quản lý đúng.</p>
+
+<h4>Sản phẩm giao</h4>
+<pre><code>Editor/Cdn/
+├── CdnBuildCLI.cs           điểm vào batchmode
+├── CdnBuildPipeline.cs      wrapper BuildPlayerContent / BuildContentUpdate
+├── ContentStateManager.cs   định vị, kiểm tra, lưu trữ content_state.bin
+├── CdnProfileManager.cs     đổi profile + tiêm đường dẫn Remote
+└── CatalogVerifier.cs       kiểm tra sau build</code></pre>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th><th>Chi tiết</th></tr></thead>
+<tbody>
+<tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td><code>-executeMethod</code>, tham số: <code>-cdnProfile</code>, <code>-cdnEnv</code>, <code>-buildTarget</code>, <code>-outputDir</code>. Bọc <code>AddressableAssetSettings.BuildPlayerContent(out result)</code>. Thoát với mã khác 0 khi lỗi.</td></tr>
+<tr><td>1.2</td><td><code>CdnBuildCLI.BuildContentUpdate</code></td><td>Bọc <code>ContentUpdateScript.BuildContentUpdate(settings, contentStatePath)</code>. <strong>Fail thẳng nếu thiếu file state</strong> thay vì âm thầm tụt về full build.</td></tr>
+<tr><td>1.3</td><td><code>ContentStateManager</code></td><td>Phân giải đường dẫn theo platform + app version; kiểm tra file đọc được và khớp app version hiện tại; sao chép sang thư mục artifact của CI sau mỗi build.</td></tr>
+<tr><td>1.4</td><td>Kiểm tra ràng buộc content update</td><td>Chạy <code>ContentUpdateScript.GatherModifiedEntries</code> và báo cáo entry nào dịch chuyển giữa static và dynamic content. Fail build nếu một group <em>static</em> đổi — nghĩa là bản update không thực sự delta được và cần một player build mới.</td></tr>
+<tr><td>1.5</td><td><code>CdnProfileManager</code></td><td><code>SetActiveProfile(name)</code>; tiêm <code>Remote.LoadPath</code> từ biến môi trường để URL không bị commit vào repo.</td></tr>
+<tr><td>1.6</td><td><code>CatalogVerifier</code></td><td>Kiểm tra: ràng buộc cấu hình (<a href="#d-config">thiết kế §9</a>) được thỏa; tên file catalog khớp <code>catalog_&lt;appVersion&gt;</code>; mọi bundle mà catalog tham chiếu đều tồn tại trong thư mục output.</td></tr>
+<tr><td>1.7</td><td>Xuất build manifest</td><td>Ghi <code>build-manifest.json</code> cạnh output: app version, tên catalog, số lượng bundle, tổng byte, git SHA, timestamp, loại build (full | update). Phục vụ bước upload và cho team một dấu vết kiểm toán.</td></tr>
+<tr><td>1.8</td><td>Workflow GitHub Actions</td><td>Hai job: <code>content-full</code> và <code>content-update</code>. Xem <a href="#i-cicd">hạ tầng §7</a>.</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<p><strong>Cái đo được:</strong> sửa vặt một remote asset, chạy <code>BuildContentUpdate</code>, và xác nhận tập bundle kết quả chỉ khác bản build trước ở đúng (những) bundle bị ảnh hưởng. Mục tiêu: thay đổi asset 2 MB tạo ra ≤ 2.5 MB bundle thay đổi.</p>
+<p>Ngoài ra: <code>CatalogVerifier</code> làm fail build khi cố tình xóa một bundle khỏi output.</p>
+
+<h4>Rủi ro</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Rủi ro</th><th>Giảm thiểu</th></tr></thead>
+<tbody>
+<tr><td>Mất file content-state hoặc không lưu trữ → hết delta update cho app version đó</td><td>1.3 tự động lưu trữ; job CI fail nếu upload artifact thất bại</td></tr>
+<tr><td>Content static bị sửa mà không ai để ý → bản update im lặng vô hiệu</td><td>1.4 biến nó thành lỗi build</td></tr>
+<tr><td>MonoScript bundle đổi mỗi build, làm phồng mọi patch</td><td>Đã xử ở 0.3 (<code>MonoScriptBundleNaming</code>); kiểm chứng bằng cách so hai bản update build liên tiếp</td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase2">Phase 2 — Runtime bootstrap</h3>
+<p><strong>Mục tiêu:</strong> game khởi tạo được với CDN, phát hiện và áp dụng được catalog update, và boot thành công khi không có mạng.</p>
+
+<h4>Sản phẩm giao</h4>
+<pre><code>Runtime/Cdn/
+├── Cdn.cs                    (một phần — chỉ API boot)
+├── CdnRuntime.cs
+├── Config/CdnSettings.cs · CdnEnvironment.cs · DownloadPolicy.cs
+├── Core/CdnErrorCode.cs · CdnError.cs · CdnResult.cs · CatalogUpdateInfo.cs
+├── Services/ICatalogService.cs · CatalogService.cs · CdnRequestDecorator.cs
+└── Policy/NetworkPolicy.cs</code></pre>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th><th>Chi tiết</th></tr></thead>
+<tbody>
+<tr><td>2.1</td><td><code>CdnResult&lt;T&gt;</code> / <code>CdnError</code> / <code>CdnErrorCode</code></td><td>Soi gương hình dạng <code>LoadResult</code> / <code>LoadError</code> để package giữ được phong cách. Thêm <code>HttpStatusCode</code>, <code>Url</code>, <code>IsRetryable</code>.</td></tr>
+<tr><td>2.2</td><td><code>CdnSettings</code> + inspector</td><td>Danh sách môi trường, cách phân giải token, policy mặc định.</td></tr>
+<tr><td>2.3</td><td><code>CdnRequestDecorator</code></td><td>Cài <code>WebRequestOverride</code> và <code>InternalIdTransformFunc</code> <strong>trước</strong> <code>InitializeAsync</code>. Thêm assertion bắn lỗi nếu init đã chạy rồi.</td></tr>
+<tr><td>2.4</td><td><code>IHostRewriter</code></td><td>Thay thế token (<code>{platform}</code>, <code>{appVersion}</code>), đổi môi trường, nâng host failover.</td></tr>
+<tr><td>2.5</td><td><code>CatalogService.InitializeAsync</code></td><td>Await <code>Addressables.InitializeAsync()</code> tường minh; phát hiện trường hợp không-cache-không-mạng → <code>NoContentAvailableOffline</code>.</td></tr>
+<tr><td>2.6</td><td><code>CatalogService.CheckForUpdateAsync</code></td><td><code>CheckForCatalogUpdates(autoReleaseHandle: false)</code>; offline → <code>Success(None, WasOfflineFallback = true)</code>.</td></tr>
+<tr><td>2.7</td><td><code>CatalogService.ApplyUpdateAsync</code></td><td><code>UpdateCatalogs(..., autoCleanBundleCache: true)</code>; báo cáo catalog nào đã được thay.</td></tr>
+<tr><td>2.8</td><td><code>NetworkPolicy</code></td><td>Kết nối, phát hiện mạng tính phí, <code>WaitForReachableAsync</code>.</td></tr>
+<tr><td>2.9</td><td>Facade <code>Cdn</code> — phần boot</td><td><code>InitializeAsync</code>, <code>CheckForUpdateAsync</code>, <code>ApplyUpdateAsync</code>, <code>CurrentEnvironmentId</code>, <code>IsInitialized</code>.</td></tr>
+<tr><td>2.10</td><td>Scene boot mẫu</td><td><code>Assets/Examples/CdnBoot/</code> minh họa luồng chuẩn ở <a href="#d-api">thiết kế §6</a>.</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<ul>
+<li>Cả năm luồng boot ở <a href="#d-flows">thiết kế §7.1–7.5</a> tái hiện được với server cục bộ, kiểm chứng bằng test PlayMode tự động ở chỗ nào làm được và thủ công ở chỗ không.</li>
+<li>Bật chế độ máy bay trên máy có cache ấm: game boot lên, không exception, không hộp thoại chặn.</li>
+<li>Đổi môi trường từ <code>Prod</code> sang <code>Staging</code> lúc runtime, không rebuild, và bundle phân giải về host staging. Việc này xác nhận <code>InternalIdTransformFunc</code> đã nối đúng, và là năng lực hữu ích nhất của phase này đối với QA.</li>
+</ul>
+
+<h4>Rủi ro</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Rủi ro</th><th>Giảm thiểu</th></tr></thead>
+<tbody>
+<tr><td>Hook được cài sau khi Addressables đã khởi tạo ngầm (một lệnh <code>Addressables.LoadAssetAsync</code> lạc đâu đó sớm trong boot kích hoạt init)</td><td>Assertion ở 2.3 + tài liệu ghi rõ <code>Cdn.InitializeAsync</code> phải là lệnh Addressables đầu tiên</td></tr>
+<tr><td><code>internetReachability</code> báo có mạng khi đứng sau captive portal</td><td>Chỉ coi là phép kiểm tra âm tính nhanh; lỗi thật vẫn đi qua đường xử lý lỗi bình thường</td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase3">Phase 3 — Điều phối download</h3>
+<p><strong>Mục tiêu:</strong> download hủy được, tiếp tục được, retry có backoff, và báo cáo bằng byte thật.</p>
+
+<h4>Sản phẩm giao</h4>
+<pre><code>Runtime/Cdn/
+├── Core/DownloadRequest.cs · DownloadProgress.cs · DownloadReport.cs
+├── Services/IDownloadService.cs · DownloadService.cs
+└── Policy/RetryPolicy.cs</code></pre>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th><th>Chi tiết</th></tr></thead>
+<tbody>
+<tr><td>3.1</td><td><code>RetryPolicy</code></td><td>Exponential backoff + jitter; khả năng retry lấy theo bảng ở <a href="#d-errors">thiết kế §8</a>. Unit-test được hoàn toàn, không phụ thuộc Unity.</td></tr>
+<tr><td>3.2</td><td><code>DownloadService.GetDownloadSizeAsync</code></td><td>Nhận cả key <strong>và label</strong>, có <code>MergeMode</code>. Trả <code>CdnResult&lt;long&gt;</code> — phân biệt được thất bại với số 0.</td></tr>
+<tr><td>3.3</td><td><code>DownloadService.DownloadAsync</code></td><td><code>DownloadDependenciesAsync(keys, mergeMode, autoReleaseHandle: false)</code>; poll <code>GetDownloadStatus()</code>; tốc độ làm mượt bằng EMA; ETA trả <code>-1</code> khi chưa biết thay vì bịa số.</td></tr>
+<tr><td>3.4</td><td>Tiết chế progress</td><td>Mặc định 4 Hz. <code>DownloadProgress</code> là struct đưa qua <code>IProgress&lt;T&gt;</code> — không sinh rác ở trạng thái ổn định.</td></tr>
+<tr><td>3.5</td><td>Hủy</td><td><code>CancellationToken</code> ở mọi điểm vào; release handle; giữ lại cache một phần; trả <code>CdnResult.Cancelled</code> tách biệt với thất bại.</td></tr>
+<tr><td>3.6</td><td>Kiểm tra trước khi chạy</td><td>Kết nối, chặn mạng tính phí, dung lượng trống so với <code>size + MinFreeDiskBytes</code>. Mỗi cái ánh xạ về một mã lỗi riêng.</td></tr>
+<tr><td>3.7</td><td>Ánh xạ lỗi</td><td><code>RemoteProviderException</code> → <code>CdnErrorCode</code> qua mã HTTP. <strong>Cần xác minh kiểu exception và tên property trên phiên bản Addressables đã ghim</strong> — chỗ này đã đổi giữa 1.x và 2.x.</td></tr>
+<tr><td>3.8</td><td>Tự sửa CRC</td><td>Khi gặp <code>BundleCrcMismatch</code>: gọi <code>ClearDependencyCacheAsync</code> cho key đó, thử lại một lần, rồi mới báo lỗi.</td></tr>
+<tr><td>3.9</td><td>Viết lại <code>ProgressiveAssetLoader.DownloadWithProgressAsync</code> trên nền <code>DownloadService</code></td><td>Giữ nguyên chữ ký cũ; sửa toán tốc độ/ETA và điền <code>BytesDownloaded</code> / <code>TotalBytes</code>.</td></tr>
+<tr><td>3.10</td><td>Đánh dấu deprecated cho API cũ</td><td><code>[Obsolete]</code> cho <code>AssetLoader.DownloadDependenciesAsync</code>, <code>AssetLoader.GetDownloadSizeAsync</code>, <code>Assets.Download</code>, <code>Assets.GetDownloadSize</code>, <code>StandardAPI.DownloadDependencies</code>, <code>StandardAPI.GetDownloadSize</code>.</td></tr>
+<tr><td>3.11</td><td>UI patch mẫu</td><td>Mở rộng <code>AddressableProgressBar</code> thêm biến thể chính xác theo byte, hiện dung lượng, tốc độ, ETA, nút hủy.</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<ul>
+<li>Ma trận tiêm lỗi ở <a href="#d-testing">thiết kế §12</a> pass hết với server cục bộ.</li>
+<li>Hủy ở mốc 30% của một bản tải 100 MB, rồi chạy lại: lần thứ hai truyền khoảng 70% còn lại, không phải 100%. Đây là bằng chứng cụ thể rằng cơ chế tiếp tục hoạt động.</li>
+<li>Khi bóp còn 50 KB/s, tốc độ báo cáo nằm trong ±15% so với thực tế và ETA hội tụ đơn điệu.</li>
+<li>Không có cấp phát GC trong vòng lặp progress (kiểm bằng Profiler suốt 60 giây tải).</li>
+</ul>
+
+<h4>Rủi ro</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Rủi ro</th><th>Giảm thiểu</th></tr></thead>
+<tbody>
+<tr><td><code>GetDownloadStatus()</code> trả tổng bằng 0 ở giai đoạn đầu của thao tác</td><td>Báo <code>TotalBytes = 0</code> là "đang tính", tuyệt đối không lấy nó làm mẫu số</td></tr>
+<tr><td>Retry cả thao tác làm tải lại những bundle đã xong</td><td>Cache của Unity khiến bundle đã hoàn tất không tốn gì khi retry; kiểm chứng bằng test hủy/tiếp tục</td></tr>
+<tr><td>Cây exception khác với dự đoán</td><td>3.7 đã dành sẵn thời gian xác minh; so khớp chuỗi vẫn giữ làm phương án cuối cho <code>Unknown</code></td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase4">Phase 4 — Cache, lỗi, chẩn đoán</h3>
+<p><strong>Mục tiêu:</strong> dung lượng đĩa kiểm soát được, lỗi quy trách nhiệm được, và team soi được trạng thái CDN từ Editor.</p>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th><th>Chi tiết</th></tr></thead>
+<tbody>
+<tr><td>4.1</td><td><code>CacheService</code></td><td><code>GetStats</code> (đã dùng / còn trống / đường dẫn), <code>ClearAsync(key)</code>, <code>ClearAllAsync</code>, <code>CleanObsoleteAsync</code>.</td></tr>
+<tr><td>4.2</td><td>Dọn bundle lỗi thời sau update</td><td>Gọi <code>CleanObsoleteAsync</code> sau mỗi lần cập nhật catalog. Không có bước này thì bundle bị thay thế tích tụ vô hạn — nguyên nhân thường gặp của câu "sao game này 8 GB".</td></tr>
+<tr><td>4.3</td><td>Cảnh báo ngưỡng cache</td><td>Bắn event khi dung lượng đã dùng vượt ngưỡng cấu hình được, để game hỏi người dùng.</td></tr>
+<tr><td>4.4</td><td><code>ICdnTelemetry</code> + <code>CdnDiagnostics</code></td><td>Chỉ interface; không kèm tầng truyền tải. Implementation mặc định ghi log theo cờ verbosity của <code>DebugSettings</code> sẵn có.</td></tr>
+<tr><td>4.5</td><td><code>LoadErrorCode.ContentNotDownloaded</code></td><td>Mã mới cho tình huống "asset có trong catalog nhưng bundle chưa có ở máy" — hiện không phân biệt được với lỗi chung chung.</td></tr>
+<tr><td>4.6</td><td>Tab CDN trong <code>AddressableManagerWindow</code></td><td>Môi trường, id catalog, cache đã dùng/còn trống, lần kiểm tra gần nhất, lỗi gần nhất; nút kiểm tra update, xóa cache, dọn bundle lỗi thời.</td></tr>
+<tr><td>4.7</td><td>Mục CDN trong tài liệu khắc phục sự cố</td><td>Mỗi <code>CdnErrorCode</code> một mục: triệu chứng, nguyên nhân, cách sửa.</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<ul>
+<li>Hai lần content update liên tiếp không để lại bundle mồ côi trên đĩa (đo bằng <code>spaceOccupied</code> trước/sau).</li>
+<li>Mọi <code>CdnErrorCode</code> đều chạm tới được trong ma trận tiêm lỗi và đều có trong tài liệu khắc phục sự cố.</li>
+<li>Tab CDN trong Editor báo đúng trạng thái trực tiếp trong một phiên play có gắn thiết bị.</li>
+</ul>
+
+<h3 id="p-phase5">Phase 5 — Kiểm chứng và phát hành</h3>
+<p><strong>Mục tiêu:</strong> đã kiểm chứng trên máy thật với hạ tầng thật, có tài liệu, và đã gỡ phần API deprecated.</p>
+
+<h4>Công việc</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Việc</th></tr></thead>
+<tbody>
+<tr><td>5.1</td><td>Bộ test tiêm lỗi đầy đủ xanh trong CI (PlayMode + server cục bộ)</td></tr>
+<tr><td>5.2</td><td>Ma trận thiết bị: Android cấu hình thấp, iOS tầm trung; WiFi, 4G, bật chế độ máy bay giữa lúc tải, máy sắp đầy bộ nhớ</td></tr>
+<tr><td>5.3</td><td>Chạy dài trên staging: ba lần content update liên tiếp trên cùng một bản cài, kiểm dung lượng delta và độ sạch của cache</td></tr>
+<tr><td>5.4</td><td>Kiểm tra tải/chi phí với CDN thật — egress, tỉ lệ cache hit ở edge, độ trễ p95 theo khu vực</td></tr>
+<tr><td>5.5</td><td>Hướng dẫn sử dụng CDN — hướng tới dev game (tài liệu thiết kế là dành cho người viết package)</td></tr>
+<tr><td>5.6</td><td>Cập nhật <code>README</code> + <code>CHANGELOG</code></td></tr>
+<tr><td>5.7</td><td>Gỡ phần <code>[Obsolete]</code> → 5.0.0</td></tr>
+<tr><td>5.8</td><td>Ghi chú migration cho những nơi đã tích hợp</td></tr>
+</tbody></table></div>
+
+<h4>Tiêu chí thoát</h4>
+<ul>
+<li>Một thay đổi chỉ về content đi từ commit tới live trên staging qua CI mà không cần bước thủ công nào trong Unity Editor.</li>
+<li>Một máy đã cài bản trước chỉ nhận về phần delta.</li>
+<li>Tỉ lệ cache hit ở edge ≥ 95% cho bundle sau khi làm nóng.</li>
+</ul>
+
+<h3 id="p-release">9. Kế hoạch release</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Phiên bản</th><th>Nội dung</th><th>Breaking</th></tr></thead>
+<tbody>
+<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Chỉ Editor/CI — không đổi API runtime. Addressables nâng lên 2.9.x.</td><td>Nâng Addressables; TMP chuyển thành optional</td></tr>
+<tr><td><code>4.2.0</code></td><td>Phase 2. API boot của <code>Cdn</code>. Chỉ thêm mới.</td><td>không</td></tr>
+<tr><td><code>4.3.0</code></td><td>Phase 3. API download; API cũ bị deprecated.</td><td><code>DownloadWithProgressAsync</code> giờ báo tốc độ/byte thật (sửa hành vi)</td></tr>
+<tr><td><code>4.4.0</code></td><td>Phase 4. Cache, telemetry, tab Editor. Chỉ thêm mới.</td><td>không</td></tr>
+<tr><td><code>5.0.0</code></td><td>Phase 5. Gỡ API deprecated; gộp <code>ProgressInfo</code>/<code>DownloadProgress</code>.</td><td>có — có tài liệu migration</td></tr>
+</tbody></table></div>
+<p>Ghi chú semver: thay đổi tốc độ/byte ở 4.3.0 là bản sửa lỗi cho một giá trị vốn vô nghĩa, nên chưa đến mức tăng major — nhưng vẫn được nêu nổi bật trong changelog vì UI nào đã căn theo con số cũ sẽ hiển thị sai.</p>
+
+<h3 id="p-risks">10. Sổ rủi ro</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Rủi ro</th><th>Khả năng</th><th>Tác động</th><th>Giảm thiểu</th><th>Phase phụ trách</th></tr></thead>
+<tbody>
+<tr><td>R1</td><td>Mất <code>addressables_content_state.bin</code> của một app version đã ship</td><td>Trung bình</td><td class="crit">Nghiêm trọng — version đó vĩnh viễn không nhận được delta update nữa; toàn bộ người chơi của nó bị ép tải lại full content</td><td>Tự động lưu trữ (1.3), CI fail nếu lưu trữ thất bại, có chính sách lưu giữ bằng văn bản</td><td>1</td></tr>
+<tr><td>R2</td><td>Upload catalog trước bundle → 404 trên môi trường live</td><td>Trung bình</td><td>Cao</td><td>Thứ tự upload được ép trong script deploy: bundle trước, catalog sau (<a href="#i-deploy">hạ tầng §5</a>)</td><td>1</td></tr>
+<tr><td>R3</td><td><code>.hash</code> bị cache quá lâu ở edge → người chơi kẹt ở catalog cũ</td><td>Cao nếu không cấu hình</td><td>Cao</td><td>Cache rule riêng cho <code>catalog_*.hash</code>; kiểm chứng bằng bước kiểm header sau deploy</td><td>hạ tầng</td></tr>
+<tr><td>R4</td><td>Nâng Addressables 2.9 gây hồi quy cho loader hiện có</td><td>Trung bình</td><td>Trung bình</td><td>Phase 0 làm việc này trước, tách riêng, lấy bộ test hiện có làm cổng kiểm</td><td>0</td></tr>
+<tr><td>R5</td><td>Content static vô tình bị sửa trong một bản content update</td><td>Trung bình</td><td>Cao — bản update im lặng không áp được cho người chơi hiện tại</td><td>Kiểm tra <code>GatherModifiedEntries</code> làm fail build (1.4)</td><td>1</td></tr>
+<tr><td>R6</td><td>Hook được cài sau khi Addressables đã init ngầm</td><td>Trung bình</td><td>Cao — request catalog không được rewrite, sai môi trường</td><td>Assertion (2.3) + tài liệu về thứ tự boot</td><td>2</td></tr>
+<tr><td>R7</td><td>Kiểu exception trôi giữa các phiên bản Addressables làm hỏng ánh xạ lỗi</td><td>Trung bình</td><td>Trung bình</td><td>Ghim phiên bản; so khớp chuỗi làm phương án cuối cho <code>Unknown</code>; unit test trên exception giả</td><td>3</td></tr>
+<tr><td>R8</td><td>Bundle cache phình vô hạn</td><td>Cao nếu bỏ mặc</td><td>Trung bình</td><td><code>CleanObsoleteAsync</code> sau mỗi lần update (4.2)</td><td>4</td></tr>
+<tr><td>R9</td><td>Chi phí egress CDN cao hơn dự tính</td><td>Thấp khi dùng R2</td><td>Trung bình</td><td>Origin R2 không tính egress; telemetry theo dõi byte phục vụ theo version</td><td>5</td></tr>
+<tr><td>R10</td><td>Phình phạm vi sang hỗ trợ MOD / WebGL</td><td>Trung bình</td><td>Trung bình</td><td>Ghi rõ ngoài phạm vi ở <a href="#d-goals">thiết kế §1</a>; xem lại YooAsset nếu một trong hai trở thành yêu cầu thật</td><td>tất cả</td></tr>
+</tbody></table></div>
+
+<h3 id="p-rollback">11. Quy trình rollback</h3>
+<p><strong>Deploy nhầm content xấu.</strong> Upload lại catalog trước đó cho app version bị ảnh hưởng. Vì bundle được đánh địa chỉ theo nội dung và chỉ thêm chứ không sửa, bundle cũ vẫn còn nguyên — chỉ cần đổi catalog là rollback trọn vẹn. Thời gian phục hồi bằng một lần upload cộng TTL của <code>.hash</code> (≤ 60 giây).</p>
+<p><strong>Player build lỗi.</strong> Không rollback được qua CDN; phải phát hành lại lên store. Đây chính là lý do thay đổi content static phải bị bắt ngay lúc build (R5).</p>
+<p><strong>Package sai phiên bản trong một project game.</strong> Mỗi phase là một minor version độc lập; chỉ cần revert dependency UPM. Vì API cũ còn giữ tới 5.0.0, hạ từ 4.x xuống 4.x là an toàn.</p>
+<p><strong>Cache client hỏng ngoài thực địa.</strong> <code>Cdn.ClearCacheAsync(key)</code> để xử lý có mục tiêu, hoặc <code>ClearAllAsync</code> làm phương án cuối. Nên đặt sau một cờ remote-config để kích hoạt được mà không cần cập nhật client.</p>
+
+<h3 id="p-dod">12. Định nghĩa hoàn thành</h3>
+<p>Hệ thống CDN được coi là xong khi tất cả những điều sau đều đúng:</p>
+<ol>
+<li>Một thay đổi chỉ về content đến được tay người chơi qua CI, không cần bước thủ công nào trong Editor.</li>
+<li>Người chơi chỉ nhận phần delta; kích thước patch đo được nằm trong khoảng 25% so với kích thước asset đã đổi.</li>
+<li>Game boot offline được với cache ấm, không hộp thoại lỗi.</li>
+<li>Mọi kiểu lỗi trong bảng ở <a href="#d-errors">thiết kế §8</a> đều chạm tới được trong test và có trong tài liệu khắc phục sự cố.</li>
+<li>Download hủy được và tiếp tục được từ phần đã tải.</li>
+<li>Progress báo byte thật; tốc độ và ETA nằm trong ±15% khi bị bóp băng thông.</li>
+<li>Dung lượng đĩa không phình lên qua các lần content update liên tiếp.</li>
+<li>Rollback một bản deploy content xấu mất một lần upload và dưới một phút.</li>
+<li>Telemetry trả lời được câu "tuần này tỉ lệ download thành công là bao nhiêu, và lỗi tập trung ở đâu".</li>
+</ol>
+
+</section>
+
+<!-- ==================================================================== -->
+<!-- TÀI LIỆU III — HẠ TẦNG & VẬN HÀNH                                    -->
+<!-- ==================================================================== -->
+<section class="doc" id="infra">
+<div class="doc-label">Tài liệu III</div>
+<h2>Hạ tầng và vận hành</h2>
+<p class="sub" style="color:var(--fg-muted)">Bố cục lưu trữ, chính sách cache, quy trình deploy và runbook.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#i-topology">Kiến trúc hạ tầng</a></li>
+<li><a href="#i-layout">Bố cục lưu trữ</a></li>
+<li><a href="#i-cache">Chính sách cache</a></li>
+<li><a href="#i-envs">Môi trường</a></li>
+<li><a href="#i-deploy">Quy trình deploy</a></li>
+<li><a href="#i-state">Vòng đời content state</a></li>
+<li><a href="#i-cicd">Tham chiếu CI/CD</a></li>
+<li><a href="#i-rollback">Rollback</a></li>
+<li><a href="#i-security">Bảo mật</a></li>
+<li><a href="#i-monitoring">Giám sát</a></li>
+<li><a href="#i-cost">Mô hình chi phí</a></li>
+<li><a href="#i-runbook">Runbook</a></li>
+</ol>
+</div>
+
+<h3 id="i-topology">1. Kiến trúc hạ tầng</h3>
+<pre class="diagram"><code>   Unity CI (GitHub Actions)
+        │  build → verify → upload
+        ▼
+   Cloudflare R2  ──────────────►  Cloudflare CDN  ──────────────►  Người chơi
+   (origin, egress = 0đ)            (cache biên)                    (Unity UWR)</code></pre>
+<p>Addressables không quan tâm ai phục vụ nội dung — nó chỉ cần một URL trả về catalog, file hash của catalog, và các bundle. Nhờ vậy việc chọn origin là tự do, và R2 đứng sau CDN của Cloudflare là phương án tiết kiệm: R2 không tính phí egress ra internet, còn bundle đã cache thì được phục vụ từ biên.</p>
+<p>Unity Cloud Content Delivery vẫn là lựa chọn thay thế cắm-là-chạy (đổi một biến profile) nếu tính tiền theo băng thông về sau lại có lợi hơn việc tự vận hành. Không có gì trong thiết kế bị trói vào R2.</p>
+
+<h4>Yêu cầu bắt buộc với origin</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Yêu cầu</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td>Hỗ trợ HTTP range request</td><td>Bộ tải có cache của Unity tiếp tục phần đã truyền bằng header <code>Range</code></td></tr>
+<tr><td><code>ETag</code> ổn định</td><td>Revalidate ở biên</td></tr>
+<tr><td><code>Cache-Control</code> theo từng object</td><td>Bundle và catalog cần chính sách ngược nhau (<a href="#i-cache">§3</a>)</td></tr>
+<tr><td>Purge cache theo prefix</td><td>Rollback catalog nhanh và invalidate khi deploy</td></tr>
+</tbody></table></div>
+<p>R2 + Cloudflare thỏa cả bốn.</p>
+
+<h3 id="i-layout">2. Bố cục lưu trữ</h3>
+<div class="note">
+<span class="tag">Quyết định then chốt</span>
+<p>Đây là quyết định hệ trọng nhất trong tài liệu này. Sai chỗ này thì hoặc patch vỡ, hoặc cache vỡ.</p>
+</div>
+<pre><code>r2://game-content/
+└── &lt;game&gt;/
+    └── &lt;platform&gt;/                        ios | android | standalonewindows64
+        ├── bundles/                       ── chỉ thêm, đánh địa chỉ theo nội dung, bất biến
+        │   ├── ui_common_a3f1c9e4….bundle
+        │   ├── stage01_assets_7b2d0f11….bundle
+        │   └── …
+        └── catalog/
+            └── &lt;appVersion&gt;/              ── thay đổi được, mỗi player version một thư mục
+                ├── catalog_&lt;appVersion&gt;.bin
+                ├── catalog_&lt;appVersion&gt;.hash
+                └── build-manifest.json</code></pre>
+
+<h4>Vì sao tách bundle khỏi catalog</h4>
+<p>Addressables cho phép cấu hình đường dẫn remote catalog độc lập với load path của group (<code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> trong settings, so với <code>LoadPath</code> trên schema của group). Tận dụng sự tách bạch đó ta có hai loại object với vòng đời trái ngược nhau:</p>
+<ul>
+<li><strong>Bundle là bất biến và dùng chung.</strong> Tên file bundle chứa hash nội dung, nên một asset thay đổi sẽ sinh ra file <em>mới</em> chứ không ghi đè file cũ. Player cũ vẫn phân giải được bundle cũ; player mới lấy bundle mới. Thư mục chỉ thêm chứ không sửa, và mọi object đều cache được cả năm.</li>
+<li><strong>Catalog thay đổi được và gắn với từng app version.</strong> Một bản content update ghi đè catalog của đúng một app version. Nó không được cache lâu, và không bao giờ được dùng chung giữa các app version — một catalog do <code>BuildContentUpdate</code> sinh ra chỉ hợp lệ với <code>content_state.bin</code> của đúng player build đã sinh ra nó.</li>
+</ul>
+<p>Gộp cả hai vào một thư mục thì buộc phải áp cùng một chính sách cache, tức là hoặc catalog bị cũ, hoặc bundle bị revalidate ở mỗi request.</p>
+
+<h4>Cấu hình group bắt buộc</h4>
+<div class="note danger">
+<p>Tên bundle <strong>bắt buộc</strong> phải chứa hash nội dung — chọn <code>Append Hash to Filename</code> hoặc <code>Use Hash of AssetBundle</code> trên <code>BundledAssetGroupSchema</code> của group. Không có hash trong tên file thì một bản content update sẽ ghi đè lên các object bundle đang tồn tại, đồng thời phá vỡ cache bất biến và phá vỡ mọi player còn ở content version trước. <code>CatalogVerifier</code> kiểm tra điều này.</p>
+</div>
+
+<h4>Ánh xạ đường dẫn</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Cấu hình Addressables</th><th>Giá trị</th></tr></thead>
+<tbody>
+<tr><td>Group <code>LoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/bundles</code></td></tr>
+<tr><td>Group <code>BuildPath</code></td><td><code>ServerData/[BuildTarget]/bundles</code></td></tr>
+<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+</tbody></table></div>
+<p><code>[PlayerVersion]</code> lấy từ <code>OverridePlayerVersion</code>, hiện đã được đặt là <code>[UnityEditor.PlayerSettings.bundleVersion]</code> trong project — giữ nguyên như vậy. Nếu để mặc định là timestamp thì mỗi build sinh ra một tên catalog khác nhau, và player đã ship sẽ đi hỏi một tên file không còn tồn tại.</p>
+<p>Lúc runtime, phần host được <code>InternalIdTransformFunc</code> rewrite (<a href="#d-modules">thiết kế §5.6</a>), nên các URL nướng sẵn này đóng vai trò dự phòng chứ không phải lựa chọn duy nhất.</p>
+
+<h3 id="i-cache">3. Chính sách cache</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Mẫu đường dẫn</th><th><code>Cache-Control</code></th><th>TTL ở biên</th><th>Lý do</th></tr></thead>
+<tbody>
+<tr><td><code>/*/bundles/*.bundle</code></td><td><code>public, max-age=31536000, immutable</code></td><td>1 năm</td><td>Tên file đánh địa chỉ theo nội dung; object không bao giờ đổi được</td></tr>
+<tr><td><code>/*/catalog/*/catalog_*.hash</code></td><td><code>public, max-age=0, must-revalidate</code></td><td>60 giây</td><td>Được hỏi ở mỗi lần boot. Đây là núm vặn độ trễ lan truyền của cả hệ thống.</td></tr>
+<tr><td><code>/*/catalog/*/catalog_*.bin</code></td><td><code>public, max-age=0, must-revalidate</code></td><td>60 giây</td><td>Chỉ được tải khi hash khác</td></tr>
+<tr><td><code>/*/catalog/*/build-manifest.json</code></td><td><code>no-store</code></td><td>bỏ qua cache</td><td>Metadata vận hành, không bao giờ dành cho client</td></tr>
+</tbody></table></div>
+
+<h4>Content type</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Phần mở rộng</th><th><code>Content-Type</code></th></tr></thead>
+<tbody>
+<tr><td><code>.bundle</code></td><td><code>application/octet-stream</code></td></tr>
+<tr><td><code>.bin</code></td><td><code>application/octet-stream</code></td></tr>
+<tr><td><code>.json</code></td><td><code>application/json</code></td></tr>
+<tr><td><code>.hash</code></td><td><code>text/plain</code></td></tr>
+</tbody></table></div>
+<p>Đừng bật Brotli/gzip cho <code>.bundle</code> — bundle vốn đã nén LZ4 hoặc LZMA, nén lại chỉ đốt CPU ở biên mà không giảm được dung lượng.</p>
+
+<h4>Purge khi deploy</h4>
+<p>TTL là lưới an toàn, không phải cơ chế lan truyền. Mỗi lần deploy đều purge prefix catalog một cách tường minh:</p>
+<pre><code>curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+  -H "Authorization: Bearer $CF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "{\"files\":[
+      \"https://cdn.$DOMAIN/$GAME/$PLATFORM/catalog/$APP_VERSION/catalog_$APP_VERSION.hash\",
+      \"https://cdn.$DOMAIN/$GAME/$PLATFORM/catalog/$APP_VERSION/catalog_$APP_VERSION.bin\"
+  ]}"</code></pre>
+<p>Purge cả hai cùng lúc để tránh khoảng thời gian client thấy <code>.hash</code> mới nhưng catalog thì cũ. <strong>Tuyệt đối không purge prefix bundle</strong> — những object đó bất biến, purge chỉ khiến biên phải tải lại đúng những byte y hệt từ origin.</p>
+
+<h3 id="i-envs">4. Môi trường</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Ring</th><th>Host</th><th>Prefix bucket</th><th>Dành cho ai</th></tr></thead>
+<tbody>
+<tr><td>Local</td><td><code>http://localhost:8080</code></td><td><code>ServerData/</code> trên đĩa</td><td>Từng dev</td></tr>
+<tr><td>Dev</td><td><code>https://cdn-dev.&lt;domain&gt;</code></td><td><code>game-content-dev/</code></td><td>Mỗi lần merge vào <code>develop</code></td></tr>
+<tr><td>Staging</td><td><code>https://cdn-stg.&lt;domain&gt;</code></td><td><code>game-content-stg/</code></td><td>Bản ứng viên phát hành, QA</td></tr>
+<tr><td>Prod</td><td><code>https://cdn.&lt;domain&gt;</code></td><td><code>game-content/</code></td><td>Chỉ các bản đã gắn tag</td></tr>
+</tbody></table></div>
+<p>Dùng bucket riêng chứ không phải prefix riêng trong một bucket — như vậy việc ghi nhầm chéo ring là bất khả thi chứ không chỉ là khó xảy ra.</p>
+<p>Vì đã có cơ chế rewrite host lúc runtime, QA trỏ được một bản build prod sang staging mà không cần rebuild. Năng lực đó bị khóa có chủ đích: chỉ bật bằng cờ development-build hoặc một lệnh debug có ký, không bao giờ bằng một giá trị config trơn có thể lỡ ship kèm ở trạng thái bật.</p>
+
+<h3 id="i-deploy">5. Quy trình deploy</h3>
+<p>Thứ tự là quan trọng. Mỗi bước là cổng chặn cho bước sau.</p>
+<pre><code>1. Build          BuildContent (full) hoặc BuildContentUpdate (delta)
+                  └─ cần: đúng profile, có content_state.bin nếu là bản update
+2. Verify         CatalogVerifier — ràng buộc cấu hình, tính nhất quán catalog↔bundle
+                  └─ làm fail job trước khi có bất cứ thứ gì ra tới mạng
+3. Upload bundle  bundles/ → R2, Cache-Control: immutable
+                  └─ chỉ thêm; không bao giờ ghi đè object đã có
+4. Upload catalog catalog/&lt;appVersion&gt;/ → R2, Cache-Control: must-revalidate
+                  └─ LUÔN LUÔN SAU BUNDLE
+5. Purge          .hash và thân catalog ở biên
+6. Kiểm tra sau   HEAD mọi URL trong manifest; kiểm 200 và header đúng như mong đợi
+7. Lưu trữ        content_state.bin + build-manifest.json → kho artifact của CI</code></pre>
+<div class="note warn">
+<span class="tag">Vì sao thứ tự quan trọng</span>
+<p><strong>Bước 3 trước bước 4 không phải là sở thích hình thức.</strong> Upload catalog trước tạo ra một khoảng thời gian mà client đọc được catalog trỏ tới những bundle chưa tồn tại, sinh ra 404 trên môi trường production. Bundle-rồi-catalog khiến bản deploy trở nên nguyên tử dưới góc nhìn của client: nội dung mới vô hình cho tới khi catalog gọi tên nó.</p>
+</div>
+
+<h4>Lệnh upload</h4>
+<p>R2 tương thích S3.</p>
+<pre><code># 3. bundle — bất biến, chỉ thêm
+aws s3 sync "ServerData/$PLATFORM/bundles/" "s3://$BUCKET/$GAME/$PLATFORM/bundles/" \
+  --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=31536000, immutable" \
+  --content-type "application/octet-stream" \
+  --size-only
+
+# 4. catalog — TTL ngắn, ghi đè
+aws s3 sync "ServerData/$PLATFORM/catalog/$APP_VERSION/" \
+  "s3://$BUCKET/$GAME/$PLATFORM/catalog/$APP_VERSION/" \
+  --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=0, must-revalidate" \
+  --exclude "build-manifest.json"</code></pre>
+<p>Dùng <code>--size-only</code> cho bước đồng bộ bundle là an toàn, chính bởi vì tên file đã băm theo nội dung: trùng tên nghĩa là trùng byte.</p>
+
+<h4>Kiểm tra sau deploy</h4>
+<pre><code># mọi URL trong manifest phải trả 200 với header cache đúng
+jq -r '.bundles[].url, .catalog.url, .catalog.hashUrl' build-manifest.json \
+  | while read -r url; do
+      code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$url")
+      [ "$code" = "200" ] || { echo "FAIL $code $url"; exit 1; }
+    done</code></pre>
+<p>Một bản deploy bỏ qua bước này chính là con đường để rủi ro R2 (<a href="#p-risks">sổ rủi ro</a>) đi thẳng vào production.</p>
+
+<h3 id="i-state">6. Vòng đời content state</h3>
+<p><code>addressables_content_state.bin</code> ghi lại trạng thái content tại thời điểm một player build được tạo ra. <code>BuildContentUpdate</code> so sánh với nó để quyết định bundle nào cần build lại.</p>
+<div class="note danger">
+<span class="tag">Nghiêm trọng</span>
+<p><strong>Mất nó với một app version đã ship là chấm dứt vĩnh viễn khả năng delta update cho version đó.</strong> Mọi bản patch sau này cho những người chơi đó đều biến thành tải lại toàn bộ. Không có cách nào dựng lại file này.</p>
+</div>
+
+<h4>Quy tắc</h4>
+<ol>
+<li>Lưu <strong>ngoài <code>Assets/</code></strong> — <code>ServerData/ContentState/[BuildTarget]/</code> — và cho vào gitignore. Để trong <code>Assets/</code> thì nó thay đổi ở mọi commit và bị resolve sai khi merge.</li>
+<li>Lưu trữ dưới dạng artifact CI ở <strong>mọi</strong> build, đánh khóa theo <code>&lt;platform&gt;/&lt;appVersion&gt;/</code>. Đồng thời nhân bản sang một prefix bucket để nó sống lâu hơn thời hạn giữ artifact của CI.</li>
+<li>Giữ chừng nào app version đó còn lượng người chơi đáng kể, cộng thêm biên an toàn. Tối thiểu: hai năm hoặc hai major version, lấy cái nào dài hơn.</li>
+<li>Một bản build content-update phải <strong>fail</strong> nếu thiếu file state. Tuyệt đối không được âm thầm tụt về full build — làm vậy sinh ra một catalog trông hợp lệ nhưng ép mọi người chơi tải lại tất cả.</li>
+<li>Kiểm tra file state đã lưu trữ khớp với app version đang được patch trước khi dùng.</li>
+</ol>
+
+<h4>Lấy về</h4>
+<pre><code>aws s3 cp "s3://$STATE_BUCKET/$GAME/$PLATFORM/$APP_VERSION/addressables_content_state.bin" \
+  "ServerData/ContentState/$PLATFORM/" --endpoint-url "$R2_ENDPOINT"</code></pre>
+
+<h3 id="i-cicd">7. Tham chiếu CI/CD</h3>
+<p>Hai workflow. Ranh giới giữa chúng đúng bằng ranh giới giữa một bản phát hành player và một bản patch content.</p>
+
+<h4><code>content-full.yml</code> — chạy kèm một player build</h4>
+<pre><code>name: Content Full Build
+on:
+  workflow_dispatch:
+    inputs:
+      platform:    { required: true, type: choice, options: [Android, iOS] }
+      environment: { required: true, type: choice, options: [dev, staging, prod] }
+
+jobs:
+  build:
+    runs-on: [self-hosted, unity]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build addressable content
+        run: |
+          "$UNITY" -batchmode -quit -nographics \
+            -projectPath . \
+            -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}" \
+            -outputDir "ServerData"
+
+      - name: Verify catalog
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CatalogVerifier.VerifyCli \
+            -manifest "ServerData/build-manifest.json"
+
+      - name: Upload bundles
+        run: ./ci/upload-bundles.sh
+        env: { R2_ENDPOINT: "${{ secrets.R2_ENDPOINT }}" }
+
+      - name: Upload catalog
+        run: ./ci/upload-catalog.sh
+
+      - name: Purge edge cache
+        run: ./ci/purge-catalog.sh
+
+      - name: Post-deploy check
+        run: ./ci/verify-urls.sh
+
+      - name: Archive content state          # không bao giờ được bỏ; xem §6
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-state-${{ inputs.platform }}-${{ env.APP_VERSION }}
+          path: ServerData/ContentState/**/addressables_content_state.bin
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Mirror content state to durable storage
+        run: ./ci/archive-content-state.sh</code></pre>
+
+<h4><code>content-update.yml</code> — patch chỉ content, không build player</h4>
+<p>Giống hệt, chỉ khác hai bước ở đầu:</p>
+<pre><code>      - name: Fetch content state for target app version
+        run: ./ci/fetch-content-state.sh
+        env:
+          APP_VERSION: ${{ inputs.app_version }}
+
+      - name: Build content update
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}" \
+            -contentState "ServerData/ContentState/${{ inputs.platform }}/addressables_content_state.bin"</code></pre>
+<p><code>BuildContentUpdate</code> đồng thời chạy bước kiểm tra ràng buộc content static (<a href="#p-phase1">kế hoạch §1.4</a>) và fail nếu một group đánh dấu static bị đổi — tình huống đó không patch được và cần một player build mới.</p>
+
+<h3 id="i-rollback">8. Rollback</h3>
+
+<h4>Content xấu</h4>
+<p>Vì bundle chỉ thêm và đánh địa chỉ theo nội dung, content trước đó vẫn còn trên origin. Rollback chỉ là đổi catalog:</p>
+<pre><code># khôi phục catalog trước đó cho app version này
+aws s3 cp "s3://$ARCHIVE/$GAME/$PLATFORM/$APP_VERSION/&lt;build-id-truoc&gt;/" \
+  "s3://$BUCKET/$GAME/$PLATFORM/catalog/$APP_VERSION/" \
+  --recursive --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=0, must-revalidate"
+
+./ci/purge-catalog.sh</code></pre>
+<p>Thời gian phục hồi: một lần upload cộng 60 giây TTL ở biên. Đây là lý do mỗi lần upload catalog đều phải lưu trữ kèm một build id — không có bản lưu trữ đó thì chẳng có gì <em>để mà</em> rollback về.</p>
+
+<h4>Player build lỗi</h4>
+<p>Không phục hồi được qua CDN. Phải phát hành lại lên store. Đây chính là lý do bước kiểm tra content static là một cổng chặn lúc build chứ không phải một cảnh báo.</p>
+
+<h4>Cache hỏng phía client, ngoài thực địa</h4>
+<p><code>Cdn.ClearCacheAsync(key)</code> để xóa có mục tiêu, <code>ClearAllAsync</code> là phương án cuối. Cả hai nên đặt sau một cờ remote-config để kích hoạt được mà không phải ship bản client mới.</p>
+
+<h3 id="i-security">9. Bảo mật</h3>
+<div class="note">
+<span class="tag">Mô hình mối đe dọa</span>
+<p>Asset bundle không phải bí mật — ai cài game cũng trích xuất được. Xác thực ở CDN là để chống <strong>ăn cắp băng thông và lạm dụng</strong>, không phải để giữ bí mật.</p>
+</div>
+<div class="tablewrap"><table>
+<thead><tr><th>Biện pháp</th><th>Khuyến nghị</th></tr></thead>
+<tbody>
+<tr><td>Hotlink protection</td><td>Bật. Cách phòng vệ rẻ nhất trước việc bên thứ ba lấy bucket của bạn ra phục vụ nội dung của họ.</td></tr>
+<tr><td>Rate limiting (WAF)</td><td>Trần số request theo IP, đặt cao hơn hẳn lưu lượng cài mới hợp lệ.</td></tr>
+<tr><td>Bearer token qua <code>WebRequestOverride</code></td><td>Tùy chọn. Dễ triển khai; kiểm tra bằng một Cloudflare Worker. Lưu ý token nằm sẵn trong client, nên chỉ cản được việc cào dữ liệu nghiệp dư.</td></tr>
+<tr><td>Signed URL</td><td>Chỉ dùng nếu có yêu cầu cứng phải chặn chia sẻ link. Cái giá: catalog không còn chứa được URL cuối, mọi request phải ký qua <code>InternalIdTransformFunc</code>, và thời hạn hết hiệu lực xung khắc với download dài cùng cơ chế tiếp tục. <strong>Không khuyến nghị cho dự án này.</strong></td></tr>
+<tr><td>Quyền ghi bucket</td><td>Chỉ tài khoản dịch vụ của CI, phân quyền theo từng bucket môi trường. Không cấp credential ghi cho người thật trên bucket prod.</td></tr>
+<tr><td>Quyền đọc công khai</td><td>Bundle và catalog công khai theo thiết kế. Tuyệt đối không để bất cứ thứ gì khác vào những bucket này.</td></tr>
+<tr><td>TLS</td><td>Bắt buộc; request HTTP bị chuyển hướng. Client Unity phải dùng load path <code>https://</code>.</td></tr>
+</tbody></table></div>
+<p><code>content_state.bin</code> và <code>build-manifest.json</code> <strong>không</strong> công khai. Chúng nằm ở một bucket lưu trữ riêng, ở chế độ private.</p>
+
+<h3 id="i-monitoring">10. Giám sát</h3>
+
+<h4>Phía biên (Cloudflare analytics)</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Chỉ số</th><th>Ngưỡng cảnh báo</th></tr></thead>
+<tbody>
+<tr><td>Tỉ lệ cache hit, đường dẫn bundle</td><td>&lt; 90% kéo dài trên 1 giờ</td></tr>
+<tr><td>Tỉ lệ 4xx</td><td>&gt; 1% tổng request — thường là thiếu bundle hoặc deploy hỏng</td></tr>
+<tr><td>Tỉ lệ 5xx</td><td>&gt; 0,1%</td></tr>
+<tr><td>Byte egress</td><td>&gt; 2× trung vị trượt 7 ngày (bất thường, có thể đang bị cào)</td></tr>
+<tr><td>Thời gian phản hồi origin p95</td><td>&gt; 500 ms</td></tr>
+</tbody></table></div>
+
+<h4>Phía client (qua <code>ICdnTelemetry</code>)</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Chỉ số</th><th>Để làm gì</th></tr></thead>
+<tbody>
+<tr><td>Tỉ lệ download thành công theo app version</td><td>Phân biệt lỗi CDN với lỗi của một bản client</td></tr>
+<tr><td>Phân bố mã lỗi</td><td><code>BundleNotFound</code> tăng vọt nghĩa là deploy thiếu; <code>Timeout</code> tăng vọt nghĩa là vấn đề mạng/khu vực</td></tr>
+<tr><td>Thời lượng patch p50 / p95 theo nhóm dung lượng</td><td>Phát hiện suy giảm theo khu vực mà dashboard biên che mất</td></tr>
+<tr><td>Byte đã tải theo app version</td><td>Kiểm chứng rằng delta update thực sự là delta</td></tr>
+<tr><td>Tỉ lệ rơi vào fallback offline</td><td>Nếu cao thì boot đang phụ thuộc mạng quá nhiều</td></tr>
+</tbody></table></div>
+<p>Góc nhìn biên và góc nhìn client trả lời hai câu hỏi khác nhau. Biên cho biết CDN khỏe; client cho biết người chơi có thành công hay không. Hai cái lệch nhau thường xuyên hơn bạn tưởng.</p>
+
+<h3 id="i-cost">11. Mô hình chi phí</h3>
+<p>Các biến số đáng quan tâm, xếp theo mức ảnh hưởng:</p>
+<ol>
+<li><strong>Egress.</strong> Khoản chi phối với content game ở quy mô lớn, và là lý do chọn R2: object storage không tính phí egress theo GB ra internet, phía trước là một CDN phục vụ cache hit mà không chạm tới origin.</li>
+<li><strong>Lưu trữ.</strong> Thư mục bundle chỉ-thêm nên phình đơn điệu. Cần dự trù mức tăng và định ra chính sách dọn dẹp cho những app version không còn người chơi (xem phần lưu giữ ở <a href="#i-state">§6</a>).</li>
+<li><strong>Thao tác Class A/B.</strong> Số lần ghi và đọc trên bucket. Không đáng kể so với egress trừ khi tỉ lệ cache hit kém — mà điều đó lại quay về việc <a href="#i-cache">§3</a> có được cấu hình đúng hay không.</li>
+<li><strong>Lãng phí do tải lại toàn bộ.</strong> Khoản chi phí tránh được lớn nhất là việc ship full content ở mỗi patch. Đó chính là thứ Phase 1 của kế hoạch triển khai loại bỏ, và nó lớn hơn hẳn mọi việc tinh chỉnh hạ tầng.</li>
+</ol>
+<p>Hãy kiểm tra bảng giá hiện hành của nhà cung cấp trước khi lập mô hình; thứ tự định tính ở trên thì ổn định, còn con số thì không. Unity CCD tính tiền theo băng thông và đáng để định giá lại vào thời điểm sự đơn giản trong vận hành có giá trị hơn chi phí egress.</p>
+
+<h3 id="i-runbook">12. Runbook</h3>
+
+<h4>Người chơi báo "kẹt ở content cũ"</h4>
+<ol>
+<li><code>curl -I</code> vào URL của <code>.hash</code>. Xem <code>cf-cache-status</code> và <code>age</code>.</li>
+<li>Nếu <code>age</code> lớn thì bước purge đã thất bại hoặc cache rule cấu hình sai → purge thủ công, rồi sửa rule.</li>
+<li>Nếu header đúng thì so hash đang được phục vụ với <code>build-manifest.json</code> đã lưu trữ. Lệch nhau nghĩa là đã upload nhầm catalog.</li>
+</ol>
+
+<h4>Tăng vọt <code>BundleNotFound</code></h4>
+<p>Gần như luôn là do thứ tự upload (<a href="#i-deploy">§5</a>, bước 3 trước 4) hoặc một lần sync bundle chỉ xong một phần.</p>
+<ol>
+<li>So danh sách bundle trong manifest với danh sách object trên bucket.</li>
+<li>Upload lại những bundle còn thiếu. Không cần purge — chúng chưa từng được cache.</li>
+<li>Kiểm lại cách script deploy xử lý lỗi; một lệnh <code>aws s3 sync</code> chạy dở phải làm fail job.</li>
+</ol>
+
+<h4>Tăng vọt <code>BundleCrcMismatch</code></h4>
+<ol>
+<li>Xác nhận đây không phải cache hỏng của một client đơn lẻ (kiểm mức độ lan rộng trên nhiều máy).</li>
+<li>Nếu diện rộng thì object ở origin đã hỏng — upload lại từ artifact của CI rồi purge.</li>
+<li>Đường tự sửa phía client (<a href="#d-errors">thiết kế §8</a>) sẽ loại bỏ và thử lại một lần, nên trường hợp thoáng qua tự lành.</li>
+</ol>
+
+<h4>Egress bất thường</h4>
+<ol>
+<li>Kiểm tỉ lệ cache hit trước — một lỗi cấu hình hồi quy ở cache rule của bundle trông y hệt như bị lạm dụng.</li>
+<li>Kiểm phân bố request theo IP/ASN xem có bị cào không.</li>
+<li>Siết rate limit của WAF; cân nhắc bật hotlink protection nếu chưa bật.</li>
+</ol>
+
+<h4>Content update lại sinh ra patch to bằng bản đầy đủ</h4>
+<ol>
+<li><code>content_state.bin</code> có mặt và đúng với app version đó không? (<a href="#i-state">§6</a>)</li>
+<li>Có group static nào bị đổi không? Xem báo cáo ràng buộc từ bản build.</li>
+<li><code>MonoScriptBundleNaming</code> hoặc <code>BuiltInBundleNaming</code> có đổi giữa hai bản build không? Cả hai đều gây thay đổi bundle trên diện rộng. Cả hai đều bị ghim bởi ràng buộc cấu hình (<a href="#d-config">thiết kế §9</a>) chính vì lý do này.</li>
+</ol>
+
+<h4>Cần trỏ một bản build prod sang staging</h4>
+<p>Dùng cơ chế đổi môi trường lúc runtime (<a href="#d-modules">thiết kế §5.6</a>). Xác nhận nó bị khóa cho development build hoặc một lệnh debug có ký — nếu một giá trị config trơn cũng làm được, thì đó là lỗi cần sửa chứ không phải quy trình để dùng.</p>
+
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+
+  // theme toggle
+  var btn = document.getElementById('themeBtn');
+  var stored = null;
+  try { stored = localStorage.getItem('cdn-doc-theme'); } catch(e){}
+  if (stored) root.setAttribute('data-theme', stored);
+  btn.addEventListener('click', function(){
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = root.getAttribute('data-theme') || (prefersDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('cdn-doc-theme', next); } catch(e){}
+  });
+
+  // keep reading position when switching language
+  var langLink = document.getElementById('langLink');
+  function syncLangHref(){ langLink.setAttribute('href', 'CDN_SYSTEM.html' + (location.hash || '')); }
+  syncLangHref();
+  window.addEventListener('hashchange', syncLangHref);
+
+  // scrollspy
+  var links = Array.prototype.slice.call(document.querySelectorAll('#nav a.item'));
+  var targets = links
+    .map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  if (!targets.length) return;
+
+  function sync(){
+    var y = window.scrollY + 90;
+    var idx = 0;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].offsetTop <= y) idx = i; else break;
+    }
+    links.forEach(function(a){ a.classList.remove('active'); });
+    if (links[idx]) {
+      links[idx].classList.add('active');
+      var nav = document.getElementById('nav');
+      var r = links[idx].getBoundingClientRect();
+      var nr = nav.getBoundingClientRect();
+      if (r.top < nr.top || r.bottom > nr.bottom) links[idx].scrollIntoView({block:'nearest'});
+    }
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function(){ sync(); ticking = false; });
+  }, {passive:true});
+  sync();
+
+  // update spy target when hash changes via language link return
+  window.addEventListener('hashchange', sync);
+})();
+</script>
+</body>
+</html>

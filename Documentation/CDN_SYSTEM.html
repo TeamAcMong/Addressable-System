@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CDN System — Design, Plan &amp; Operations · com.game.addressables</title>
+<style>
+:root{
+  --bg:#ffffff; --bg-elev:#f7f8fa; --bg-code:#f3f4f6; --bg-sidebar:#fafbfc;
+  --fg:#1a1d21; --fg-muted:#5a626e; --fg-subtle:#868e9a;
+  --border:#e4e7ea; --border-strong:#ccd1d7;
+  --accent:#2f6feb; --accent-soft:#eaf1fe; --accent-border:#b9d0fb;
+  --warn:#a25c00; --warn-soft:#fdf4e6; --warn-border:#f0d8ad;
+  --danger:#bf3b30; --danger-soft:#fdeeec; --danger-border:#f3c6c1;
+  --ok:#1b7a4b; --ok-soft:#eaf7f0;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#131619; --bg-elev:#191d21; --bg-code:#1d2126; --bg-sidebar:#101316;
+    --fg:#e3e7ea; --fg-muted:#98a1ac; --fg-subtle:#727b87;
+    --border:#282e35; --border-strong:#3a424b;
+    --accent:#74a4ff; --accent-soft:#17233a; --accent-border:#2d4470;
+    --warn:#e0a558; --warn-soft:#2a2115; --warn-border:#4d3c1e;
+    --danger:#f08078; --danger-soft:#2d1a18; --danger-border:#573029;
+    --ok:#5ec48d; --ok-soft:#152a20;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#ffffff; --bg-elev:#f7f8fa; --bg-code:#f3f4f6; --bg-sidebar:#fafbfc;
+  --fg:#1a1d21; --fg-muted:#5a626e; --fg-subtle:#868e9a;
+  --border:#e4e7ea; --border-strong:#ccd1d7;
+  --accent:#2f6feb; --accent-soft:#eaf1fe; --accent-border:#b9d0fb;
+  --warn:#a25c00; --warn-soft:#fdf4e6; --warn-border:#f0d8ad;
+  --danger:#bf3b30; --danger-soft:#fdeeec; --danger-border:#f3c6c1;
+  --ok:#1b7a4b; --ok-soft:#eaf7f0;
+}
+:root[data-theme="dark"]{
+  --bg:#131619; --bg-elev:#191d21; --bg-code:#1d2126; --bg-sidebar:#101316;
+  --fg:#e3e7ea; --fg-muted:#98a1ac; --fg-subtle:#727b87;
+  --border:#282e35; --border-strong:#3a424b;
+  --accent:#74a4ff; --accent-soft:#17233a; --accent-border:#2d4470;
+  --warn:#e0a558; --warn-soft:#2a2115; --warn-border:#4d3c1e;
+  --danger:#f08078; --danger-soft:#2d1a18; --danger-border:#573029;
+  --ok:#5ec48d; --ok-soft:#152a20;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:1.5rem}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--sans); font-size:15.5px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.layout{display:grid; grid-template-columns:290px minmax(0,1fr); min-height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{
+  background:var(--bg-sidebar); border-right:1px solid var(--border);
+  position:sticky; top:0; height:100vh; overflow-y:auto; padding:1.5rem 0 3rem;
+}
+.brand{padding:0 1.25rem 1rem; border-bottom:1px solid var(--border); margin-bottom:.75rem}
+.brand h1{font-size:.98rem; margin:0 0 .2rem; letter-spacing:-.01em}
+.brand p{margin:0; font-size:.76rem; color:var(--fg-subtle); font-family:var(--mono)}
+.nav-doc{
+  display:block; padding:.55rem 1.25rem .35rem; margin-top:.6rem;
+  font-size:.7rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--fg-subtle); text-decoration:none;
+}
+.nav-doc:hover{color:var(--accent)}
+.sidebar nav a.item{
+  display:block; padding:.28rem 1.25rem .28rem 1.6rem; font-size:.83rem;
+  color:var(--fg-muted); text-decoration:none; border-left:2px solid transparent;
+}
+.sidebar nav a.item:hover{color:var(--fg); background:var(--bg-elev)}
+.sidebar nav a.item.active{color:var(--accent); border-left-color:var(--accent); background:var(--accent-soft); font-weight:500}
+.side-actions{display:flex; gap:.5rem; margin:1.25rem 1.25rem 0; flex-wrap:wrap}
+.sbtn{
+  padding:.35rem .7rem; font-size:.78rem; cursor:pointer; text-decoration:none;
+  background:var(--bg-elev); color:var(--fg-muted); border:1px solid var(--border); border-radius:6px;
+  font-family:var(--sans); display:inline-block;
+}
+.sbtn:hover{color:var(--fg); border-color:var(--border-strong)}
+.sbtn.lang{background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent); font-weight:500}
+
+/* ---------- main ---------- */
+main{padding:2.5rem 3rem 8rem; max-width:960px; min-width:0}
+.pagehead{border-bottom:1px solid var(--border); padding-bottom:1.5rem; margin-bottom:2rem}
+.pagehead h1{font-size:1.9rem; margin:0 0 .4rem; letter-spacing:-.02em; line-height:1.25}
+.pagehead .sub{color:var(--fg-muted); margin:0 0 .9rem}
+.meta{display:flex; flex-wrap:wrap; gap:.4rem}
+.badge{
+  display:inline-block; padding:.16rem .55rem; border-radius:999px; font-size:.73rem;
+  font-family:var(--mono); border:1px solid var(--border-strong); color:var(--fg-muted); background:var(--bg-elev);
+}
+.badge.status{background:var(--warn-soft); border-color:var(--warn-border); color:var(--warn)}
+.badge.branch{background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent)}
+
+section.doc{padding-top:1rem}
+section.doc + section.doc{margin-top:4.5rem; border-top:2px solid var(--border-strong); padding-top:3rem}
+.doc-label{
+  font-size:.7rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--accent); margin-bottom:.4rem;
+}
+h2{font-size:1.55rem; margin:0 0 .3rem; letter-spacing:-.015em; scroll-margin-top:1.5rem}
+h3{
+  font-size:1.15rem; margin:2.6rem 0 .8rem; padding-top:.4rem; letter-spacing:-.01em;
+  scroll-margin-top:1.5rem; border-top:1px solid var(--border); padding-top:1.4rem;
+}
+h3:first-of-type{border-top:none; padding-top:0}
+h4{font-size:.97rem; margin:1.8rem 0 .6rem; color:var(--fg)}
+h5{font-size:.87rem; margin:1.3rem 0 .5rem; color:var(--fg-muted); font-weight:600}
+p{margin:0 0 1rem}
+ul,ol{margin:0 0 1rem; padding-left:1.4rem}
+li{margin-bottom:.35rem}
+li>ul,li>ol{margin-top:.35rem}
+a{color:var(--accent)}
+strong{font-weight:650}
+hr{border:none; border-top:1px solid var(--border); margin:2rem 0}
+
+code{
+  font-family:var(--mono); font-size:.855em; background:var(--bg-code);
+  padding:.12em .38em; border-radius:4px; border:1px solid var(--border);
+  word-break:break-word;
+}
+pre{
+  background:var(--bg-code); border:1px solid var(--border); border-radius:8px;
+  padding:1rem 1.1rem; overflow-x:auto; margin:0 0 1.2rem; line-height:1.55;
+}
+pre code{background:none; border:none; padding:0; font-size:.83rem; white-space:pre}
+pre.diagram code{font-size:.775rem; line-height:1.45}
+
+.tablewrap{overflow-x:auto; margin:0 0 1.3rem; border:1px solid var(--border); border-radius:8px}
+table{border-collapse:collapse; width:100%; font-size:.875rem; min-width:520px}
+th,td{padding:.55rem .8rem; text-align:left; vertical-align:top; border-bottom:1px solid var(--border)}
+th{background:var(--bg-elev); font-weight:650; font-size:.8rem; white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-elev)}
+td code,th code{font-size:.83em; white-space:nowrap}
+
+.note{
+  border-left:3px solid var(--accent); background:var(--accent-soft);
+  padding:.85rem 1.1rem; border-radius:0 6px 6px 0; margin:0 0 1.3rem;
+}
+.note.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+.note.danger{border-left-color:var(--danger); background:var(--danger-soft)}
+.note p:last-child{margin-bottom:0}
+.note .tag{
+  display:block; font-size:.7rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; margin-bottom:.3rem; color:var(--accent);
+}
+.note.warn .tag{color:var(--warn)}
+.note.danger .tag{color:var(--danger)}
+
+.toc{background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; margin:1.5rem 0 2.5rem}
+.toc ol{margin:0; padding-left:1.3rem; columns:2; column-gap:2rem}
+.toc li{margin-bottom:.22rem; font-size:.875rem; break-inside:avoid}
+@media (max-width:760px){.toc ol{columns:1}}
+
+.crit{color:var(--danger); font-weight:650}
+.yes{color:var(--ok); font-weight:600}
+.no{color:var(--fg-subtle)}
+
+@media (max-width:1000px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:static; height:auto; max-height:none; border-right:none; border-bottom:1px solid var(--border)}
+  main{padding:2rem 1.25rem 5rem}
+  .pagehead h1{font-size:1.5rem}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand">
+    <h1>CDN System</h1>
+    <p>com.game.addressables</p>
+  </div>
+  <nav id="nav">
+    <a class="nav-doc" href="#design">I · Technical Design</a>
+    <a class="item" href="#d-goals">1. Goals and Non-Goals</a>
+    <a class="item" href="#d-audit">2. Current State Audit</a>
+    <a class="item" href="#d-principles">3. Design Principles</a>
+    <a class="item" href="#d-arch">4. Architecture Overview</a>
+    <a class="item" href="#d-modules">5. Module Specifications</a>
+    <a class="item" href="#d-api">6. Public API Surface</a>
+    <a class="item" href="#d-flows">7. Boot and Download Flows</a>
+    <a class="item" href="#d-errors">8. Error Model</a>
+    <a class="item" href="#d-config">9. Configuration Contract</a>
+    <a class="item" href="#d-integration">10. Integration</a>
+    <a class="item" href="#d-compat">11. Backward Compatibility</a>
+    <a class="item" href="#d-testing">12. Testing Strategy</a>
+    <a class="item" href="#d-questions">13. Open Questions</a>
+
+    <a class="nav-doc" href="#plan">II · Implementation Plan</a>
+    <a class="item" href="#p-strategy">1. Strategy</a>
+    <a class="item" href="#p-overview">2. Phase Overview</a>
+    <a class="item" href="#p-phase0">Phase 0 — Foundations</a>
+    <a class="item" href="#p-phase1">Phase 1 — Pipeline</a>
+    <a class="item" href="#p-phase2">Phase 2 — Runtime Bootstrap</a>
+    <a class="item" href="#p-phase3">Phase 3 — Download</a>
+    <a class="item" href="#p-phase4">Phase 4 — Cache &amp; Errors</a>
+    <a class="item" href="#p-phase5">Phase 5 — Hardening</a>
+    <a class="item" href="#p-release">9. Release Plan</a>
+    <a class="item" href="#p-risks">10. Risk Register</a>
+    <a class="item" href="#p-rollback">11. Rollback Procedures</a>
+    <a class="item" href="#p-dod">12. Definition of Done</a>
+
+    <a class="nav-doc" href="#infra">III · Infrastructure &amp; Ops</a>
+    <a class="item" href="#i-topology">1. Topology</a>
+    <a class="item" href="#i-layout">2. Storage Layout</a>
+    <a class="item" href="#i-cache">3. Cache Policy</a>
+    <a class="item" href="#i-envs">4. Environments</a>
+    <a class="item" href="#i-deploy">5. Deployment Workflow</a>
+    <a class="item" href="#i-state">6. Content State Lifecycle</a>
+    <a class="item" href="#i-cicd">7. CI/CD Reference</a>
+    <a class="item" href="#i-rollback">8. Rollback</a>
+    <a class="item" href="#i-security">9. Security</a>
+    <a class="item" href="#i-monitoring">10. Monitoring</a>
+    <a class="item" href="#i-cost">11. Cost Model</a>
+    <a class="item" href="#i-runbook">12. Runbook</a>
+  </nav>
+  <div class="side-actions">
+    <a class="sbtn lang" id="langLink" href="CDN_SYSTEM_VI.html">Tiếng Việt</a>
+    <button class="sbtn" id="themeBtn" type="button">Toggle theme</button>
+  </div>
+</aside>
+
+<main>
+
+<div class="pagehead">
+  <h1>CDN System — Design, Implementation Plan &amp; Operations</h1>
+  <p class="sub">Remote content delivery for <code>com.game.addressables</code>. Three documents: what we build, how we roll it out, and how it is hosted and operated.</p>
+  <div class="meta">
+    <span class="badge status">Status: Proposed — awaiting approval</span>
+    <span class="badge branch">branch: feat/cdn-system</span>
+    <span class="badge">Target: 4.1.0 → 5.0.0</span>
+    <span class="badge">August 2026</span>
+  </div>
+</div>
+
+<div class="note">
+  <span class="tag">Read this first</span>
+  <p>The package has no CDN system today — three thin wrappers over Addressables download APIs, no catalog update path, no content-update build pipeline, and <code>BuildRemoteCatalog</code> disabled in project settings. <strong>Every build is a full build, so players re-download 100% of remote content on every patch.</strong> That is the binding constraint, and it is why the implementation plan sequences the build pipeline before any runtime work.</p>
+</div>
+
+<!-- ==================================================================== -->
+<!-- DOCUMENT I — TECHNICAL DESIGN                                        -->
+<!-- ==================================================================== -->
+<section class="doc" id="design">
+<div class="doc-label">Document I</div>
+<h2>Technical Design</h2>
+<p class="sub" style="color:var(--fg-muted)">Architecture and API specification for remote content delivery.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#d-goals">Goals and Non-Goals</a></li>
+<li><a href="#d-audit">Current State Audit</a></li>
+<li><a href="#d-principles">Design Principles</a></li>
+<li><a href="#d-arch">Architecture Overview</a></li>
+<li><a href="#d-modules">Module Specifications</a></li>
+<li><a href="#d-api">Public API Surface</a></li>
+<li><a href="#d-flows">Boot and Download Flows</a></li>
+<li><a href="#d-errors">Error Model</a></li>
+<li><a href="#d-config">Addressables Configuration Contract</a></li>
+<li><a href="#d-integration">Integration With Existing Subsystems</a></li>
+<li><a href="#d-compat">Backward Compatibility</a></li>
+<li><a href="#d-testing">Testing Strategy</a></li>
+<li><a href="#d-questions">Open Questions</a></li>
+</ol>
+</div>
+
+<h3 id="d-goals">1. Goals and Non-Goals</h3>
+
+<h4>Goals</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Goal</th><th>Success measure</th></tr></thead>
+<tbody>
+<tr><td>G1</td><td>Ship content updates without a store resubmission</td><td>A content-only change reaches players via catalog update, no new binary</td></tr>
+<tr><td>G2</td><td>Patches transfer only what changed</td><td>Delta patch size ≤ 10% of full content for a typical content-only change</td></tr>
+<tr><td>G3</td><td>Boot never hard-fails because the CDN is unreachable</td><td>Offline boot succeeds using cached catalog + cached bundles</td></tr>
+<tr><td>G4</td><td>Download UX is truthful</td><td>Progress reported in real bytes; speed and ETA derived from bytes, not percent</td></tr>
+<tr><td>G5</td><td>Every failure is classifiable and actionable</td><td>Every CDN failure maps to a <code>CdnErrorCode</code> with a defined recovery path</td></tr>
+<tr><td>G6</td><td>Environment switching requires no rebuild</td><td>Dev / Staging / Prod selectable at runtime via host rewrite</td></tr>
+<tr><td>G7</td><td>The whole pipeline is CI-drivable</td><td>Build, content-update, verify, and upload all run in <code>-batchmode</code></td></tr>
+</tbody></table></div>
+
+<h4>Non-Goals (this phase)</h4>
+<ul>
+<li><strong>Unity Cloud Content Delivery (CCD) integration</strong> — we target a generic HTTP origin (R2 + Cloudflare). CCD stays possible because Addressables only needs a URL, but no CCD-specific code is written.</li>
+<li><strong>Play Asset Delivery / Android asset packs</strong> — deferred; revisit if the APK crosses the store size limit.</li>
+<li><strong>Player-generated content / MOD loading</strong> — out of scope. If this enters the roadmap, re-evaluate YooAsset before extending this design.</li>
+<li><strong>WebGL</strong> — the download/cache model here assumes <code>Caching</code> is available; WebGL has no bundle cache and would need a separate path.</li>
+<li><strong>Per-asset streaming or CDN-side transcoding.</strong></li>
+</ul>
+
+<h3 id="d-audit">2. Current State Audit</h3>
+<p>Measured against the code on <code>main</code> at <code>4.0.1</code>.</p>
+
+<h4>What exists</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Symbol</th><th>Location</th><th>Assessment</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader.DownloadDependenciesAsync(string)</code></td><td><code>Runtime/Loaders/AssetLoader.cs:925</code></td><td>Thin wrapper. No retry, cancel, progress, or typed error.</td></tr>
+<tr><td><code>AssetLoader.GetDownloadSizeAsync(string)</code></td><td><code>Runtime/Loaders/AssetLoader.cs:966</code></td><td>Returns <code>0</code> for both "nothing to download" and "request failed".</td></tr>
+<tr><td><code>ProgressiveAssetLoader.DownloadWithProgressAsync</code></td><td><code>Runtime/Progress/ProgressiveAssetLoader.cs:100</code></td><td>Progress from <code>PercentComplete</code>; speed/ETA math is dimensionally wrong.</td></tr>
+<tr><td><code>LoadErrorCode.NetworkError</code></td><td><code>Runtime/Core/LoadError.cs:56</code></td><td>Assigned in exactly one place, by substring matching on the exception message (<code>AssetLoader.cs:816</code>). Never produced by the download path.</td></tr>
+<tr><td><code>ProgressInfo.BytesDownloaded</code> / <code>.TotalBytes</code></td><td><code>Runtime/Progress/IProgressTracker.cs:12</code></td><td>Fields declared, never populated.</td></tr>
+</tbody></table></div>
+
+<h4>What does not exist</h4>
+<p>Package-wide grep returns zero hits for all of the following:</p>
+<pre><code>Addressables.InitializeAsync   CheckForCatalogUpdates   UpdateCatalogs
+LoadContentCatalogAsync        WebRequestOverride       InternalIdTransformFunc
+ClearDependencyCacheAsync      CleanBundleCache         Caching.*
+GetDownloadStatus              Application.internetReachability
+CancellationToken (download path)</code></pre>
+<p><code>Editor/CLI/AddressableCLI.cs</code> exposes only <code>ApplyRules</code>, <code>ValidateLayoutRules</code>, <code>SetVersionExpression</code>, <code>DetectConflicts</code>. There is <strong>no</strong> <code>BuildPlayerContent</code> and <strong>no</strong> <code>ContentUpdateScript.BuildContentUpdate</code> entry point.</p>
+
+<h4>Configuration state</h4>
+<p><code>Assets/AddressableAssetsData/AddressableAssetSettings.asset</code>:</p>
+<pre><code>m_BuildRemoteCatalog: 0            ← remote catalog disabled
+m_RemoteCatalogBuildPath: (empty)
+m_RemoteCatalogLoadPath:  (empty)
+m_BundleTimeout: 0
+m_BundleRetryCount: 0
+m_maxConcurrentWebRequests: 3
+m_ContentStateBuildPath: (empty → defaults inside Assets/)
+m_overridePlayerVersion: '[UnityEditor.PlayerSettings.bundleVersion]'   ← already correct</code></pre>
+<p>Only one profile (<code>Default</code>) exists, with <code>Remote.LoadPath = &lt;undefined&gt;</code>.</p>
+
+<div class="note danger">
+<span class="tag">Consequence</span>
+<p>Without <code>BuildContentUpdate</code>, every build is a full build: all bundle hashes change, so every player re-downloads 100% of remote content on every patch. <strong>This is the binding constraint.</strong> No amount of runtime work improves it, which is why the pipeline is sequenced first in the implementation plan.</p>
+</div>
+
+<h3 id="d-principles">3. Design Principles</h3>
+<ol>
+<li><strong>Mirror the existing package idioms.</strong> Tiered API (<code>Cdn</code> facade → service interfaces → raw Addressables), <code>#if UNITASK_PRESENT</code> dual signatures, <code>ScriptableObject</code> configs, and a <code>Result</code>/<code>Error</code> pair that parallels the existing <code>LoadResult&lt;T&gt;</code> / <code>LoadError</code>.</li>
+<li><strong>Explicit results, no sentinel values.</strong> Every operation that can fail returns <code>CdnResult&lt;T&gt;</code>. No method returns <code>0</code>, <code>null</code>, or <code>false</code> to mean two different things.</li>
+<li><strong>Cancellable by default.</strong> Every async CDN entry point takes a <code>CancellationToken</code>.</li>
+<li><strong>Bytes, not percent.</strong> All user-facing progress derives from <code>AsyncOperationHandle.GetDownloadStatus()</code>.</li>
+<li><strong>Degrade, do not crash.</strong> Network failure at boot degrades to cached content. Only a first install with no network and no cache is a hard stop, and that state is reported explicitly so the game can show a dedicated screen.</li>
+<li><strong>Services are interfaces.</strong> <code>ICatalogService</code>, <code>IDownloadService</code>, <code>ICacheService</code>, <code>ICdnTelemetry</code> — so tests can substitute fakes and games can substitute custom implementations.</li>
+<li><strong>No hidden singletons in the service layer.</strong> The <code>Cdn</code> static facade is a convenience wrapper over an injectable <code>CdnRuntime</code>; everything reachable through the facade is also constructible directly.</li>
+</ol>
+
+<h3 id="d-arch">4. Architecture Overview</h3>
+<pre class="diagram"><code>┌──────────────────────────────────────────────────────────────────┐
+│  Game code                                                       │
+│  Cdn.InitializeAsync() · Cdn.DownloadAsync() · Cdn.GetSizeAsync()│
+└───────────────────────────────┬──────────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────────┐
+│  Cdn (static facade)  →  CdnRuntime (composition root)           │
+└───────┬─────────────┬──────────────┬─────────────┬───────────────┘
+        │             │              │             │
+┌───────▼──────┐ ┌────▼───────┐ ┌────▼────────┐ ┌──▼─────────────┐
+│ Catalog      │ │ Download   │ │ Cache       │ │ Diagnostics    │
+│ Service      │ │ Service    │ │ Service     │ │ (telemetry)    │
+└───────┬──────┘ └────┬───────┘ └────┬────────┘ └────────────────┘
+        │             │              │
+        └─────────────┼──────────────┘
+                      │
+        ┌─────────────▼──────────────┐   ┌────────────────────────┐
+        │ RetryPolicy · NetworkPolicy│   │ CdnRequestDecorator     │
+        │ (backoff, wifi-only gate)  │   │ WebRequestOverride +    │
+        └─────────────┬──────────────┘   │ InternalIdTransformFunc │
+                      │                  └───────────┬─────────────┘
+┌─────────────────────▼──────────────────────────────▼─────────────┐
+│  Unity Addressables 2.x  /  ResourceManager  /  UnityWebRequest   │
+└───────────────────────────────────────────────────────────────────┘</code></pre>
+<p>Existing subsystems (<code>AssetLoader</code>, scopes, pooling, tiered cache) sit <em>above</em> this layer and are unchanged: by the time they run, content is already local.</p>
+
+<h4>Proposed file layout</h4>
+<pre><code>Runtime/Cdn/
+├── Cdn.cs                              static facade (mirrors Facade/Assets.cs)
+├── CdnRuntime.cs                       composition root; owns service instances
+├── Config/
+│   ├── CdnSettings.cs                  ScriptableObject, list of environments
+│   ├── CdnEnvironment.cs               [Serializable] name, baseUrl, catalogUrl, flags
+│   └── DownloadPolicy.cs               [Serializable] retry, backoff, timeout, concurrency, wifi-only
+├── Core/
+│   ├── CdnErrorCode.cs
+│   ├── CdnError.cs                     mirrors Core/LoadError.cs
+│   ├── CdnResult.cs                    mirrors Core/LoadResult.cs
+│   ├── DownloadRequest.cs              keys + MergeMode + policy override
+│   ├── DownloadProgress.cs             byte-accurate progress payload
+│   └── CatalogUpdateInfo.cs            catalog ids, sizes, whether an update exists
+├── Services/
+│   ├── ICatalogService.cs / CatalogService.cs
+│   ├── IDownloadService.cs / DownloadService.cs
+│   ├── ICacheService.cs  / CacheService.cs
+│   └── CdnRequestDecorator.cs
+├── Policy/
+│   ├── RetryPolicy.cs                  exponential backoff + jitter
+│   └── NetworkPolicy.cs                reachability + metered-connection gate
+└── Diagnostics/
+    ├── ICdnTelemetry.cs
+    └── CdnDiagnostics.cs
+
+Editor/Cdn/
+├── CdnBuildCLI.cs                      -batchmode entry points
+├── CdnBuildPipeline.cs                 BuildPlayerContent / BuildContentUpdate wrappers
+├── ContentStateManager.cs              locate, validate, archive addressables_content_state.bin
+├── CdnProfileManager.cs                profile switching + Remote path injection
+├── CatalogVerifier.cs                  post-build catalog validation
+└── CdnSettingsInspector.cs</code></pre>
+
+<h3 id="d-modules">5. Module Specifications</h3>
+
+<h4>5.1 <code>CdnSettings</code> (ScriptableObject)</h4>
+<p>Single asset, resolved via <code>Resources</code> or an addressable at a fixed address so it can itself be patched.</p>
+<pre><code>[CreateAssetMenu(menuName = "Addressable Manager/CDN Settings")]
+public sealed class CdnSettings : ScriptableObject
+{
+    public List&lt;CdnEnvironment&gt; Environments;
+    public string DefaultEnvironmentId;          // overridable at runtime
+    public DownloadPolicy DefaultPolicy;
+    public bool AutoCheckCatalogOnInitialize;    // default true
+    public bool AutoApplyCatalogUpdate;          // default true
+    public bool CleanBundleCacheAfterUpdate;     // default true
+    public float CatalogRequestTimeoutSeconds;   // default 15
+}
+
+[Serializable]
+public sealed class CdnEnvironment
+{
+    public string Id;              // "dev" | "staging" | "prod"
+    public string BundleBaseUrl;   // https://cdn.example.com/game/{platform}/bundles
+    public string CatalogBaseUrl;  // https://cdn.example.com/game/{platform}/{appVersion}
+    public bool RequiresAuthHeader;
+}</code></pre>
+<p><code>{platform}</code> and <code>{appVersion}</code> are tokens resolved at runtime by <code>CdnRuntime</code> so one settings asset serves every build target.</p>
+
+<h4>5.2 <code>DownloadPolicy</code></h4>
+<pre><code>[Serializable]
+public sealed class DownloadPolicy
+{
+    public int    MaxRetries            = 3;
+    public float  InitialBackoffSeconds = 1f;
+    public float  BackoffMultiplier     = 2f;
+    public float  MaxBackoffSeconds     = 30f;
+    public float  JitterRatio           = 0.2f;   // ±20% to avoid thundering herd
+    public int    BundleTimeoutSeconds  = 30;
+    public int    MaxConcurrentRequests = 6;
+    public bool   RequireUnmeteredNetwork = false; // "wifi only"
+    public long   MinFreeDiskBytes      = 200L * 1024 * 1024;
+}</code></pre>
+<p>Retry applies to the <em>whole</em> download operation, not to individual bundles — Addressables already retries per-bundle via <code>BundleRetryCount</code>. The two layers are complementary: <code>BundleRetryCount</code> handles a transient 5xx on one bundle; <code>RetryPolicy</code> handles "the operation failed, the user is back on WiFi, try again".</p>
+
+<h4>5.3 <code>ICatalogService</code></h4>
+<p>Owns everything about content catalogs.</p>
+<pre><code>public interface ICatalogService
+{
+    UniTask&lt;CdnResult&lt;CdnInitReport&gt;&gt;      InitializeAsync(CancellationToken ct);
+    UniTask&lt;CdnResult&lt;CatalogUpdateInfo&gt;&gt;  CheckForUpdateAsync(CancellationToken ct);
+    UniTask&lt;CdnResult&lt;CatalogApplyReport&gt;&gt; ApplyUpdateAsync(CatalogUpdateInfo info, CancellationToken ct);
+}</code></pre>
+<p>Implementation notes:</p>
+<ul>
+<li><code>InitializeAsync</code> wraps <code>Addressables.InitializeAsync()</code> and <strong>awaits it explicitly</strong> rather than relying on implicit initialization inside the first load call. This makes init failures observable.</li>
+<li><code>CheckForUpdateAsync</code> wraps <code>Addressables.CheckForCatalogUpdates(autoReleaseHandle: false)</code> so the handle can be inspected and released deterministically.</li>
+<li><code>ApplyUpdateAsync</code> wraps <code>Addressables.UpdateCatalogs(catalogs, autoReleaseHandle: false, autoCleanBundleCache: settings.CleanBundleCacheAfterUpdate)</code>.</li>
+<li><strong>Offline behaviour:</strong> if <code>NetworkPolicy</code> reports unreachable, <code>CheckForUpdateAsync</code> returns <code>CdnResult.Success(CatalogUpdateInfo.None)</code> with <code>WasOfflineFallback = true</code> — it is not an error. Addressables will resolve the previously cached catalog.</li>
+<li><strong>First-install-offline:</strong> <code>InitializeAsync</code> detects "no cached catalog and no network" and returns <code>CdnErrorCode.NoContentAvailableOffline</code>. This is the one legitimate hard-stop.</li>
+</ul>
+
+<h4>5.4 <code>IDownloadService</code></h4>
+<pre><code>public interface IDownloadService
+{
+    UniTask&lt;CdnResult&lt;long&gt;&gt;           GetDownloadSizeAsync(DownloadRequest req, CancellationToken ct);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(DownloadRequest req,
+                                                     IProgress&lt;DownloadProgress&gt; progress,
+                                                     CancellationToken ct);
+}
+
+public sealed class DownloadRequest
+{
+    public IReadOnlyList&lt;object&gt; Keys;          // addresses, labels, or AssetReferences
+    public Addressables.MergeMode MergeMode = Addressables.MergeMode.Union;
+    public DownloadPolicy PolicyOverride;       // null → settings default
+}</code></pre>
+<p>Progress loop replaces the current percent-based implementation:</p>
+<pre><code>var status = handle.GetDownloadStatus();       // DownloadStatus { DownloadedBytes, TotalBytes, IsDone }
+long deltaBytes = status.DownloadedBytes - lastBytes;
+float deltaTime = Time.unscaledDeltaTime;      // real frame delta, not elapsed-since-start
+// EMA smoothing so the number does not flicker frame to frame
+speedBytesPerSecond = Mathf.Lerp(speedBytesPerSecond, deltaBytes / deltaTime, 0.1f);
+eta = speedBytesPerSecond &gt; 0
+    ? (status.TotalBytes - status.DownloadedBytes) / speedBytesPerSecond
+    : -1f;                                     // -1 = unknown, never a fabricated number</code></pre>
+<p>The progress callback is throttled (default 4 Hz, configurable) rather than fired every frame. Because <code>DownloadProgress</code> is a struct and the callback is <code>IProgress&lt;T&gt;</code>, the loop allocates nothing steady-state.</p>
+<p>Pre-flight checks before starting, each mapping to a distinct error code:</p>
+<ol>
+<li>Network reachable, and unmetered if <code>RequireUnmeteredNetwork</code>.</li>
+<li><code>Caching.defaultCache.spaceFree</code> ≥ download size + <code>MinFreeDiskBytes</code>.</li>
+<li>Size query succeeded (a failed size query must not be treated as "0 bytes to download").</li>
+</ol>
+
+<h4>5.5 <code>ICacheService</code></h4>
+<pre><code>public interface ICacheService
+{
+    CdnCacheStats                GetStats();                                   // occupied, free, path
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     ClearAsync(object key, CancellationToken ct);  // ClearDependencyCacheAsync
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     ClearAllAsync(CancellationToken ct);           // Caching.ClearCache
+    UniTask&lt;CdnResult&lt;bool&gt;&gt;     CleanObsoleteAsync(CancellationToken ct);      // Addressables.CleanBundleCache
+}</code></pre>
+<p><code>CleanObsoleteAsync</code> is the important one: after a catalog update, bundles referenced only by the old catalog stay on disk forever unless explicitly cleaned. On a long-lived install this is the main source of "the game is using 8 GB" complaints.</p>
+
+<h4>5.6 <code>CdnRequestDecorator</code></h4>
+<p>Two Addressables hooks, both installed once during <code>CdnRuntime</code> construction.</p>
+<pre><code>Addressables.WebRequestOverride = request =&gt;
+{
+    request.timeout = policy.BundleTimeoutSeconds;
+    if (environment.RequiresAuthHeader)
+        request.SetRequestHeader("Authorization", tokenProvider.Current);
+    request.SetRequestHeader("X-Client-Version", Application.version);
+};
+
+Addressables.InternalIdTransformFunc = location =&gt;
+{
+    // Rewrites the host recorded in the catalog at build time to the host chosen at runtime.
+    // Enables: dev/staging/prod switching without rebuild, and CDN failover.
+    return hostRewriter.Rewrite(location.InternalId);
+};</code></pre>
+<p><code>InternalIdTransformFunc</code> is what decouples the built catalog from a specific hostname. The catalog is built against a placeholder host; the runtime substitutes the real one. This is also the failover mechanism: on repeated failures against host A, <code>hostRewriter</code> promotes host B and the retry resolves to a different origin.</p>
+<div class="note warn">
+<span class="tag">Ordering constraint</span>
+<p><code>InternalIdTransformFunc</code> must be installed <em>before</em> <code>Addressables.InitializeAsync()</code>, otherwise the catalog request itself is not rewritten. <code>CdnRuntime</code> enforces this ordering.</p>
+</div>
+
+<h4>5.7 <code>NetworkPolicy</code> and <code>RetryPolicy</code></h4>
+<p><code>NetworkPolicy</code> wraps <code>Application.internetReachability</code> and exposes <code>IsReachable</code>, <code>IsMetered</code> (<code>ReachableViaCarrierDataNetwork</code>), and a <code>WaitForReachableAsync(ct)</code> helper used to resume a paused download when connectivity returns.</p>
+<div class="note">
+<p><code>internetReachability</code> reports the <em>interface</em>, not actual internet access (captive portals report reachable). Treat it as a fast negative check only: if it says unreachable, skip the request; if it says reachable, still handle failure normally.</p>
+</div>
+<p><code>RetryPolicy</code> computes <code>min(initial * multiplier^attempt, max) * (1 ± jitter)</code> and decides retryability from the error code table in <a href="#d-errors">§8</a> — 5xx and timeouts retry, 403/404 and CRC mismatch do not.</p>
+
+<h4>5.8 <code>ICdnTelemetry</code></h4>
+<p>Fire-and-forget hooks so the game can forward to its own analytics. No transport is bundled.</p>
+<pre><code>public interface ICdnTelemetry
+{
+    void OnCatalogChecked(CatalogUpdateInfo info, TimeSpan duration, CdnError error);
+    void OnDownloadCompleted(DownloadReport report);
+    void OnDownloadFailed(DownloadRequest req, CdnError error, int attempt);
+    void OnCacheCleaned(long bytesFreed);
+}</code></pre>
+<p>Recommended metrics to derive: download success rate, p50/p95 duration by size bucket, error code distribution, bytes served per app version. Without these you cannot tell a CDN problem from a client bug.</p>
+
+<h3 id="d-api">6. Public API Surface</h3>
+<p>Three tiers, matching the existing <code>Assets</code> / <code>StandardAPI</code> / <code>Advanced</code> split.</p>
+
+<h4>Tier 1 — <code>Cdn</code> static facade (covers ~90% of use)</h4>
+<pre><code>public static class Cdn
+{
+    // Boot
+    UniTask&lt;CdnResult&lt;CdnInitReport&gt;&gt; InitializeAsync(string environmentId = null, CancellationToken ct = default);
+
+    // Patch check
+    UniTask&lt;CdnResult&lt;CatalogUpdateInfo&gt;&gt;  CheckForUpdateAsync(CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;CatalogApplyReport&gt;&gt; ApplyUpdateAsync(CancellationToken ct = default);
+
+    // Download
+    UniTask&lt;CdnResult&lt;long&gt;&gt;           GetDownloadSizeAsync(params object[] keys);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(object key,
+                                                     IProgress&lt;DownloadProgress&gt; progress = null,
+                                                     CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;DownloadReport&gt;&gt; DownloadAsync(DownloadRequest request,
+                                                     IProgress&lt;DownloadProgress&gt; progress = null,
+                                                     CancellationToken ct = default);
+
+    // Cache
+    CdnCacheStats            GetCacheStats();
+    UniTask&lt;CdnResult&lt;bool&gt;&gt; ClearCacheAsync(object key = null, CancellationToken ct = default);
+    UniTask&lt;CdnResult&lt;bool&gt;&gt; CleanObsoleteBundlesAsync(CancellationToken ct = default);
+
+    // State
+    string  CurrentEnvironmentId { get; }
+    bool    IsInitialized        { get; }
+}</code></pre>
+
+<h4>Tier 2 — services</h4>
+<p><code>CdnRuntime.Catalog</code>, <code>.Download</code>, <code>.Cache</code> expose the interfaces from <a href="#d-modules">§5</a> for callers that need to inject policies per call or swap implementations.</p>
+
+<h4>Tier 3 — advanced</h4>
+<p><code>CdnRuntime</code> constructor takes <code>(CdnSettings, ICatalogService, IDownloadService, ICacheService, ICdnTelemetry)</code>, so a game can replace any part. <code>CdnRequestDecorator</code> exposes <code>IHostRewriter</code> and <code>IAuthTokenProvider</code> for signed-URL or token-refresh schemes.</p>
+
+<h4>Canonical usage</h4>
+<pre><code>async UniTask BootAsync(CancellationToken ct)
+{
+    var init = await Cdn.InitializeAsync(ct: ct);
+    if (!init.IsSuccess)
+    {
+        if (init.Error.Code == CdnErrorCode.NoContentAvailableOffline)
+        { ShowFirstInstallNeedsInternetScreen(); return; }
+        // any other init failure → continue on cached content
+        Log.Warn(init.Error);
+    }
+
+    var update = await Cdn.CheckForUpdateAsync(ct);
+    if (update.IsSuccess &amp;&amp; update.Value.HasUpdate)
+    {
+        await Cdn.ApplyUpdateAsync(ct);
+
+        var size = await Cdn.GetDownloadSizeAsync("preload_core");
+        if (size.IsSuccess &amp;&amp; size.Value &gt; 0)
+        {
+            if (!await ConfirmDownloadAsync(size.Value)) return;
+
+            var progress = new Progress&lt;DownloadProgress&gt;(p =&gt;
+                patchUI.Set(p.NormalizedProgress, p.DownloadedBytes, p.TotalBytes,
+                            p.BytesPerSecond, p.EstimatedSecondsRemaining));
+
+            var result = await Cdn.DownloadAsync("preload_core", progress, ct);
+            if (!result.IsSuccess) ShowPatchFailed(result.Error);
+        }
+    }
+
+    await Cdn.CleanObsoleteBundlesAsync(ct);
+}</code></pre>
+<p>Note what the caller can now do that it cannot today: distinguish "nothing to download" from "size query failed", cancel, show real byte counts, and branch on a typed error.</p>
+
+<h3 id="d-flows">7. Boot and Download Flows</h3>
+
+<h5>7.1 Cold boot, online, first install</h5>
+<pre><code>InstallDecorator (WebRequestOverride + InternalIdTransformFunc)
+  → Addressables.InitializeAsync()          catalog fetched from CatalogBaseUrl
+  → CheckForUpdateAsync()                   no cached catalog → HasUpdate = false
+  → GetDownloadSizeAsync(preload keys)      full size
+  → DownloadAsync(...)                      bytes-accurate progress
+  → ready</code></pre>
+
+<h5>7.2 Warm boot, online, no content change</h5>
+<pre><code>Initialize → CheckForUpdate → catalog hash matches → HasUpdate = false → ready</code></pre>
+<p>Cost: one <code>.hash</code> request (a few bytes). This is why the <code>.hash</code> file must have a short edge TTL — see <a href="#i-cache">infrastructure §3</a>.</p>
+
+<h5>7.3 Warm boot, online, content changed</h5>
+<pre><code>Initialize → CheckForUpdate → HasUpdate = true, catalogs = [id]
+  → ApplyUpdateAsync (UpdateCatalogs, autoCleanBundleCache = true)
+  → GetDownloadSizeAsync → delta only, because unchanged bundles are still cached and their
+                            hashes are unchanged (this is what BuildContentUpdate guarantees)
+  → DownloadAsync → ready</code></pre>
+
+<h5>7.4 Warm boot, offline</h5>
+<pre><code>Initialize → NetworkPolicy.IsReachable == false
+  → Addressables resolves the cached catalog
+  → CheckForUpdate short-circuits: Success(None, WasOfflineFallback = true)
+  → GetDownloadSize skipped
+  → ready, running on cached content</code></pre>
+<p>No exception, no blocking dialog. The game may show a passive "offline" indicator.</p>
+
+<h5>7.5 Cold boot, offline, first install</h5>
+<pre><code>Initialize → no cached catalog + unreachable
+  → CdnResult.Failure(NoContentAvailableOffline)
+  → game shows a dedicated "connect to the internet to finish setup" screen</code></pre>
+
+<h5>7.6 Download with retry</h5>
+<pre><code>attempt 0 → 503 on bundle X
+  → RetryPolicy.ShouldRetry(ServerError) = true, delay = 1s ± 20%
+attempt 1 → connection dropped mid-transfer
+  → partial bytes remain in Unity's cache; Addressables resumes from the cached partial
+  → delay = 2s ± 20%
+attempt 2 → success
+  → DownloadReport { BytesDownloaded, Duration, Attempts = 3, ResumedFromPartial = true }</code></pre>
+
+<h5>7.7 Cancellation</h5>
+<p><code>ct</code> cancellation stops the await loop and releases the handle. Bytes already written to Unity's cache are kept — a subsequent download resumes rather than restarting. The result is <code>CdnResult.Cancelled</code>, distinct from failure, so UI does not show an error toast for a user-initiated back press.</p>
+
+<h5>7.8 Disk full mid-download</h5>
+<p>Pre-flight catches the common case. If the device fills up during transfer, Addressables surfaces a caching failure; <code>DownloadService</code> maps it to <code>CdnErrorCode.InsufficientDiskSpace</code> and reports <code>RequiredBytes</code> / <code>AvailableBytes</code> so the UI can say how much to free.</p>
+
+<h3 id="d-errors">8. Error Model</h3>
+<p><code>CdnError</code> mirrors <code>Core/LoadError.cs</code> (code, message, hint, exception) and adds <code>HttpStatusCode</code>, <code>Url</code>, and <code>IsRetryable</code>.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Code</th><th>Trigger</th><th>Retryable</th><th>Recommended UX</th></tr></thead>
+<tbody>
+<tr><td><code>None</code></td><td>success</td><td>—</td><td>—</td></tr>
+<tr><td><code>Offline</code></td><td>reachability check failed</td><td class="yes">yes, on reconnect</td><td>Passive indicator; keep playing on cached content</td></tr>
+<tr><td><code>NoContentAvailableOffline</code></td><td>first install, no cache, no network</td><td class="yes">yes, on reconnect</td><td>Blocking setup screen</td></tr>
+<tr><td><code>MeteredNetworkBlocked</code></td><td><code>RequireUnmeteredNetwork</code> and on cellular</td><td>user decision</td><td>"Download over mobile data?" prompt</td></tr>
+<tr><td><code>CatalogNotFound</code></td><td>404 on catalog or <code>.hash</code></td><td class="no">no</td><td>Hard error — a deploy is broken. Report to telemetry.</td></tr>
+<tr><td><code>CatalogParseFailed</code></td><td>malformed / truncated catalog</td><td class="no">no</td><td>Clear catalog cache, retry once, then hard error</td></tr>
+<tr><td><code>CatalogVersionIncompatible</code></td><td>catalog built for a different player version</td><td class="no">no</td><td>Force store update</td></tr>
+<tr><td><code>BundleNotFound</code></td><td>404 on a bundle</td><td class="no">no</td><td>Deploy is incomplete — bundles uploaded after catalog</td></tr>
+<tr><td><code>BundleCrcMismatch</code></td><td>CRC/hash verification failed</td><td class="yes">yes, after evicting that bundle</td><td>Auto-repair: clear that dependency, retry once</td></tr>
+<tr><td><code>ServerError</code></td><td>5xx</td><td class="yes">yes, backoff</td><td>Silent retry, then "servers are busy"</td></tr>
+<tr><td><code>Timeout</code></td><td>request exceeded <code>BundleTimeoutSeconds</code></td><td class="yes">yes, backoff</td><td>Silent retry</td></tr>
+<tr><td><code>Unauthorized</code></td><td>401/403</td><td>only after token refresh</td><td>Refresh token via <code>IAuthTokenProvider</code>, then retry once</td></tr>
+<tr><td><code>InsufficientDiskSpace</code></td><td>pre-flight or caching failure</td><td>after user frees space</td><td>"Free N MB to continue"</td></tr>
+<tr><td><code>Cancelled</code></td><td>caller cancelled</td><td>n/a</td><td>No error UI</td></tr>
+<tr><td><code>Unknown</code></td><td>unmapped</td><td class="no">no</td><td>Log with full exception</td></tr>
+</tbody></table></div>
+<p>Classification comes from <code>RemoteProviderException</code> and its HTTP response code where available, <strong>not</strong> from substring matching on the message — that is the flaw in the current <code>DetermineErrorCode</code> (<code>AssetLoader.cs:804</code>). Substring matching stays only as a last-resort fallback for <code>Unknown</code>.</p>
+<div class="note warn">
+<span class="tag">Implementation note</span>
+<p>Verify the exact exception type and response-code property name against the pinned Addressables version during Phase 3; the <code>ResourceManager</code> exception hierarchy has changed between 1.x and 2.x.</p>
+</div>
+
+<h3 id="d-config">9. Addressables Configuration Contract</h3>
+<p>The runtime code is only correct if the project settings match. These become assertions in <code>CatalogVerifier</code> and are checked in CI.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Setting</th><th>Required value</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><code>BuildRemoteCatalog</code></td><td><code>true</code></td><td>Without it there is no remote catalog to update</td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code> / <code>LoadPath</code></td><td>Remote profile vars</td><td>Catalog must be separable from bundles (<a href="#i-layout">infra §2</a>)</td></tr>
+<tr><td><code>OverridePlayerVersion</code></td><td><code>[UnityEditor.PlayerSettings.bundleVersion]</code></td><td>Stable catalog filename per app version. <strong>Already set correctly.</strong> A timestamp here would break content update — old players would look for a catalog name that no longer exists.</td></tr>
+<tr><td><code>ContentStateBuildPath</code></td><td>A path <strong>outside</strong> <code>Assets/</code>, archived by CI</td><td>Losing <code>addressables_content_state.bin</code> permanently ends delta updates for that app version</td></tr>
+<tr><td><code>BundleRetryCount</code></td><td><code>2–3</code> (currently <code>0</code>)</td><td>Per-bundle transient failure recovery</td></tr>
+<tr><td><code>BundleTimeout</code></td><td><code>30</code> (currently <code>0</code> = infinite)</td><td>Prevents a hung request from stalling boot forever</td></tr>
+<tr><td><code>MaxConcurrentWebRequests</code></td><td><code>4–8</code> (currently <code>3</code>)</td><td>3 under-uses available bandwidth; very high values hurt on mobile</td></tr>
+<tr><td><code>MonoScriptBundleNaming</code></td><td><code>Project Name</code> (currently <code>Disabled</code>)</td><td>Keeps the MonoScript bundle name stable across builds so it does not churn every content update</td></tr>
+<tr><td><code>InternalIdNamingMode</code></td><td><code>Filename</code> or <code>Dynamic</code> (currently <code>Full Path</code>)</td><td>Shrinks the catalog and stops leaking project folder structure to anyone who downloads it</td></tr>
+<tr><td><code>UniqueBundleIds</code></td><td><code>false</code> (already)</td><td>Correct when content update is used properly; enabling it inflates every build</td></tr>
+<tr><td><code>EnableJsonCatalog</code></td><td><code>false</code> (already)</td><td>Binary catalog is smaller. Note: <code>AddressablesTools</code> must be on a version that reads binary catalogs for CI verification.</td></tr>
+<tr><td>Group <code>UseAssetBundleCrc</code></td><td><code>true</code> (already)</td><td>Detects corrupted downloads</td></tr>
+<tr><td>Group <code>UseAssetBundleCrcForCachedBundles</code></td><td><code>true</code> (already)</td><td>Detects corruption of already-cached bundles</td></tr>
+</tbody></table></div>
+
+<h4>Profiles</h4>
+<p>Four profiles, created and validated by <code>CdnProfileManager</code>:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Profile</th><th><code>Remote.BuildPath</code></th><th><code>Remote.LoadPath</code></th></tr></thead>
+<tbody>
+<tr><td><code>Local</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>http://localhost:8080/[BuildTarget]</code></td></tr>
+<tr><td><code>Dev</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn-dev.&lt;domain&gt;/...</code></td></tr>
+<tr><td><code>Staging</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn-stg.&lt;domain&gt;/...</code></td></tr>
+<tr><td><code>Prod</code></td><td><code>ServerData/[BuildTarget]</code></td><td><code>https://cdn.&lt;domain&gt;/...</code></td></tr>
+</tbody></table></div>
+<p>Because <code>InternalIdTransformFunc</code> rewrites hosts at runtime, the <em>built</em> profile matters less than it normally would — but the profile still determines what is baked into the catalog as the fallback, so it must be correct for the target ring.</p>
+
+<h3 id="d-integration">10. Integration With Existing Subsystems</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Subsystem</th><th>Interaction</th><th>Change required</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader</code></td><td>Loads assets once content is local</td><td>Deprecate its <code>DownloadDependenciesAsync</code> / <code>GetDownloadSizeAsync</code>; forward to <code>IDownloadService</code></td></tr>
+<tr><td><code>ProgressiveAssetLoader</code></td><td><code>DownloadWithProgressAsync</code></td><td>Replace implementation with <code>DownloadService</code>; keep the signature during the deprecation window</td></tr>
+<tr><td><code>ProgressInfo</code></td><td>Already has <code>BytesDownloaded</code> / <code>TotalBytes</code></td><td>Populate them; add an adapter from <code>DownloadProgress</code></td></tr>
+<tr><td><code>AddressablePreloadConfig</code></td><td>Declares what to preload</td><td>Extend with a <code>RemoteOnly</code> flag so preload lists can drive <code>DownloadRequest</code> directly</td></tr>
+<tr><td><code>LoadError</code> / <code>LoadResult</code></td><td>Load-time errors</td><td>Unchanged. <code>CdnError</code> is a sibling, not a replacement. Add <code>LoadErrorCode.ContentNotDownloaded</code> for "asset exists in catalog but bundle is not local".</td></tr>
+<tr><td>Scopes / pooling / tiered cache</td><td>Above the CDN layer</td><td>None</td></tr>
+<tr><td><code>AddressableManagerWindow</code></td><td>Editor dashboard</td><td>Add a "CDN" tab: current environment, cache stats, catalog id, manual clear/clean</td></tr>
+<tr><td><code>AddressableCLI</code></td><td>Editor CLI</td><td>New <code>CdnBuildCLI</code> alongside it; keep the existing rule commands untouched</td></tr>
+</tbody></table></div>
+<p><code>AddressableManager.asmdef</code> needs no new references — everything used is in <code>Unity.Addressables</code>, <code>Unity.ResourceManager</code>, and <code>UnityEngine.Networking</code> (part of the engine).</p>
+
+<h3 id="d-compat">11. Backward Compatibility</h3>
+<p>The three existing CDN-adjacent methods stay, with behaviour preserved, marked <code>[Obsolete]</code> with a pointer to the replacement:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Existing</th><th>Status in 4.1.0</th><th>Removed in</th></tr></thead>
+<tbody>
+<tr><td><code>AssetLoader.DownloadDependenciesAsync(string)</code></td><td>Obsolete (warning). Forwards to <code>IDownloadService</code>. Still returns <code>bool</code>.</td><td>5.0.0</td></tr>
+<tr><td><code>AssetLoader.GetDownloadSizeAsync(string)</code></td><td>Obsolete (warning). Still returns <code>long</code>, still <code>0</code> on failure — the ambiguity is why it is deprecated.</td><td>5.0.0</td></tr>
+<tr><td><code>ProgressiveAssetLoader.DownloadWithProgressAsync</code></td><td>Reimplemented over <code>DownloadService</code>. <strong>Behaviour change:</strong> <code>DownloadSpeed</code> becomes real KB/s and <code>BytesDownloaded</code>/<code>TotalBytes</code> become populated.</td><td>kept</td></tr>
+<tr><td><code>Assets.Download</code> / <code>Assets.GetDownloadSize</code></td><td>Obsolete (warning).</td><td>5.0.0</td></tr>
+<tr><td><code>StandardAPI.DownloadDependencies</code> / <code>GetDownloadSize</code></td><td>Obsolete (warning).</td><td>5.0.0</td></tr>
+</tbody></table></div>
+<p>The <code>DownloadSpeed</code> change is technically breaking for anyone who calibrated UI against the old (meaningless) number. It is called out in the changelog as a fix rather than a feature.</p>
+
+<h3 id="d-testing">12. Testing Strategy</h3>
+
+<h4>Unit (EditMode, no network)</h4>
+<ul>
+<li><code>RetryPolicy</code>: backoff sequence, jitter bounds, retryability per error code.</li>
+<li><code>HostRewriter</code>: URL rewriting across environments, failover promotion, malformed input.</li>
+<li>Error mapping: given a synthetic <code>RemoteProviderException</code> with status N → expected <code>CdnErrorCode</code>.</li>
+<li><code>DownloadProgress</code> math: fixed byte/time sequences → expected speed and ETA, including the divide-by-zero and stalled-transfer cases.</li>
+</ul>
+
+<h4>Integration (PlayMode, local HTTP server)</h4>
+<p>A small editor-hosted static server serving a real built catalog + bundles, with fault injection:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Scenario</th><th>Injection</th></tr></thead>
+<tbody>
+<tr><td>Happy path</td><td>none</td></tr>
+<tr><td>Catalog 404</td><td>remove catalog</td></tr>
+<tr><td>Bundle 404</td><td>remove one bundle after catalog upload</td></tr>
+<tr><td>503 then success</td><td>fail first N requests</td></tr>
+<tr><td>Slow transfer</td><td>throttle to 50 KB/s, assert ETA converges</td></tr>
+<tr><td>Mid-transfer disconnect</td><td>close connection at 50%</td></tr>
+<tr><td>Corrupt bundle</td><td>flip a byte, assert <code>BundleCrcMismatch</code> and auto-repair</td></tr>
+<tr><td>Cancellation</td><td>cancel at 30%, assert <code>Cancelled</code> and partial cache retained</td></tr>
+</tbody></table></div>
+
+<h4>Manual / device matrix</h4>
+<p>Real patch flow on a physical device over WiFi, over cellular, with airplane mode toggled mid-download, and with the device near-full on storage.</p>
+
+<h4>CI gates</h4>
+<p><code>CatalogVerifier</code> runs on every content build and fails the job on: settings contract violations (<a href="#d-config">§9</a>), a catalog referencing a bundle absent from the upload set, or a catalog filename that changed unexpectedly for an existing app version.</p>
+
+<h3 id="d-questions">13. Open Questions</h3>
+<ol>
+<li><strong>Addressables version.</strong> The package pins <code>com.unity.addressables: 2.3.1</code>; current is 2.9.x. Upgrading before writing this code avoids rework, but needs a regression pass on the existing loaders. <em>Recommendation: upgrade in Phase 0.</em></li>
+<li><strong>Where does <code>CdnSettings</code> live?</strong> <code>Resources</code> (always in build, simple) vs. a local addressable (patchable, but chicken-and-egg with initialization). <em>Recommendation: <code>Resources</code>, with environment overridable by a runtime argument so QA can point a prod build at staging.</em></li>
+<li><strong>Signed URLs vs. token header.</strong> Signed URLs mean the catalog cannot contain final URLs, forcing all rewriting through <code>InternalIdTransformFunc</code> with a signing step per request. A bearer header via <code>WebRequestOverride</code> is much simpler. <em>Recommendation: header, unless there is a hard requirement to prevent link sharing.</em></li>
+<li><strong>Do we need per-bundle download prioritisation?</strong> Addressables does not expose queue priority for dependency downloads. Achievable only by splitting into multiple sequential <code>DownloadAsync</code> calls by label. <em>Recommendation: model priority as ordered label groups, not as a scheduler.</em></li>
+<li><strong><code>ProgressInfo</code> vs. <code>DownloadProgress</code>.</strong> Two progress types is a wart. Merging means changing <code>ProgressInfo</code> semantics for existing callers. <em>Recommendation: keep both for 4.x, adapter between them, unify in 5.0.0.</em></li>
+</ol>
+
+</section>
+
+<!-- ==================================================================== -->
+<!-- DOCUMENT II — IMPLEMENTATION PLAN                                    -->
+<!-- ==================================================================== -->
+<section class="doc" id="plan">
+<div class="doc-label">Document II</div>
+<h2>Implementation Plan</h2>
+<p class="sub" style="color:var(--fg-muted)">Phased rollout strategy for the CDN subsystem.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#p-strategy">Strategy</a></li>
+<li><a href="#p-overview">Phase Overview</a></li>
+<li><a href="#p-phase0">Phase 0 — Foundations</a></li>
+<li><a href="#p-phase1">Phase 1 — Build and Content-Update Pipeline</a></li>
+<li><a href="#p-phase2">Phase 2 — Runtime Bootstrap</a></li>
+<li><a href="#p-phase3">Phase 3 — Download Orchestration</a></li>
+<li><a href="#p-phase4">Phase 4 — Cache, Errors, Diagnostics</a></li>
+<li><a href="#p-phase5">Phase 5 — Hardening and Rollout</a></li>
+<li><a href="#p-release">Release Plan</a></li>
+<li><a href="#p-risks">Risk Register</a></li>
+<li><a href="#p-rollback">Rollback Procedures</a></li>
+<li><a href="#p-dod">Definition of Done</a></li>
+</ol>
+</div>
+
+<h3 id="p-strategy">1. Strategy</h3>
+
+<h4>Sequencing rationale</h4>
+<p>The instinct is to start with runtime code, because that is where the visible API is. That would be the wrong order here.</p>
+<p>Today every build is a full build. Bundle hashes change wholesale, so a player downloads 100% of remote content on every patch. <strong>Until <code>BuildContentUpdate</code> is wired up, a beautifully engineered download service just downloads everything, quickly and with a nice progress bar.</strong> The pipeline is the binding constraint, so it goes first.</p>
+<p>Secondary reason: the pipeline produces the artifacts (real catalogs, real bundles, a real <code>addressables_content_state.bin</code>) that Phases 2–4 need in order to be tested against anything other than mocks. Building it first means every later phase can be verified end to end from day one.</p>
+
+<h4>Guiding rules</h4>
+<ol>
+<li><strong>Every phase ships something usable.</strong> No phase leaves the branch in a state where the package is worse than <code>main</code>.</li>
+<li><strong>Nothing in <code>main</code> breaks.</strong> Existing APIs stay working through the whole plan; deprecation happens in 4.1.0 and removal not before 5.0.0.</li>
+<li><strong>Infrastructure and code advance together.</strong> A runtime feature with no deployed content to test against is not done.</li>
+<li><strong>Each phase has a falsifiable exit criterion.</strong> "It works" is not an exit criterion; "a 2 MB content change produces a ≤ 2.5 MB patch, verified on device" is.</li>
+</ol>
+
+<h4>Estimation basis</h4>
+<p>Effort is given in ideal engineer-days for one developer familiar with Addressables, excluding review latency and infra provisioning waits. Multiply by your own factor.</p>
+
+<h3 id="p-overview">2. Phase Overview</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Phase</th><th>Focus</th><th>Effort</th><th>Blocks</th><th>Ships as</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Upgrade, settings contract, profiles, local test server</td><td>3 d</td><td>everything</td><td>4.1.0-pre</td></tr>
+<tr><td>1</td><td>Build + content-update CLI, content-state lifecycle</td><td>5 d</td><td>2, 3</td><td>4.1.0</td></tr>
+<tr><td>2</td><td><code>CdnRuntime</code>, catalog service, decorator, offline fallback</td><td>5 d</td><td>3, 4</td><td>4.2.0</td></tr>
+<tr><td>3</td><td>Download service, retry, cancel, byte progress</td><td>6 d</td><td>4</td><td>4.3.0</td></tr>
+<tr><td>4</td><td>Cache service, error taxonomy, telemetry, editor tab</td><td>4 d</td><td>5</td><td>4.4.0</td></tr>
+<tr><td>5</td><td>Test matrix, device validation, docs, deprecation cleanup</td><td>5 d</td><td>—</td><td>5.0.0</td></tr>
+</tbody></table></div>
+<p><strong>Total: ~28 ideal days.</strong> Phases 1 and 2 can partially overlap if two people are available — Phase 2 only needs Phase 1's <em>output format</em>, not its finished tooling.</p>
+
+<h3 id="p-phase0">Phase 0 — Foundations</h3>
+<p><strong>Goal:</strong> the project is configured such that remote content is even possible, and there is a local environment to test against without touching real infrastructure.</p>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>0.1</td><td>Upgrade <code>com.unity.addressables</code> 2.3.1 → 2.9.x</td><td>Regression pass on existing loaders, scopes, pooling. Pin the exact version in <code>package.json</code>.</td></tr>
+<tr><td>0.2</td><td>Decide TMP dependency</td><td>Move <code>com.unity.textmeshpro</code> out of hard <code>dependencies</code> — <code>TMP_PRESENT</code> versionDefine already handles it. Unrelated to CDN but cheap to fix while touching <code>package.json</code>.</td></tr>
+<tr><td>0.3</td><td>Apply the settings contract</td><td><code>BuildRemoteCatalog = true</code>, <code>BundleRetryCount = 3</code>, <code>BundleTimeout = 30</code>, <code>MaxConcurrentWebRequests = 6</code>, <code>MonoScriptBundleNaming = Project Name</code>, <code>InternalIdNamingMode = Filename</code>. See <a href="#d-config">design §9</a>.</td></tr>
+<tr><td>0.4</td><td>Move <code>ContentStateBuildPath</code> outside <code>Assets/</code></td><td>Target <code>ServerData/ContentState/[BuildTarget]/</code>. Add to <code>.gitignore</code>; CI archives it instead.</td></tr>
+<tr><td>0.5</td><td>Create profiles <code>Local</code> / <code>Dev</code> / <code>Staging</code> / <code>Prod</code></td><td>Populate <code>Remote.LoadPath</code> per environment.</td></tr>
+<tr><td>0.6</td><td>Split catalog path from bundle path</td><td><code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> point at the per-app-version folder; group <code>LoadPath</code> points at the shared bundle folder. This is the key layout decision — see <a href="#i-layout">infra §2</a>.</td></tr>
+<tr><td>0.7</td><td>Local static HTTP server for testing</td><td>Editor menu item that serves <code>ServerData/</code> on <code>localhost:8080</code> with correct <code>Cache-Control</code> headers. ~100 lines over <code>HttpListener</code>.</td></tr>
+<tr><td>0.8</td><td>Create a remote test group</td><td>A handful of real assets marked Remote so there is something to actually download.</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<ul>
+<li>A player build with <code>Local</code> profile boots, fetches its catalog from <code>localhost:8080</code>, and loads a remote asset — with <strong>zero new runtime code written</strong>. This proves the configuration is right before any abstraction is layered on it.</li>
+<li>All existing PlayMode/EditMode tests still pass after the Addressables upgrade.</li>
+</ul>
+
+<h4>Risks</h4>
+<p>Addressables 2.3 → 2.9 may change <code>ResourceManager</code> exception types used by <code>AssetLoader.DetermineErrorCode</code>. Budget half a day for fallout.</p>
+
+<h3 id="p-phase1">Phase 1 — Build and Content-Update Pipeline</h3>
+<p><strong>Goal:</strong> CI can produce a full build <em>and</em> a delta content update, deterministically, from the command line, with the content-state file managed correctly.</p>
+
+<h4>Deliverables</h4>
+<pre><code>Editor/Cdn/
+├── CdnBuildCLI.cs           batchmode entry points
+├── CdnBuildPipeline.cs      BuildPlayerContent / BuildContentUpdate wrappers
+├── ContentStateManager.cs   locate, validate, archive content_state.bin
+├── CdnProfileManager.cs     profile switching + Remote path injection
+└── CatalogVerifier.cs       post-build validation</code></pre>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th><th>Detail</th></tr></thead>
+<tbody>
+<tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td><code>-executeMethod</code>, args: <code>-cdnProfile</code>, <code>-cdnEnv</code>, <code>-buildTarget</code>, <code>-outputDir</code>. Wraps <code>AddressableAssetSettings.BuildPlayerContent(out result)</code>. Non-zero exit on failure.</td></tr>
+<tr><td>1.2</td><td><code>CdnBuildCLI.BuildContentUpdate</code></td><td>Wraps <code>ContentUpdateScript.BuildContentUpdate(settings, contentStatePath)</code>. <strong>Fails loudly if the state file is missing</strong> rather than silently falling back to a full build.</td></tr>
+<tr><td>1.3</td><td><code>ContentStateManager</code></td><td>Resolve path per platform + app version; validate the file is readable and matches the current app version; copy to a CI artifact directory after every build.</td></tr>
+<tr><td>1.4</td><td>Content-update restriction check</td><td>Run <code>ContentUpdateScript.GatherModifiedEntries</code> and report which entries moved between static and dynamic content. Fail the build if a <em>static</em> group changed — that means the update is not actually delta-able and needs a new player build.</td></tr>
+<tr><td>1.5</td><td><code>CdnProfileManager</code></td><td><code>SetActiveProfile(name)</code>; inject <code>Remote.LoadPath</code> from an env var so URLs are not committed to the repo.</td></tr>
+<tr><td>1.6</td><td><code>CatalogVerifier</code></td><td>Assert: settings contract (<a href="#d-config">design §9</a>) holds; catalog filename matches expected <code>catalog_&lt;appVersion&gt;</code>; every bundle referenced by the catalog exists in the output directory.</td></tr>
+<tr><td>1.7</td><td>Build manifest emission</td><td>Write <code>build-manifest.json</code> next to the output: app version, catalog name, bundle count, total bytes, git SHA, timestamp, build type (full | update). Feeds the upload step and gives the team an audit trail.</td></tr>
+<tr><td>1.8</td><td>GitHub Actions workflow</td><td>Two jobs: <code>content-full</code> and <code>content-update</code>. See <a href="#i-cicd">infra §7</a>.</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<p><strong>The measurable one:</strong> make a trivial change to one remote asset, run <code>BuildContentUpdate</code>, and confirm the resulting bundle set differs from the previous build by only the affected bundle(s). Target: a 2 MB asset change produces ≤ 2.5 MB of changed bundles.</p>
+<p>Also: <code>CatalogVerifier</code> fails the build when a bundle is deliberately deleted from the output.</p>
+
+<h4>Risks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Content-state file lost or not archived → no more delta updates for that app version</td><td>1.3 makes archiving automatic; CI job fails if the artifact upload fails</td></tr>
+<tr><td>Static content modified without noticing → update silently ineffective</td><td>1.4 turns it into a build failure</td></tr>
+<tr><td>MonoScript bundle churns on every build, inflating every patch</td><td>Fixed by 0.3 (<code>MonoScriptBundleNaming</code>); verified by comparing two consecutive update builds</td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase2">Phase 2 — Runtime Bootstrap</h3>
+<p><strong>Goal:</strong> the game can initialize against a CDN, detect and apply a catalog update, and boot successfully with no network.</p>
+
+<h4>Deliverables</h4>
+<pre><code>Runtime/Cdn/
+├── Cdn.cs                    (partial — boot APIs only)
+├── CdnRuntime.cs
+├── Config/CdnSettings.cs · CdnEnvironment.cs · DownloadPolicy.cs
+├── Core/CdnErrorCode.cs · CdnError.cs · CdnResult.cs · CatalogUpdateInfo.cs
+├── Services/ICatalogService.cs · CatalogService.cs · CdnRequestDecorator.cs
+└── Policy/NetworkPolicy.cs</code></pre>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th><th>Detail</th></tr></thead>
+<tbody>
+<tr><td>2.1</td><td><code>CdnResult&lt;T&gt;</code> / <code>CdnError</code> / <code>CdnErrorCode</code></td><td>Mirror <code>LoadResult</code> / <code>LoadError</code> shape so the package stays idiomatic. Include <code>HttpStatusCode</code>, <code>Url</code>, <code>IsRetryable</code>.</td></tr>
+<tr><td>2.2</td><td><code>CdnSettings</code> + inspector</td><td>Environment list, token resolution, policy defaults.</td></tr>
+<tr><td>2.3</td><td><code>CdnRequestDecorator</code></td><td>Install <code>WebRequestOverride</code> and <code>InternalIdTransformFunc</code> <strong>before</strong> <code>InitializeAsync</code>. Add an assertion that fires if init already happened.</td></tr>
+<tr><td>2.4</td><td><code>IHostRewriter</code></td><td>Token substitution (<code>{platform}</code>, <code>{appVersion}</code>), environment switching, failover host promotion.</td></tr>
+<tr><td>2.5</td><td><code>CatalogService.InitializeAsync</code></td><td>Explicit <code>Addressables.InitializeAsync()</code> await; detect the no-cache-no-network case → <code>NoContentAvailableOffline</code>.</td></tr>
+<tr><td>2.6</td><td><code>CatalogService.CheckForUpdateAsync</code></td><td><code>CheckForCatalogUpdates(autoReleaseHandle: false)</code>; offline → <code>Success(None, WasOfflineFallback = true)</code>.</td></tr>
+<tr><td>2.7</td><td><code>CatalogService.ApplyUpdateAsync</code></td><td><code>UpdateCatalogs(..., autoCleanBundleCache: true)</code>; report which catalogs were replaced.</td></tr>
+<tr><td>2.8</td><td><code>NetworkPolicy</code></td><td>Reachability, metered detection, <code>WaitForReachableAsync</code>.</td></tr>
+<tr><td>2.9</td><td><code>Cdn</code> facade — boot subset</td><td><code>InitializeAsync</code>, <code>CheckForUpdateAsync</code>, <code>ApplyUpdateAsync</code>, <code>CurrentEnvironmentId</code>, <code>IsInitialized</code>.</td></tr>
+<tr><td>2.10</td><td>Sample boot scene</td><td><code>Assets/Examples/CdnBoot/</code> demonstrating the canonical flow from <a href="#d-api">design §6</a>.</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<ul>
+<li>All five boot flows from <a href="#d-flows">design §7.1–7.5</a> reproduce against the local server, verified by an automated PlayMode test where possible and manually where not.</li>
+<li>Airplane mode on a device with warm cache: game boots, no exception, no blocking dialog.</li>
+<li>Environment switch from <code>Prod</code> to <code>Staging</code> at runtime, without a rebuild, resolves bundles from the staging host. This validates that <code>InternalIdTransformFunc</code> is wired correctly and is the single most useful capability of this phase for QA.</li>
+</ul>
+
+<h4>Risks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Hook installed after implicit initialization (a stray <code>Addressables.LoadAssetAsync</code> early in boot triggers init)</td><td>2.3 assertion + document that <code>Cdn.InitializeAsync</code> must be the first Addressables call</td></tr>
+<tr><td><code>internetReachability</code> reports reachable behind a captive portal</td><td>Treated as a fast negative check only; real failures still flow through normal error handling</td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase3">Phase 3 — Download Orchestration</h3>
+<p><strong>Goal:</strong> downloads are cancellable, resumable, retried with backoff, and reported in real bytes.</p>
+
+<h4>Deliverables</h4>
+<pre><code>Runtime/Cdn/
+├── Core/DownloadRequest.cs · DownloadProgress.cs · DownloadReport.cs
+├── Services/IDownloadService.cs · DownloadService.cs
+└── Policy/RetryPolicy.cs</code></pre>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th><th>Detail</th></tr></thead>
+<tbody>
+<tr><td>3.1</td><td><code>RetryPolicy</code></td><td>Exponential backoff + jitter; retryability driven by the <a href="#d-errors">design §8</a> table. Fully unit-testable, no Unity dependency.</td></tr>
+<tr><td>3.2</td><td><code>DownloadService.GetDownloadSizeAsync</code></td><td>Accepts keys <strong>and labels</strong>, <code>MergeMode</code>. Returns <code>CdnResult&lt;long&gt;</code> — failure is distinguishable from zero.</td></tr>
+<tr><td>3.3</td><td><code>DownloadService.DownloadAsync</code></td><td><code>DownloadDependenciesAsync(keys, mergeMode, autoReleaseHandle: false)</code>; poll <code>GetDownloadStatus()</code>; EMA-smoothed speed; ETA <code>-1</code> when unknown rather than fabricated.</td></tr>
+<tr><td>3.4</td><td>Progress throttling</td><td>Default 4 Hz. <code>DownloadProgress</code> is a struct delivered through <code>IProgress&lt;T&gt;</code> — no steady-state allocation.</td></tr>
+<tr><td>3.5</td><td>Cancellation</td><td><code>CancellationToken</code> on every entry point; release the handle; keep partial cache; return <code>CdnResult.Cancelled</code> distinct from failure.</td></tr>
+<tr><td>3.6</td><td>Pre-flight checks</td><td>Reachability, metered gate, free disk vs. <code>size + MinFreeDiskBytes</code>. Each maps to its own error code.</td></tr>
+<tr><td>3.7</td><td>Error mapping</td><td><code>RemoteProviderException</code> → <code>CdnErrorCode</code> via HTTP status. <strong>Verify the exception type and property names against the pinned Addressables version</strong> — this changed between 1.x and 2.x.</td></tr>
+<tr><td>3.8</td><td>CRC auto-repair</td><td>On <code>BundleCrcMismatch</code>: <code>ClearDependencyCacheAsync</code> for that key, retry once, then fail.</td></tr>
+<tr><td>3.9</td><td>Rewrite <code>ProgressiveAssetLoader.DownloadWithProgressAsync</code> over <code>DownloadService</code></td><td>Keeps the old signature; fixes the speed/ETA math and populates <code>BytesDownloaded</code> / <code>TotalBytes</code>.</td></tr>
+<tr><td>3.10</td><td>Deprecate the old surface</td><td><code>[Obsolete]</code> on <code>AssetLoader.DownloadDependenciesAsync</code>, <code>AssetLoader.GetDownloadSizeAsync</code>, <code>Assets.Download</code>, <code>Assets.GetDownloadSize</code>, <code>StandardAPI.DownloadDependencies</code>, <code>StandardAPI.GetDownloadSize</code>.</td></tr>
+<tr><td>3.11</td><td>Patch UI sample</td><td>Extend <code>AddressableProgressBar</code> with a byte-accurate variant showing size, speed, ETA, cancel.</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<ul>
+<li>Fault-injection matrix from <a href="#d-testing">design §12</a> passes against the local server.</li>
+<li>Cancel at 30% of a 100 MB download, then restart: the second run transfers roughly the remaining 70%, not 100%. This is the concrete proof that resume works.</li>
+<li>Throttled to 50 KB/s, the reported speed stays within ±15% of actual and ETA converges monotonically.</li>
+<li>No GC allocation in the progress loop (verified with the Profiler over a 60-second download).</li>
+</ul>
+
+<h4>Risks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td><code>GetDownloadStatus()</code> returns zero totals early in the operation</td><td>Report <code>TotalBytes = 0</code> as "calculating", never divide by it</td></tr>
+<tr><td>Retrying a whole operation re-downloads already-complete bundles</td><td>Unity's cache makes completed bundles free on retry; verified by the cancel/resume test</td></tr>
+<tr><td>Exception hierarchy differs from expectation</td><td>3.7 explicitly budgets verification time; substring matching stays as <code>Unknown</code> fallback</td></tr>
+</tbody></table></div>
+
+<h3 id="p-phase4">Phase 4 — Cache, Errors, Diagnostics</h3>
+<p><strong>Goal:</strong> disk usage is controllable, failures are attributable, and the team can inspect CDN state from the editor.</p>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th><th>Detail</th></tr></thead>
+<tbody>
+<tr><td>4.1</td><td><code>CacheService</code></td><td><code>GetStats</code> (occupied / free / path), <code>ClearAsync(key)</code>, <code>ClearAllAsync</code>, <code>CleanObsoleteAsync</code>.</td></tr>
+<tr><td>4.2</td><td>Obsolete-bundle cleanup on update</td><td>Call <code>CleanObsoleteAsync</code> after a catalog update. Without this, superseded bundles accumulate indefinitely — the usual cause of "why is this game 8 GB".</td></tr>
+<tr><td>4.3</td><td>Cache budget warning</td><td>Raise an event when occupied exceeds a configurable threshold so the game can prompt.</td></tr>
+<tr><td>4.4</td><td><code>ICdnTelemetry</code> + <code>CdnDiagnostics</code></td><td>Interface only; no transport bundled. Default implementation logs under the existing <code>DebugSettings</code> verbosity flags.</td></tr>
+<tr><td>4.5</td><td><code>LoadErrorCode.ContentNotDownloaded</code></td><td>New code for "the asset is in the catalog but its bundle is not local" — currently indistinguishable from a generic failure.</td></tr>
+<tr><td>4.6</td><td>CDN tab in <code>AddressableManagerWindow</code></td><td>Environment, catalog id, cache occupied/free, last check time, last error; buttons for check-update, clear cache, clean obsolete.</td></tr>
+<tr><td>4.7</td><td><code>TROUBLESHOOTING</code> — CDN section</td><td>One entry per <code>CdnErrorCode</code>: symptom, cause, fix.</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<ul>
+<li>Two consecutive content updates leave no orphaned bundles on disk (measured via <code>spaceOccupied</code> before/after).</li>
+<li>Every <code>CdnErrorCode</code> is reachable in the fault-injection matrix and documented in troubleshooting.</li>
+<li>The editor CDN tab reports accurate live state during a device-attached play session.</li>
+</ul>
+
+<h3 id="p-phase5">Phase 5 — Hardening and Rollout</h3>
+<p><strong>Goal:</strong> validated on real devices against real infrastructure, documented, and the deprecated surface removed.</p>
+
+<h4>Tasks</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Task</th></tr></thead>
+<tbody>
+<tr><td>5.1</td><td>Full fault-injection suite green in CI (PlayMode + local server)</td></tr>
+<tr><td>5.2</td><td>Device matrix: low-end Android, mid iOS; WiFi, cellular, airplane-mode toggle mid-download, near-full storage</td></tr>
+<tr><td>5.3</td><td>Staging soak: three consecutive content updates on the same install, verifying delta sizes and cache hygiene</td></tr>
+<tr><td>5.4</td><td>Load/cost sanity check against real CDN — egress, cache hit ratio at the edge, p95 latency by region</td></tr>
+<tr><td>5.5</td><td>CDN usage guide — game-developer-facing (the design doc is for the package author)</td></tr>
+<tr><td>5.6</td><td><code>README</code> + <code>CHANGELOG</code> updates</td></tr>
+<tr><td>5.7</td><td>Remove the <code>[Obsolete]</code> surface → 5.0.0</td></tr>
+<tr><td>5.8</td><td>Migration note for existing integrators</td></tr>
+</tbody></table></div>
+
+<h4>Exit criteria</h4>
+<ul>
+<li>A content-only change goes from commit to live on staging via CI with no manual Unity Editor step.</li>
+<li>A device with the previous build installed receives only the delta.</li>
+<li>Edge cache hit ratio ≥ 95% for bundles after warm-up.</li>
+</ul>
+
+<h3 id="p-release">9. Release Plan</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Version</th><th>Contents</th><th>Breaking</th></tr></thead>
+<tbody>
+<tr><td><code>4.1.0</code></td><td>Phase 0 + 1. Editor/CI only — no runtime API change. Addressables upgraded to 2.9.x.</td><td>Addressables upgrade; TMP moved to optional</td></tr>
+<tr><td><code>4.2.0</code></td><td>Phase 2. <code>Cdn</code> boot APIs. Additive.</td><td>none</td></tr>
+<tr><td><code>4.3.0</code></td><td>Phase 3. Download APIs; old surface deprecated.</td><td><code>DownloadWithProgressAsync</code> now reports real speed/bytes (behaviour fix)</td></tr>
+<tr><td><code>4.4.0</code></td><td>Phase 4. Cache, telemetry, editor tab. Additive.</td><td>none</td></tr>
+<tr><td><code>5.0.0</code></td><td>Phase 5. Deprecated surface removed; <code>ProgressInfo</code>/<code>DownloadProgress</code> unified.</td><td>yes — documented migration</td></tr>
+</tbody></table></div>
+<p>Semver note: 4.3.0's speed/bytes change is a bug fix to a value that was previously meaningless, so it does not warrant a major bump — but it is called out prominently in the changelog because UI calibrated against the old number will look wrong.</p>
+
+<h3 id="p-risks">10. Risk Register</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>#</th><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th><th>Owner phase</th></tr></thead>
+<tbody>
+<tr><td>R1</td><td><code>addressables_content_state.bin</code> lost for a shipped app version</td><td>Medium</td><td class="crit">Critical — that version can never receive a delta update again; all its players force-download full content</td><td>Automated archiving (1.3), CI failure if archiving fails, documented retention policy</td><td>1</td></tr>
+<tr><td>R2</td><td>Catalog uploaded before bundles → live 404s</td><td>Medium</td><td>High</td><td>Upload order enforced in the deploy script: bundles first, catalog last (<a href="#i-deploy">infra §5</a>)</td><td>1</td></tr>
+<tr><td>R3</td><td><code>.hash</code> cached too long at the edge → players stuck on an old catalog</td><td>High if unconfigured</td><td>High</td><td>Explicit cache rule for <code>catalog_*.hash</code>; verified by a post-deploy header check</td><td>infra</td></tr>
+<tr><td>R4</td><td>Addressables 2.9 upgrade regresses existing loaders</td><td>Medium</td><td>Medium</td><td>Phase 0 does it first, in isolation, with the existing test suite as the gate</td><td>0</td></tr>
+<tr><td>R5</td><td>Static content accidentally modified in a content update</td><td>Medium</td><td>High — the update silently fails to apply for existing players</td><td><code>GatherModifiedEntries</code> check fails the build (1.4)</td><td>1</td></tr>
+<tr><td>R6</td><td>Hooks installed after implicit Addressables init</td><td>Medium</td><td>High — catalog request not rewritten, wrong environment</td><td>Assertion (2.3) + boot-order documentation</td><td>2</td></tr>
+<tr><td>R7</td><td>Exception-type drift across Addressables versions breaks error mapping</td><td>Medium</td><td>Medium</td><td>Pin the version; substring fallback for <code>Unknown</code>; unit tests over synthetic exceptions</td><td>3</td></tr>
+<tr><td>R8</td><td>Bundle cache grows unbounded</td><td>High if unaddressed</td><td>Medium</td><td><code>CleanObsoleteAsync</code> after every update (4.2)</td><td>4</td></tr>
+<tr><td>R9</td><td>CDN egress cost higher than modelled</td><td>Low with R2</td><td>Medium</td><td>R2 zero-egress origin; telemetry on bytes served per version</td><td>5</td></tr>
+<tr><td>R10</td><td>Scope creep into MOD support / WebGL</td><td>Medium</td><td>Medium</td><td>Explicit non-goals in <a href="#d-goals">design §1</a>; revisit YooAsset if either becomes a requirement</td><td>all</td></tr>
+</tbody></table></div>
+
+<h3 id="p-rollback">11. Rollback Procedures</h3>
+<p><strong>Bad content deployed.</strong> Re-upload the previous catalog for the affected app version. Because bundles are content-addressed and append-only, the old bundles are still present — the catalog swap alone is a complete rollback. Recovery time is one upload plus the <code>.hash</code> TTL (≤ 60 s).</p>
+<p><strong>Bad player build.</strong> Not rollback-able via CDN; requires a store update. This is why static content changes must be caught at build time (R5).</p>
+<p><strong>Bad package version in a game project.</strong> Each phase is an independent minor version; revert the UPM dependency. Because the old API surface stays until 5.0.0, downgrading from 4.x to 4.x is safe.</p>
+<p><strong>Corrupted client cache in the field.</strong> <code>Cdn.ClearCacheAsync(key)</code> for a targeted fix, or <code>ClearAllAsync</code> as the nuclear option, gated behind a remote-config flag so it can be triggered without a client update.</p>
+
+<h3 id="p-dod">12. Definition of Done</h3>
+<p>The CDN system is done when all of the following are true:</p>
+<ol>
+<li>A content-only change ships to players through CI with no manual Editor step.</li>
+<li>Players receive only the delta; measured patch size is within 25% of the changed-asset size.</li>
+<li>The game boots offline on a warm cache with no error dialog.</li>
+<li>Every failure mode in the <a href="#d-errors">design §8</a> table is reachable in tests and documented in troubleshooting.</li>
+<li>Downloads are cancellable and resume from partial state.</li>
+<li>Progress reports real bytes; speed and ETA are within ±15% under throttled conditions.</li>
+<li>Disk usage does not grow across consecutive content updates.</li>
+<li>Rolling back a bad content deploy takes one upload and under a minute.</li>
+<li>Telemetry can answer "what is our download success rate this week, and where are failures concentrated".</li>
+</ol>
+
+</section>
+
+<!-- ==================================================================== -->
+<!-- DOCUMENT III — INFRASTRUCTURE & OPERATIONS                           -->
+<!-- ==================================================================== -->
+<section class="doc" id="infra">
+<div class="doc-label">Document III</div>
+<h2>Infrastructure and Operations</h2>
+<p class="sub" style="color:var(--fg-muted)">Hosting layout, cache policy, deployment pipeline, and runbook.</p>
+
+<div class="toc">
+<ol>
+<li><a href="#i-topology">Topology</a></li>
+<li><a href="#i-layout">Storage Layout</a></li>
+<li><a href="#i-cache">Cache Policy</a></li>
+<li><a href="#i-envs">Environments</a></li>
+<li><a href="#i-deploy">Deployment Workflow</a></li>
+<li><a href="#i-state">Content State Lifecycle</a></li>
+<li><a href="#i-cicd">CI/CD Reference</a></li>
+<li><a href="#i-rollback">Rollback</a></li>
+<li><a href="#i-security">Security</a></li>
+<li><a href="#i-monitoring">Monitoring</a></li>
+<li><a href="#i-cost">Cost Model</a></li>
+<li><a href="#i-runbook">Runbook</a></li>
+</ol>
+</div>
+
+<h3 id="i-topology">1. Topology</h3>
+<pre class="diagram"><code>   Unity CI (GitHub Actions)
+        │  build → verify → upload
+        ▼
+   Cloudflare R2  ──────────────►  Cloudflare CDN  ──────────────►  Players
+   (origin, zero egress)            (edge cache)                    (Unity UWR)</code></pre>
+<p>Addressables does not care what serves the content — it needs a URL that returns the catalog, its hash file, and the bundles. That makes the origin a free choice, and R2 behind Cloudflare's CDN is the cost-efficient one: R2 charges no egress to the internet, and cached bundles are served from the edge.</p>
+<p>Unity Cloud Content Delivery remains a drop-in alternative (change one profile variable) if bandwidth billing ever becomes preferable to running this. Nothing in the design is R2-specific.</p>
+
+<h4>Requirements the origin must satisfy</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Requirement</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>HTTP range requests</td><td>Unity's caching downloader resumes partial transfers with <code>Range</code></td></tr>
+<tr><td>Stable <code>ETag</code></td><td>Edge revalidation</td></tr>
+<tr><td>Per-object <code>Cache-Control</code></td><td>Bundles and catalogs need opposite policies (<a href="#i-cache">§3</a>)</td></tr>
+<tr><td>Prefix-scoped cache purge</td><td>Fast catalog rollback and deploy invalidation</td></tr>
+</tbody></table></div>
+<p>R2 + Cloudflare satisfies all four.</p>
+
+<h3 id="i-layout">2. Storage Layout</h3>
+<div class="note">
+<span class="tag">Key decision</span>
+<p>This is the most consequential decision in this document. Get it wrong and either patches break or caching does.</p>
+</div>
+<pre><code>r2://game-content/
+└── &lt;game&gt;/
+    └── &lt;platform&gt;/                        ios | android | standalonewindows64
+        ├── bundles/                       ── append-only, content-addressed, immutable
+        │   ├── ui_common_a3f1c9e4….bundle
+        │   ├── stage01_assets_7b2d0f11….bundle
+        │   └── …
+        └── catalog/
+            └── &lt;appVersion&gt;/              ── mutable, one folder per shipped player version
+                ├── catalog_&lt;appVersion&gt;.bin
+                ├── catalog_&lt;appVersion&gt;.hash
+                └── build-manifest.json</code></pre>
+
+<h4>Why bundles and catalogs are separated</h4>
+<p>Addressables lets you configure the remote catalog path independently of group load paths (<code>RemoteCatalogBuildPath</code> / <code>RemoteCatalogLoadPath</code> in settings, versus <code>LoadPath</code> on the group schema). Using that separation gives two objects with opposite lifecycles:</p>
+<ul>
+<li><strong>Bundles are immutable and shared.</strong> Bundle filenames contain a content hash, so a changed asset produces a <em>new</em> file rather than overwriting an old one. Old players keep resolving old bundles; new players get new ones. The folder is append-only and every object can be cached for a year.</li>
+<li><strong>Catalogs are mutable and per-app-version.</strong> A content update overwrites the catalog for exactly one app version. It must never be cached for long, and it must never be shared between app versions — a catalog produced by <code>BuildContentUpdate</code> is only valid against the <code>content_state.bin</code> of the player build it was derived from.</li>
+</ul>
+<p>Collapsing these into one folder forces a single cache policy on both, which means either stale catalogs or bundles that are re-validated on every request.</p>
+
+<h4>Mandatory group setting</h4>
+<div class="note danger">
+<p>Bundle naming <strong>must</strong> include the content hash — <code>Append Hash to Filename</code> or <code>Use Hash of AssetBundle</code> on the group's <code>BundledAssetGroupSchema</code>. Without a hash in the filename, a content update overwrites existing bundle objects, which simultaneously breaks immutable caching and breaks every player still on the previous content version. <code>CatalogVerifier</code> asserts this.</p>
+</div>
+
+<h4>Path mapping</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Addressables setting</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Group <code>LoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/bundles</code></td></tr>
+<tr><td>Group <code>BuildPath</code></td><td><code>ServerData/[BuildTarget]/bundles</code></td></tr>
+<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+</tbody></table></div>
+<p><code>[PlayerVersion]</code> comes from <code>OverridePlayerVersion</code>, already set to <code>[UnityEditor.PlayerSettings.bundleVersion]</code> in the project — keep it that way. If it were left as the default timestamp, each build would produce a differently-named catalog and shipped players would request a filename that no longer exists.</p>
+<p>At runtime the host portion is rewritten by <code>InternalIdTransformFunc</code> (<a href="#d-modules">design §5.6</a>), so these baked URLs act as the fallback rather than the only option.</p>
+
+<h3 id="i-cache">3. Cache Policy</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Path pattern</th><th><code>Cache-Control</code></th><th>Edge TTL</th><th>Rationale</th></tr></thead>
+<tbody>
+<tr><td><code>/*/bundles/*.bundle</code></td><td><code>public, max-age=31536000, immutable</code></td><td>1 year</td><td>Content-addressed filename; the object can never change</td></tr>
+<tr><td><code>/*/catalog/*/catalog_*.hash</code></td><td><code>public, max-age=0, must-revalidate</code></td><td>60 s</td><td>Polled on every boot. This is the propagation-latency knob for the whole system.</td></tr>
+<tr><td><code>/*/catalog/*/catalog_*.bin</code></td><td><code>public, max-age=0, must-revalidate</code></td><td>60 s</td><td>Fetched only when the hash differs</td></tr>
+<tr><td><code>/*/catalog/*/build-manifest.json</code></td><td><code>no-store</code></td><td>bypass</td><td>Operational metadata, never client-facing</td></tr>
+</tbody></table></div>
+
+<h4>Content types</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Extension</th><th><code>Content-Type</code></th></tr></thead>
+<tbody>
+<tr><td><code>.bundle</code></td><td><code>application/octet-stream</code></td></tr>
+<tr><td><code>.bin</code></td><td><code>application/octet-stream</code></td></tr>
+<tr><td><code>.json</code></td><td><code>application/json</code></td></tr>
+<tr><td><code>.hash</code></td><td><code>text/plain</code></td></tr>
+</tbody></table></div>
+<p>Do not enable Brotli/gzip on <code>.bundle</code> — bundles are already LZ4 or LZMA compressed, so re-compressing burns edge CPU for no size reduction.</p>
+
+<h4>Purge on deploy</h4>
+<p>TTL is a safety net, not the propagation mechanism. Every deploy explicitly purges the catalog prefix:</p>
+<pre><code>curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+  -H "Authorization: Bearer $CF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "{\"files\":[
+      \"https://cdn.$DOMAIN/$GAME/$PLATFORM/catalog/$APP_VERSION/catalog_$APP_VERSION.hash\",
+      \"https://cdn.$DOMAIN/$GAME/$PLATFORM/catalog/$APP_VERSION/catalog_$APP_VERSION.bin\"
+  ]}"</code></pre>
+<p>Purging both together avoids the window where a client sees a fresh <code>.hash</code> but a stale catalog. <strong>Never purge the bundle prefix</strong> — those objects are immutable, and purging them only forces the edge to refetch identical bytes from origin.</p>
+
+<h3 id="i-envs">4. Environments</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Ring</th><th>Host</th><th>Bucket prefix</th><th>Who</th></tr></thead>
+<tbody>
+<tr><td>Local</td><td><code>http://localhost:8080</code></td><td><code>ServerData/</code> on disk</td><td>Individual developer</td></tr>
+<tr><td>Dev</td><td><code>https://cdn-dev.&lt;domain&gt;</code></td><td><code>game-content-dev/</code></td><td>Every merge to <code>develop</code></td></tr>
+<tr><td>Staging</td><td><code>https://cdn-stg.&lt;domain&gt;</code></td><td><code>game-content-stg/</code></td><td>Release candidates, QA</td></tr>
+<tr><td>Prod</td><td><code>https://cdn.&lt;domain&gt;</code></td><td><code>game-content/</code></td><td>Tagged releases only</td></tr>
+</tbody></table></div>
+<p>Separate buckets, not separate prefixes in one bucket — it makes an accidental cross-ring write impossible rather than merely unlikely.</p>
+<p>Because the runtime host rewrite exists, a single prod build can be pointed at staging by QA without a rebuild. That capability is deliberately gated: it is enabled by a development-build flag or a signed debug command, never by a plain config value that could ship enabled.</p>
+
+<h3 id="i-deploy">5. Deployment Workflow</h3>
+<p>Order matters. Each step is a gate for the next.</p>
+<pre><code>1. Build          BuildContent (full) or BuildContentUpdate (delta)
+                  └─ requires: correct profile, content_state.bin for update builds
+2. Verify         CatalogVerifier — settings contract, catalog↔bundle consistency
+                  └─ fails the job before anything reaches the network
+3. Upload bundles bundles/ → R2, Cache-Control: immutable
+                  └─ append-only; existing objects are never overwritten
+4. Upload catalog catalog/&lt;appVersion&gt;/ → R2, Cache-Control: must-revalidate
+                  └─ ALWAYS AFTER bundles
+5. Purge          catalog .hash + catalog body at the edge
+6. Post-check     HEAD every URL in the manifest; assert 200 and expected headers
+7. Archive        content_state.bin + build-manifest.json → CI artifact store</code></pre>
+<div class="note warn">
+<span class="tag">Why the order matters</span>
+<p><strong>Step 3 before step 4 is not a stylistic preference.</strong> Uploading the catalog first creates a window in which clients read a catalog referencing bundles that do not exist yet, producing 404s in production. Bundles-then-catalog makes the deploy atomic from the client's perspective: the new content is invisible until the catalog names it.</p>
+</div>
+
+<h4>Upload commands</h4>
+<p>R2 is S3-compatible.</p>
+<pre><code># 3. bundles — immutable, append-only
+aws s3 sync "ServerData/$PLATFORM/bundles/" "s3://$BUCKET/$GAME/$PLATFORM/bundles/" \
+  --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=31536000, immutable" \
+  --content-type "application/octet-stream" \
+  --size-only
+
+# 4. catalog — short TTL, overwrite
+aws s3 sync "ServerData/$PLATFORM/catalog/$APP_VERSION/" \
+  "s3://$BUCKET/$GAME/$PLATFORM/catalog/$APP_VERSION/" \
+  --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=0, must-revalidate" \
+  --exclude "build-manifest.json"</code></pre>
+<p><code>--size-only</code> on the bundle sync is safe precisely because filenames are content-hashed: same name means same bytes.</p>
+
+<h4>Post-deploy verification</h4>
+<pre><code># every URL in the manifest must return 200 with the expected cache header
+jq -r '.bundles[].url, .catalog.url, .catalog.hashUrl' build-manifest.json \
+  | while read -r url; do
+      code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$url")
+      [ "$code" = "200" ] || { echo "FAIL $code $url"; exit 1; }
+    done</code></pre>
+<p>A deploy that skips this step is how R2 (<a href="#p-risks">risk register</a>) reaches production.</p>
+
+<h3 id="i-state">6. Content State Lifecycle</h3>
+<p><code>addressables_content_state.bin</code> records the state of content at the moment a player build was made. <code>BuildContentUpdate</code> diffs against it to decide which bundles must be rebuilt.</p>
+<div class="note danger">
+<span class="tag">Critical</span>
+<p><strong>Losing it for a shipped app version permanently ends delta updates for that version.</strong> Every subsequent patch for those players becomes a full re-download. There is no way to reconstruct it.</p>
+</div>
+
+<h4>Rules</h4>
+<ol>
+<li>Store it <strong>outside <code>Assets/</code></strong> — <code>ServerData/ContentState/[BuildTarget]/</code> — and gitignore it. Keeping it in <code>Assets/</code> means it churns in every commit and gets resolved incorrectly on merge.</li>
+<li>Archive it as a CI artifact on <strong>every</strong> build, keyed <code>&lt;platform&gt;/&lt;appVersion&gt;/</code>. Also mirror it to a bucket prefix so it survives the CI retention window.</li>
+<li>Retain for as long as the app version has meaningful player population, plus a margin. Minimum: two years or two major versions, whichever is longer.</li>
+<li>A content-update build <strong>fails</strong> if the state file is missing. It must never silently fall back to a full build — that produces a catalog that looks valid but forces every player to redownload everything.</li>
+<li>Validate that the archived state file matches the app version being patched before using it.</li>
+</ol>
+
+<h4>Retrieval</h4>
+<pre><code>aws s3 cp "s3://$STATE_BUCKET/$GAME/$PLATFORM/$APP_VERSION/addressables_content_state.bin" \
+  "ServerData/ContentState/$PLATFORM/" --endpoint-url "$R2_ENDPOINT"</code></pre>
+
+<h3 id="i-cicd">7. CI/CD Reference</h3>
+<p>Two workflows. The distinction between them is exactly the distinction between a player release and a content patch.</p>
+
+<h4><code>content-full.yml</code> — runs alongside a player build</h4>
+<pre><code>name: Content Full Build
+on:
+  workflow_dispatch:
+    inputs:
+      platform:    { required: true, type: choice, options: [Android, iOS] }
+      environment: { required: true, type: choice, options: [dev, staging, prod] }
+
+jobs:
+  build:
+    runs-on: [self-hosted, unity]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build addressable content
+        run: |
+          "$UNITY" -batchmode -quit -nographics \
+            -projectPath . \
+            -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}" \
+            -outputDir "ServerData"
+
+      - name: Verify catalog
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CatalogVerifier.VerifyCli \
+            -manifest "ServerData/build-manifest.json"
+
+      - name: Upload bundles
+        run: ./ci/upload-bundles.sh
+        env: { R2_ENDPOINT: "${{ secrets.R2_ENDPOINT }}" }
+
+      - name: Upload catalog
+        run: ./ci/upload-catalog.sh
+
+      - name: Purge edge cache
+        run: ./ci/purge-catalog.sh
+
+      - name: Post-deploy check
+        run: ./ci/verify-urls.sh
+
+      - name: Archive content state          # never skip; see §6
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-state-${{ inputs.platform }}-${{ env.APP_VERSION }}
+          path: ServerData/ContentState/**/addressables_content_state.bin
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Mirror content state to durable storage
+        run: ./ci/archive-content-state.sh</code></pre>
+
+<h4><code>content-update.yml</code> — content-only patch, no player build</h4>
+<p>Identical except for two steps at the front:</p>
+<pre><code>      - name: Fetch content state for target app version
+        run: ./ci/fetch-content-state.sh
+        env:
+          APP_VERSION: ${{ inputs.app_version }}
+
+      - name: Build content update
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}" \
+            -contentState "ServerData/ContentState/${{ inputs.platform }}/addressables_content_state.bin"</code></pre>
+<p><code>BuildContentUpdate</code> also runs the static-content restriction check (<a href="#p-phase1">plan §1.4</a>) and fails if a group marked static changed — that situation cannot be patched and requires a new player build.</p>
+
+<h3 id="i-rollback">8. Rollback</h3>
+
+<h4>Bad content</h4>
+<p>Because bundles are append-only and content-addressed, the previous content is still on the origin. Rolling back is a catalog swap:</p>
+<pre><code># restore the previous catalog for this app version
+aws s3 cp "s3://$ARCHIVE/$GAME/$PLATFORM/$APP_VERSION/&lt;previous-build-id&gt;/" \
+  "s3://$BUCKET/$GAME/$PLATFORM/catalog/$APP_VERSION/" \
+  --recursive --endpoint-url "$R2_ENDPOINT" \
+  --cache-control "public, max-age=0, must-revalidate"
+
+./ci/purge-catalog.sh</code></pre>
+<p>Recovery time: one upload plus the 60 s edge TTL. This is why every catalog upload is also archived under a build id — without that archive there is nothing to roll back <em>to</em>.</p>
+
+<h4>Bad player build</h4>
+<p>Not recoverable through the CDN. Requires a store release. This is the reason the static-content check is a build-time gate rather than a warning.</p>
+
+<h4>Client-side corruption in the field</h4>
+<p><code>Cdn.ClearCacheAsync(key)</code> for a targeted eviction, <code>ClearAllAsync</code> as the last resort. Both are worth exposing behind a remote-config flag so they can be triggered without shipping a client update.</p>
+
+<h3 id="i-security">9. Security</h3>
+<div class="note">
+<span class="tag">Threat model</span>
+<p>Asset bundles are not secret — anyone who installs the game can extract them. Authentication on the CDN is about <strong>bandwidth theft and abuse</strong>, not confidentiality.</p>
+</div>
+<div class="tablewrap"><table>
+<thead><tr><th>Control</th><th>Recommendation</th></tr></thead>
+<tbody>
+<tr><td>Hotlink protection</td><td>Enable. Cheapest defence against third parties serving their content from your bucket.</td></tr>
+<tr><td>Rate limiting (WAF)</td><td>Per-IP request ceiling well above legitimate first-install traffic.</td></tr>
+<tr><td>Bearer token via <code>WebRequestOverride</code></td><td>Optional. Simple to implement; validated by a Cloudflare Worker. Note the token ships inside the client, so it deters casual scraping only.</td></tr>
+<tr><td>Signed URLs</td><td>Only if there is a hard requirement to prevent link sharing. Costs: the catalog can no longer contain final URLs, every request must be signed through <code>InternalIdTransformFunc</code>, and expiry interacts badly with long downloads and resume. <strong>Not recommended for this project.</strong></td></tr>
+<tr><td>Bucket write access</td><td>CI service account only, scoped per environment bucket. No human write credentials to the prod bucket.</td></tr>
+<tr><td>Public read</td><td>Bundles and catalogs are public-read by design. Never place anything else in these buckets.</td></tr>
+<tr><td>TLS</td><td>Enforced; HTTP requests redirected. Unity clients must use <code>https://</code> load paths.</td></tr>
+</tbody></table></div>
+<p><code>content_state.bin</code> and <code>build-manifest.json</code> are <strong>not</strong> public. They live in a separate, private archive bucket.</p>
+
+<h3 id="i-monitoring">10. Monitoring</h3>
+
+<h4>Edge (Cloudflare analytics)</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th><th>Alert threshold</th></tr></thead>
+<tbody>
+<tr><td>Cache hit ratio, bundle paths</td><td>&lt; 90% sustained over 1 h</td></tr>
+<tr><td>4xx rate</td><td>&gt; 1% of requests — usually a missing bundle or a broken deploy</td></tr>
+<tr><td>5xx rate</td><td>&gt; 0.1%</td></tr>
+<tr><td>Egress bytes</td><td>&gt; 2× the 7-day rolling median (anomaly, possible scraping)</td></tr>
+<tr><td>p95 origin response time</td><td>&gt; 500 ms</td></tr>
+</tbody></table></div>
+
+<h4>Client (via <code>ICdnTelemetry</code>)</h4>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Download success rate by app version</td><td>Distinguishes a CDN problem from a client-build problem</td></tr>
+<tr><td>Error code distribution</td><td><code>BundleNotFound</code> spiking means a deploy is incomplete; <code>Timeout</code> spiking means a network/region problem</td></tr>
+<tr><td>p50 / p95 patch duration by size bucket</td><td>Detects regional degradation the edge dashboard hides</td></tr>
+<tr><td>Bytes downloaded per app version</td><td>Validates that delta updates are actually delta</td></tr>
+<tr><td>Offline-fallback rate</td><td>If high, boot is too dependent on the network</td></tr>
+</tbody></table></div>
+<p>The edge and client views answer different questions. Edge tells you the CDN is healthy; client tells you players are succeeding. They diverge more often than you would expect.</p>
+
+<h3 id="i-cost">11. Cost Model</h3>
+<p>The variables that matter, in rough order of impact:</p>
+<ol>
+<li><strong>Egress.</strong> The dominant cost for game content at scale, and the reason for R2: object storage with no per-GB egress charge to the internet, fronted by a CDN that serves cache hits without touching origin.</li>
+<li><strong>Storage.</strong> Append-only bundle folders grow monotonically. Budget for growth and define a pruning policy for app versions with no remaining players (see <a href="#i-state">§6</a> retention).</li>
+<li><strong>Class A/B operations.</strong> Writes and reads against the bucket. Negligible relative to egress unless cache hit ratio is poor — which loops back to <a href="#i-cache">§3</a> being configured correctly.</li>
+<li><strong>Full-download waste.</strong> The single largest avoidable cost is shipping full content on every patch. That is what Phase 1 of the implementation plan eliminates, and it dwarfs infrastructure tuning.</li>
+</ol>
+<p>Check current provider pricing before modelling; the qualitative ranking above is stable, the numbers are not. Unity CCD is billed on bandwidth and is worth re-pricing at the point where operational simplicity outweighs egress cost.</p>
+
+<h3 id="i-runbook">12. Runbook</h3>
+
+<h4>Players report "stuck on old content"</h4>
+<ol>
+<li><code>curl -I</code> the <code>.hash</code> URL. Check <code>cf-cache-status</code> and <code>age</code>.</li>
+<li>If <code>age</code> is large, the purge step failed or the cache rule is misconfigured → purge manually, then fix the rule.</li>
+<li>If the header is correct, compare the served hash against the archived <code>build-manifest.json</code>. A mismatch means the wrong catalog was uploaded.</li>
+</ol>
+
+<h4>Spike in <code>BundleNotFound</code></h4>
+<p>Almost always upload ordering (<a href="#i-deploy">§5</a>, step 3 before 4) or a partial bundle sync.</p>
+<ol>
+<li>Diff the manifest's bundle list against the bucket listing.</li>
+<li>Re-upload the missing bundles. No purge needed — they were never cached.</li>
+<li>Verify the deploy script's failure handling; a partial <code>aws s3 sync</code> should have failed the job.</li>
+</ol>
+
+<h4>Spike in <code>BundleCrcMismatch</code></h4>
+<ol>
+<li>Confirm it is not a single client's corrupted cache (check spread across devices).</li>
+<li>If widespread, the object at origin is corrupt — re-upload from the CI artifact and purge.</li>
+<li>The client auto-repair path (<a href="#d-errors">design §8</a>) evicts and retries once, so a transient case self-heals.</li>
+</ol>
+
+<h4>Egress anomaly</h4>
+<ol>
+<li>Check cache hit ratio first — a config regression on the bundle cache rule looks identical to abuse.</li>
+<li>Check request distribution by IP/ASN for scraping.</li>
+<li>Tighten WAF rate limits; consider hotlink protection if not already on.</li>
+</ol>
+
+<h4>Content update produced a full-size patch</h4>
+<ol>
+<li>Was <code>content_state.bin</code> present and correct for that app version? (<a href="#i-state">§6</a>)</li>
+<li>Did a static group change? Check the restriction report from the build.</li>
+<li>Did <code>MonoScriptBundleNaming</code> or <code>BuiltInBundleNaming</code> change between builds? Either causes global bundle churn. Both are pinned by the settings contract (<a href="#d-config">design §9</a>) for this reason.</li>
+</ol>
+
+<h4>Need to point a prod build at staging</h4>
+<p>Use the runtime environment switch (<a href="#d-modules">design §5.6</a>). Confirm it is gated to development builds or a signed debug command — if a plain config value can do it, that is a bug to fix, not a workflow to use.</p>
+
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+
+  // theme toggle
+  var btn = document.getElementById('themeBtn');
+  var stored = null;
+  try { stored = localStorage.getItem('cdn-doc-theme'); } catch(e){}
+  if (stored) root.setAttribute('data-theme', stored);
+  btn.addEventListener('click', function(){
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = root.getAttribute('data-theme') || (prefersDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('cdn-doc-theme', next); } catch(e){}
+  });
+
+  // keep reading position when switching language
+  var langLink = document.getElementById('langLink');
+  function syncLangHref(){ langLink.setAttribute('href', 'CDN_SYSTEM_VI.html' + (location.hash || '')); }
+  syncLangHref();
+  window.addEventListener('hashchange', syncLangHref);
+
+  // scrollspy
+  var links = Array.prototype.slice.call(document.querySelectorAll('#nav a.item'));
+  var targets = links
+    .map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  if (!targets.length) return;
+
+  function sync(){
+    var y = window.scrollY + 90;
+    var idx = 0;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].offsetTop <= y) idx = i; else break;
+    }
+    links.forEach(function(a){ a.classList.remove('active'); });
+    if (links[idx]) {
+      links[idx].classList.add('active');
+      var nav = document.getElementById('nav');
+      var r = links[idx].getBoundingClientRect();
+      var nr = nav.getBoundingClientRect();
+      if (r.top < nr.top || r.bottom > nr.bottom) {
+        links[idx].scrollIntoView({block:'nearest'});
+      }
+    }
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function(){ sync(); ticking = false; });
+  }, {passive:true});
+  sync();
+  window.addEventListener('hashchange', sync);
+})();
+</script>
+</body>
+</html>
