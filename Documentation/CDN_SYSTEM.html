@@ -1458,10 +1458,10 @@ attempt 2 → success
 <tbody>
 <tr><td>Group <code>LoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/bundles</code></td></tr>
 <tr><td>Group <code>BuildPath</code></td><td><code>ServerData/[BuildTarget]/bundles</code></td></tr>
-<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
-<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]</code></td></tr>
 </tbody></table></div>
-<p><code>[PlayerVersion]</code> comes from <code>OverridePlayerVersion</code>, already set to <code>[UnityEditor.PlayerSettings.bundleVersion]</code> in the project — keep it that way. If it were left as the default timestamp, each build would produce a differently-named catalog and shipped players would request a filename that no longer exists.</p>
+<p><code>[UnityEditor.PlayerSettings.bundleVersion]</code> is a reflection-style profile-variable token — the same <code>[Namespace.Type.Member]</code> mechanism this project's profile already relies on for <code>[BuildTarget]</code> — and it resolves directly to the player's bundle version (e.g. <code>1.4.1</code>), which is what puts each shipped app version's catalog in its own folder. This is a different mechanism from the <code>OverridePlayerVersion</code> settings field covered in <a href="#d-config">design §9</a>: that field controls Addressables' own internal player-version string, and only happens to hold the same expression as its value in this project. Whatever produces the folder name, it must stay stable per app version — left as the default timestamp, each build would produce a differently-named catalog and shipped players would request a filename that no longer exists.</p>
 <p>At runtime the host portion is rewritten by <code>InternalIdTransformFunc</code> (<a href="#d-modules">design §5.6</a>), so these baked URLs act as the fallback rather than the only option.</p>
 
 <h3 id="i-cache">3. Cache Policy</h3>

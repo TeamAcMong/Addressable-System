@@ -1453,10 +1453,10 @@ lần 2 → thành công
 <tbody>
 <tr><td>Group <code>LoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/bundles</code></td></tr>
 <tr><td>Group <code>BuildPath</code></td><td><code>ServerData/[BuildTarget]/bundles</code></td></tr>
-<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
-<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[PlayerVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogLoadPath</code></td><td><code>https://cdn.&lt;domain&gt;/&lt;game&gt;/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]</code></td></tr>
+<tr><td><code>RemoteCatalogBuildPath</code></td><td><code>ServerData/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]</code></td></tr>
 </tbody></table></div>
-<p><code>[PlayerVersion]</code> lấy từ <code>OverridePlayerVersion</code>, hiện đã được đặt là <code>[UnityEditor.PlayerSettings.bundleVersion]</code> trong project — giữ nguyên như vậy. Nếu để mặc định là timestamp thì mỗi build sinh ra một tên catalog khác nhau, và player đã ship sẽ đi hỏi một tên file không còn tồn tại.</p>
+<p><code>[UnityEditor.PlayerSettings.bundleVersion]</code> là một token reflection trong biến profile — cùng cơ chế <code>[Namespace.Type.Member]</code> mà profile của project này đã dùng cho <code>[BuildTarget]</code> — và nó phân giải trực tiếp ra bundle version của player (ví dụ <code>1.4.1</code>), chính là thứ giữ cho catalog của mỗi app version nằm trong một thư mục riêng. Đây là cơ chế khác với field cấu hình <code>OverridePlayerVersion</code> đã nói ở <a href="#d-config">thiết kế §9</a>: field đó điều khiển chuỗi player-version nội bộ của riêng Addressables, và ở project này nó chỉ tình cờ được gán cùng một biểu thức làm giá trị. Dù cái gì sinh ra tên thư mục, nó cũng phải ổn định theo từng app version — nếu để mặc định là timestamp thì mỗi build sẽ sinh ra một tên catalog khác nhau, và player đã ship sẽ đi hỏi một tên file không còn tồn tại.</p>
 <p>Lúc runtime, phần host được <code>InternalIdTransformFunc</code> rewrite (<a href="#d-modules">thiết kế §5.6</a>), nên các URL nướng sẵn này đóng vai trò dự phòng chứ không phải lựa chọn duy nhất.</p>
 
 <h3 id="i-cache">3. Chính sách cache</h3>
