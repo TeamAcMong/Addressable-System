@@ -117,10 +117,10 @@ namespace AddressableManager.Editor.Cdn
             EnsureCatalogVariablesExist(settings);
 
             // Ensure all four profiles exist and are populated.
-            EnsureProfile(settings, ProfileNames.Local, copyFromDefault: true);
-            EnsureProfile(settings, ProfileNames.Dev, copyFromDefault: true);
-            EnsureProfile(settings, ProfileNames.Staging, copyFromDefault: true);
-            EnsureProfile(settings, ProfileNames.Prod, copyFromDefault: true);
+            EnsureProfile(settings, ProfileNames.Local);
+            EnsureProfile(settings, ProfileNames.Dev);
+            EnsureProfile(settings, ProfileNames.Staging);
+            EnsureProfile(settings, ProfileNames.Prod);
 
             EditorUtility.SetDirty(settings);
         }
@@ -172,12 +172,12 @@ namespace AddressableManager.Editor.Cdn
             }
 
             // Check for the two dedicated catalog variables.
-            if (string.IsNullOrEmpty(settings.profileSettings.GetVariableId(RemoteCatalogBuildPathVariable)))
+            if (settings.profileSettings.GetProfileDataByName(RemoteCatalogBuildPathVariable) == null)
             {
                 errors.Add($"Catalog profile variable '{RemoteCatalogBuildPathVariable}' does not exist.");
             }
 
-            if (string.IsNullOrEmpty(settings.profileSettings.GetVariableId(RemoteCatalogLoadPathVariable)))
+            if (settings.profileSettings.GetProfileDataByName(RemoteCatalogLoadPathVariable) == null)
             {
                 errors.Add($"Catalog profile variable '{RemoteCatalogLoadPathVariable}' does not exist.");
             }
@@ -225,14 +225,14 @@ namespace AddressableManager.Editor.Cdn
         private static void EnsureCatalogVariablesExist(AddressableAssetSettings settings)
         {
             // Create the two catalog variables if they don't exist. If they do exist, leave them untouched.
-            if (string.IsNullOrEmpty(settings.profileSettings.GetVariableId(RemoteCatalogBuildPathVariable)))
+            if (settings.profileSettings.GetProfileDataByName(RemoteCatalogBuildPathVariable) == null)
             {
                 settings.profileSettings.CreateValue(
                     RemoteCatalogBuildPathVariable,
                     CatalogPathDefaults.BuildPathValue);
             }
 
-            if (string.IsNullOrEmpty(settings.profileSettings.GetVariableId(RemoteCatalogLoadPathVariable)))
+            if (settings.profileSettings.GetProfileDataByName(RemoteCatalogLoadPathVariable) == null)
             {
                 settings.profileSettings.CreateValue(
                     RemoteCatalogLoadPathVariable,
@@ -240,7 +240,7 @@ namespace AddressableManager.Editor.Cdn
             }
         }
 
-        private static void EnsureProfile(AddressableAssetSettings settings, string profileName, bool copyFromDefault)
+        private static void EnsureProfile(AddressableAssetSettings settings, string profileName)
         {
             string profileId = settings.profileSettings.GetProfileId(profileName);
 
@@ -252,8 +252,8 @@ namespace AddressableManager.Editor.Cdn
             }
 
             // Profile doesn't exist; create it.
-            string copyFromId = copyFromDefault ? settings.profileSettings.GetDefaultProfileId() : null;
-            profileId = settings.profileSettings.AddProfile(profileName, copyFromId);
+            // AddProfile(name, copyFromId) will use the default profile if copyFromId is null
+            profileId = settings.profileSettings.AddProfile(profileName, null);
 
             // Set the two catalog variables for this profile.
             settings.profileSettings.SetValue(profileId, RemoteCatalogBuildPathVariable, CatalogPathDefaults.BuildPathValue);

@@ -163,6 +163,9 @@ namespace AddressableManager.Editor.Cdn
             try
             {
                 var requestPath = request.Url.AbsolutePath;
+                // Evaluate cache policy once for this request, reuse across all response paths
+                var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
+
                 var filePath = Path.Combine(_serverDataPath, requestPath.TrimStart('/'));
 
                 // Security: prevent directory traversal
@@ -171,7 +174,6 @@ namespace AddressableManager.Editor.Cdn
                 if (!fullPath.StartsWith(fullServerPath))
                 {
                     SendErrorResponse(context, 403, "Forbidden");
-                    var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
                     RaiseRequestEvent(request.HttpMethod, requestPath, 403, cacheControl, 0, matchesPolicy);
                     return;
                 }
@@ -179,12 +181,10 @@ namespace AddressableManager.Editor.Cdn
                 if (!File.Exists(filePath))
                 {
                     SendErrorResponse(context, 404, "Not Found");
-                    var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
                     RaiseRequestEvent(request.HttpMethod, requestPath, 404, cacheControl, 0, matchesPolicy);
                     return;
                 }
 
-                var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
                 var contentType = GetContentType(filePath);
                 var fileInfo = new FileInfo(filePath);
                 var fileSize = fileInfo.Length;
