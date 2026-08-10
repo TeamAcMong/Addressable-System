@@ -5,6 +5,7 @@
         "AddressableManager",
         "AddressableManager.Editor",
         "Unity.Addressables",
+        "Unity.Addressables.Editor",
         "Unity.ResourceManager",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
