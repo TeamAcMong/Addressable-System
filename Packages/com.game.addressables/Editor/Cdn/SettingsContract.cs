@@ -132,13 +132,13 @@ namespace AddressableManager.Editor.Cdn
 
         public const string RequiredOverridePlayerVersion = "[UnityEditor.PlayerSettings.bundleVersion]";
 
-        // Pre-existing profile variables (created by Addressables itself in every project) used to bind
-        // RemoteCatalogBuildPath / RemoteCatalogLoadPath when they are unbound. Full separation of the
-        // catalog path from the bundle path (infra §2, task 0.6) is a later, human decision about which
-        // profile variable each points at long-term; binding here only guarantees the catalog is
-        // buildable, it does not decide the final CDN layout.
-        public const string RemoteBuildPathProfileVariable = "Remote.BuildPath";
-        public const string RemoteLoadPathProfileVariable = "Remote.LoadPath";
+        // Dedicated profile variables for catalog paths (created by CdnProfileManager, task 0.5).
+        // Full separation of the catalog path from the bundle path is the design decision for task 0.6
+        // (infra §2); this contract enforces it by requiring dedicated catalog variables rather than
+        // allowing reuse of the bundle path variables. The separation is critical because bundles are
+        // immutable and cached for a year, while catalogs are mutable and per-app-version.
+        public const string RemoteCatalogBuildPathVariable = "Remote.CatalogBuildPath";
+        public const string RemoteCatalogLoadPathVariable = "Remote.CatalogLoadPath";
 
         /// <summary>
         /// Convenience overload that resolves the project's <see cref="AddressableAssetSettings"/> via
@@ -209,25 +209,37 @@ namespace AddressableManager.Editor.Cdn
 
             rules.Add(new SettingsRule(
                 id: "settings.RemoteCatalogBuildPath",
-                description: "Must be bound to a profile variable so the catalog builds to a location separable from bundles (infra §2).",
-                readCurrent: () => string.IsNullOrEmpty(settings.RemoteCatalogBuildPath?.Id) ? "(unbound)" : "bound",
-                expectedDisplay: "bound to a profile variable",
-                isSatisfied: () => !string.IsNullOrEmpty(settings.RemoteCatalogBuildPath?.Id),
+                description: "Must be bound to the dedicated catalog profile variable (infra §2, task 0.6). Catalogs are mutable and per-app-version; reusing the bundle path would force one cache policy on both.",
+                readCurrent: () => string.IsNullOrEmpty(settings.RemoteCatalogBuildPath?.Id) ? "(unbound)" : settings.RemoteCatalogBuildPath.GetName(settings),
+                expectedDisplay: RemoteCatalogBuildPathVariable,
+                isSatisfied: () =>
+                {
+                    if (string.IsNullOrEmpty(settings.RemoteCatalogBuildPath?.Id))
+                        return false;
+                    var name = settings.RemoteCatalogBuildPath.GetName(settings);
+                    return name == RemoteCatalogBuildPathVariable;
+                },
                 fix: () =>
                 {
-                    settings.RemoteCatalogBuildPath.SetVariableByName(settings, RemoteBuildPathProfileVariable);
+                    settings.RemoteCatalogBuildPath.SetVariableByName(settings, RemoteCatalogBuildPathVariable);
                     EditorUtility.SetDirty(settings);
                 }));
 
             rules.Add(new SettingsRule(
                 id: "settings.RemoteCatalogLoadPath",
-                description: "Must be bound to a profile variable so the catalog loads from a location separable from bundles (infra §2).",
-                readCurrent: () => string.IsNullOrEmpty(settings.RemoteCatalogLoadPath?.Id) ? "(unbound)" : "bound",
-                expectedDisplay: "bound to a profile variable",
-                isSatisfied: () => !string.IsNullOrEmpty(settings.RemoteCatalogLoadPath?.Id),
+                description: "Must be bound to the dedicated catalog profile variable (infra §2, task 0.6). Catalogs are mutable and per-app-version; reusing the bundle path would force one cache policy on both.",
+                readCurrent: () => string.IsNullOrEmpty(settings.RemoteCatalogLoadPath?.Id) ? "(unbound)" : settings.RemoteCatalogLoadPath.GetName(settings),
+                expectedDisplay: RemoteCatalogLoadPathVariable,
+                isSatisfied: () =>
+                {
+                    if (string.IsNullOrEmpty(settings.RemoteCatalogLoadPath?.Id))
+                        return false;
+                    var name = settings.RemoteCatalogLoadPath.GetName(settings);
+                    return name == RemoteCatalogLoadPathVariable;
+                },
                 fix: () =>
                 {
-                    settings.RemoteCatalogLoadPath.SetVariableByName(settings, RemoteLoadPathProfileVariable);
+                    settings.RemoteCatalogLoadPath.SetVariableByName(settings, RemoteCatalogLoadPathVariable);
                     EditorUtility.SetDirty(settings);
                 }));
 
