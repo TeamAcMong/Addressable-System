@@ -1,0 +1,147 @@
+/*
+ * Build tab (task 1.10). Layout and spacing only; colours from --unity-colors-* (design doc §5.11 /
+ * repo Invariant 5). No grid, no ::before, no box-shadow, no rem, no @media — USS has none of them.
+ */
+
+.cdn-build-target-row {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-build-platform {
+    flex-shrink: 0;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    margin-right: 6px;
+}
+
+.cdn-build-profile {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 12px;
+    min-width: 160px;
+}
+
+.cdn-build-state {
+    flex-shrink: 0;
+    flex-direction: column;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.cdn-state-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 0;
+}
+
+.cdn-state-key {
+    width: 170px;
+    flex-shrink: 0;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-state-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-state-value-bad {
+    -unity-font-style: bold;
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-build-summary {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-section-header {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    background-color: var(--unity-colors-toolbar-background);
+    padding: 4px 6px;
+    margin-top: 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+    flex-shrink: 0;
+}
+
+.cdn-build-patch {
+    flex-shrink: 0;
+    flex-direction: column;
+    padding: 4px 6px;
+    border-width: 1px;
+    border-top-width: 0;
+    border-color: var(--unity-colors-window-border);
+}
+
+.cdn-patch-headline {
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    white-space: normal;
+}
+
+.cdn-patch-detail {
+    color: var(--unity-colors-default-text);
+    white-space: normal;
+}
+
+.cdn-build-log-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 90px;
+    border-width: 1px;
+    border-top-width: 0;
+    border-color: var(--unity-colors-window-border);
+}
+
+.cdn-build-log {
+    flex-direction: column;
+    padding: 2px 4px;
+}
+
+.cdn-log-line {
+    color: var(--unity-colors-default-text);
+    white-space: normal;
+    font-size: 11px;
+}
+
+.cdn-log-line-warning {
+    color: var(--unity-colors-warning-text);
+}
+
+.cdn-log-line-error {
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-actions-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    padding-top: 2px;
+    justify-content: flex-end;
+}
+
+.cdn-btn {
+    min-width: 80px;
+    margin-left: 6px;
+}
+
+.cdn-btn-primary {
+    -unity-font-style: bold;
+}
+
+.cdn-btn-wide {
+    min-width: 110px;
+}
