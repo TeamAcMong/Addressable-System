@@ -1,0 +1,3 @@
+Independent asset C for Remote Assets Group C
+This asset tests that groups are bundled independently.
+Changing this asset should only affect Remote Assets Group C's bundles.
