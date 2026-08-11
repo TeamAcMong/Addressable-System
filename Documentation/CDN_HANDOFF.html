@@ -216,12 +216,14 @@ result.Error rỗng · exit 0 · mọi verification hiện có đều pass</code
 
 <h2 id="next">5. Làm gì tiếp — thứ tự cụ thể</h2>
 
-<h3>Bước 0 — dọn trước (10 phút)</h3>
+<h3>Bước 0 — chạy 1.12 lần đầu (30 phút)</h3>
+<p>Không có việc dọn dẹp; working tree sạch và mọi thứ đã push. Nhưng 1.12 mới chỉ có code.</p>
 <ol>
-<li>Compile 4 file chưa commit. Sửa lỗi nếu có.</li>
-<li>Commit riêng 1.4 và 1.5.</li>
-<li>Push (hiện đang 2 commit ahead of remote).</li>
+<li><strong>Quyết định gitignore trước.</strong> Chạy CLI là 2.5 MB vào git vĩnh viễn nếu không ignore <code>Assets/Examples/CdnTest/corpus-*</code>.</li>
+<li>Chạy <code>CdnTestContentCLI.GenerateTestCorpus</code>, kiểm 3 group và 4 asset thật sự xuất hiện.</li>
+<li>Build content, rồi chạy <code>CdnBuildSnapshotTests</code>. Bốn test đó chưa từng chạy — kỳ vọng có lỗi ở lượt đầu.</li>
 </ol>
+<p>Làm bước này trước 1.2 vì nó cho bạn baseline snapshot để đo, và vì một harness chưa chạy lần nào thì chưa phải harness.</p>
 
 <h3>Bước 1 — task 1.2, ưu tiên cao nhất</h3>
 <p><code>CdnBuildCLI.BuildContentUpdate</code>. Đây là chỗ nối mọi thứ đã xây và là chỗ duy nhất chặn được rủi ro §4.</p>
