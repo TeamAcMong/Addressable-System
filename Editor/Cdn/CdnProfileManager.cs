@@ -195,29 +195,156 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Inject the remote CDN host from an environment variable, overriding the built-in fallback
-        /// for both bundle and catalog load paths. This is called from InternalIdTransformFunc at runtime
-        /// to support environment switching without a rebuild.
+        /// Read the CDN domain from an environment variable, with normalization.
         /// </summary>
-        /// <param name="envVarName">The environment variable name (e.g., "CDN_HOST") to read.</param>
-        /// <param name="profileId">The profile ID of the active profile.</param>
+        /// <param name="envVarName">The environment variable name to read.</param>
+        /// <returns>The value with trailing slashes stripped, or null if the variable is unset.</returns>
         /// <remarks>
-        /// This is an Editor-only method. At runtime, <see cref="InternalIdTransformFunc"/> consumes
-        /// an injected host string; here we provide the mechanism to set it from the environment.
+        /// This is a utility for reading the env var and normalizing it. The actual host injection
+        /// into profiles is performed by <see cref="InjectRemoteHostFromEnvironment"/>.
         ///
-        /// The host must not include the path — e.g., <c>https://cdn.example.com</c>, not
-        /// <c>https://cdn.example.com/game</c>. The path is supplied by the profile variables.
+        /// The domain is used to replace <domain> placeholders in profile paths.
+        /// Example: if the variable contains "example.com", it will replace <domain> in
+        /// "https://cdn-dev.<domain>/game/..." to produce "https://cdn-dev.example.com/game/...".
         /// </remarks>
         public static string GetRemoteHostFromEnvironment(string envVarName)
         {
             string host = Environment.GetEnvironmentVariable(envVarName);
             if (string.IsNullOrEmpty(host))
             {
-                return null; // Fall back to profile-baked URL
+                return null; // Variable not set
             }
 
             // Normalize: strip trailing slash so callers can write either form.
             return host.TrimEnd('/');
+        }
+
+        /// <summary>
+        /// Temporarily inject the CDN domain from an environment variable, replacing <domain>
+        /// placeholders in the active profile's Remote.LoadPath and Remote.CatalogLoadPath.
+        /// This is scoped to the current build: the old values are returned so the caller
+        /// can revert them after BuildPlayerContent completes.
+        /// </summary>
+        /// <param name="envVarName">Environment variable name to read (default "CDN_HOST")</param>
+        /// <param name="validatePlaceholders">If true, throw when env var is unset and <domain> placeholders remain</param>
+        /// <returns>Dictionary of old values (keys: RemoteCatalogLoadPathVariable, kRemoteLoadPath)
+        /// for reverting via <see cref="RevertRemoteHostInjection"/></returns>
+        /// <remarks>
+        /// The injection modifies the in-memory AddressableAssetSettings but does NOT persist to disk
+        /// (does not call EditorUtility.SetDirty). When BuildPlayerContent runs, it reads these
+        /// modified values. The caller MUST revert via <see cref="RevertRemoteHostInjection"/> after
+        /// the build completes, typically in a finally block, to ensure the profile is restored
+        /// even if the build fails.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">Thrown if no settings found, no active profile set, or env var unset with placeholders remaining</exception>
+        public static Dictionary<string, string> InjectRemoteHostFromEnvironment(
+            string envVarName = "CDN_HOST",
+            bool validatePlaceholders = true)
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                throw new InvalidOperationException(
+                    "CdnProfileManager.InjectRemoteHostFromEnvironment: no AddressableAssetSettings found. " +
+                    "Open the Addressables Groups window to create one.");
+            }
+
+            string activeProfileId = settings.activeProfileId;
+            if (string.IsNullOrEmpty(activeProfileId))
+            {
+                throw new InvalidOperationException(
+                    "CdnProfileManager.InjectRemoteHostFromEnvironment: no active profile set. " +
+                    "Call SetActiveProfile(name) first.");
+            }
+
+            // Read the environment variable
+            string domain = GetRemoteHostFromEnvironment(envVarName);
+
+            // If unset, check for placeholders and throw if present
+            if (string.IsNullOrEmpty(domain))
+            {
+                if (validatePlaceholders)
+                {
+                    string existingCatalogPath = settings.profileSettings.GetValueByName(
+                        activeProfileId, RemoteCatalogLoadPathVariable) ?? string.Empty;
+                    string existingBundlePath = settings.profileSettings.GetValueByName(
+                        activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty;
+
+                    bool hasCatalogPlaceholder = existingCatalogPath.Contains("<domain>");
+                    bool hasBundlePlaceholder = existingBundlePath.Contains("<domain>");
+
+                    if (hasCatalogPlaceholder || hasBundlePlaceholder)
+                    {
+                        throw new InvalidOperationException(
+                            $"CdnProfileManager.InjectRemoteHostFromEnvironment: environment variable '{envVarName}' is not set, " +
+                            $"but the active profile's load paths contain <domain> placeholders. " +
+                            $"Set {envVarName} to the domain you want to inject (e.g., {envVarName}=example.com) and retry.");
+                    }
+                }
+
+                // No injection needed; return empty dict (revert will be a no-op)
+                return new Dictionary<string, string>();
+            }
+
+            // Store old values for revert
+            var oldValues = new Dictionary<string, string>
+            {
+                { RemoteCatalogLoadPathVariable, settings.profileSettings.GetValueByName(activeProfileId, RemoteCatalogLoadPathVariable) ?? string.Empty },
+                { AddressableAssetSettings.kRemoteLoadPath, settings.profileSettings.GetValueByName(activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty }
+            };
+
+            // Replace <domain> in catalog load path
+            string catalogPath = oldValues[RemoteCatalogLoadPathVariable];
+            if (!string.IsNullOrEmpty(catalogPath) && catalogPath.Contains("<domain>"))
+            {
+                string newCatalogPath = catalogPath.Replace("<domain>", domain);
+                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable, newCatalogPath);
+            }
+
+            // Replace <domain> in bundle load path
+            string bundlePath = oldValues[AddressableAssetSettings.kRemoteLoadPath];
+            if (!string.IsNullOrEmpty(bundlePath) && bundlePath.Contains("<domain>"))
+            {
+                string newBundlePath = bundlePath.Replace("<domain>", domain);
+                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath, newBundlePath);
+            }
+
+            return oldValues;
+        }
+
+        /// <summary>
+        /// Revert the effects of <see cref="InjectRemoteHostFromEnvironment"/>, restoring
+        /// the original profile variable values.
+        /// </summary>
+        /// <param name="oldValues">Dictionary returned by InjectRemoteHostFromEnvironment</param>
+        /// <remarks>
+        /// This should be called in a finally block after BuildPlayerContent to ensure
+        /// the profile is restored even if the build fails. The revert does not persist to disk.
+        ///
+        /// Safe to call with an empty dictionary or null (no-op).
+        /// </remarks>
+        public static void RevertRemoteHostInjection(Dictionary<string, string> oldValues)
+        {
+            if (oldValues == null || oldValues.Count == 0)
+                return;
+
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+                return;
+
+            string activeProfileId = settings.activeProfileId;
+            if (string.IsNullOrEmpty(activeProfileId))
+                return;
+
+            if (oldValues.TryGetValue(RemoteCatalogLoadPathVariable, out string oldCatalogPath))
+            {
+                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable, oldCatalogPath);
+            }
+
+            if (oldValues.TryGetValue(AddressableAssetSettings.kRemoteLoadPath, out string oldBundlePath))
+            {
+                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath, oldBundlePath);
+            }
         }
 
         // ========== private implementation ==========
