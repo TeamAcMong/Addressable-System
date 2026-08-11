@@ -104,6 +104,27 @@ Dặn "hãy xác minh" **không có tác dụng ổn định** — đã thất b
 - **Bắt chỉ ra *cơ chế*, không phải bằng chứng.** "Hàm nào expand token này?" ra kết quả đúng;
   "tìm bằng chứng token này đúng" ra một trích dẫn đúng chuỗi nhưng sai cơ chế.
 
+### Báo cáo của agent không phải bằng chứng
+
+Ở Phase 1 wave 1, **4 trong 6 agent báo hoàn thành mà không tạo ra file nào.** Không phải code sai —
+code không tồn tại. Một agent còn báo cả đường dẫn file lẫn GUID cụ thể cho một file chưa từng được ghi.
+Một agent khác giao bản thiết kế rồi viết "agent viết code sẽ cần…" — trong khi chính nó là agent đó.
+
+**Quy tắc: kiểm đĩa trước khi đọc báo cáo.**
+
+```bash
+git status --short
+find . -name "<TênFileMongDoi>*" -not -path "./Library/*"
+grep -rn "<TênSymbolMongDoi>" --include=*.cs Packages/
+```
+
+Ba lệnh đó rẻ hơn nhiều so với việc lập kế hoạch tiếp dựa trên một task không tồn tại. Nếu file không
+có, gửi lại kèm **output của lệnh** làm bằng chứng — đừng tranh luận, chỉ đưa dữ kiện và yêu cầu viết.
+
+Hệ quả cho cách delegate: prompt phải nói rõ **"chỉ báo cáo sau khi file tồn tại"**, và với agent
+implement thì nói thẳng nó là người viết code, không phải người lập kế hoạch. `unity-build-engineer`
+và `unity-qa-engineer` đều từng nhầm vai này.
+
 ### Kiểu thất bại đắt nhất
 
 Một **bảng đảm bảo viết ra để bảo vệ quyết định đã chọn**, thay vì để thử phá nó. Nó trông giống
