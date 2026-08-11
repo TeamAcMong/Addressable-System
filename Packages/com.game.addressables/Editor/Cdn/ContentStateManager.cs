@@ -30,14 +30,28 @@ namespace AddressableManager.Editor.Cdn
     public static class ContentStateManager
     {
         /// <summary>
-        /// Resolves the path where the content state file should be saved, using the
-        /// semantics of <c>ContentUpdateScript.GetContentStateDataPath</c>.
+        /// The fixed file name Addressables appends to the ContentStateBuildPath directory.
+        /// Hard-coded in the package too (ContentUpdateScript.cs:574); there is no public
+        /// constant to reference, so this must be kept in step with it by hand.
         /// </summary>
-        /// <returns>Success with the resolved path; Failure if no valid path is available.</returns>
+        public const string ContentStateFileName = "addressables_content_state.bin";
+
+        /// <summary>
+        /// Resolves the full path of the content state FILE, using the semantics of
+        /// <c>ContentUpdateScript.GetContentStateDataPath</c>.
+        /// </summary>
+        /// <returns>Success with the resolved file path; Failure if no valid path is available.</returns>
         /// <remarks>
-        /// The build-time path is stored in AddressableAssetSettings.ContentStateBuildPath,
-        /// which is evaluated against the active profile's variables (e.g., [UnityEditor.PlayerSettings.bundleVersion]).
-        /// This method returns that evaluated path without writing any files.
+        /// AddressableAssetSettings.ContentStateBuildPath is a DIRECTORY, not a file. Addressables
+        /// evaluates it against the active profile's variables and then appends the fixed file name
+        /// (ContentUpdateScript.cs:574 — <c>Path.Combine(assetPath, "addressables_content_state.bin")</c>).
+        /// This method does both, so callers get something File.Exists can be used on.
+        ///
+        /// Returning the bare directory here is what made CdnBuildCLI.BuildContentUpdate report
+        /// "content state file not found: ServerData/ContentState/StandaloneWindows64" on its first
+        /// real run, with the file sitting inside that very directory.
+        ///
+        /// No files or directories are created.
         /// </remarks>
         public static CdnEditorResult<string> ResolvePath()
         {
@@ -70,7 +84,9 @@ namespace AddressableManager.Editor.Cdn
                         $"Failed to evaluate ContentStateBuildPath template '{contentStateBuildPathTemplate}'");
                 }
 
-                return CdnEditorResult<string>.Success(resolvedPath);
+                // ContentStateBuildPath is a directory; Addressables appends the file name itself.
+                return CdnEditorResult<string>.Success(
+                    Path.Combine(resolvedPath, ContentStateFileName));
             }
             catch (Exception ex)
             {
