@@ -15,7 +15,7 @@ MonoBehaviour:
   m_GroupName: Remote Test
   m_GUID: a43301deba87bcf40ac664ac81334113
   m_SerializeEntries:
-  - m_GUID: 3cd1972be919ebc439f80a96dd8bffe6
+  - m_GUID: 0710f06fca5528640a08930c41149b2a
     m_Address: cdn-test/example
     m_ReadOnly: 0
     m_SerializedLabels: []
