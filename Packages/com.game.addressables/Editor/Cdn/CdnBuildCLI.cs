@@ -113,6 +113,15 @@ namespace AddressableManager.Editor.Cdn
 
                 Log("");
 
+                // ========== WRITE BUILD MANIFEST (task 1.7) ==========
+                if (!WriteBuildManifest(result, isUpdateBuild: false))
+                {
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
+
                 // ========== REPORT RESOLVED PATHS ==========
                 ReportResolvedPaths(profileName);
 
@@ -392,6 +401,15 @@ namespace AddressableManager.Editor.Cdn
                 Log("  CI must archive THIS file as the baseline for the next update build.");
 
                 Log("");
+
+                // ========== WRITE BUILD MANIFEST (task 1.7) ==========
+                if (!WriteBuildManifest(result, isUpdateBuild: true))
+                {
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
                 ReportResolvedPaths(profileName);
 
                 Log("");
@@ -407,6 +425,49 @@ namespace AddressableManager.Editor.Cdn
         }
 
         // ========== private implementation ==========
+
+        /// <summary>
+        /// Write build-manifest.json for the build that just finished — task 1.7.
+        /// </summary>
+        /// <remarks>
+        /// Treated as part of the build, not a nice-to-have: CI uses the manifest to decide what to
+        /// upload and to verify integrity afterwards, so a build whose manifest is missing or
+        /// unparseable must not report success.
+        /// </remarks>
+        private static bool WriteBuildManifest(AddressablesPlayerBuildResult result, bool isUpdateBuild)
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                LogError("FAILURE: Cannot write build manifest (no AddressableAssetSettings found)");
+                return false;
+            }
+
+            string profileId = settings.activeProfileId;
+
+            string bundleDir = settings.profileSettings.EvaluateString(
+                profileId,
+                settings.profileSettings.GetValueByName(profileId, AddressableAssetSettings.kRemoteBuildPath));
+
+            string catalogDir = settings.profileSettings.EvaluateString(
+                profileId,
+                settings.profileSettings.GetValueByName(profileId, CdnProfileManager.RemoteCatalogBuildPathVariable));
+
+            Log("Writing build manifest...");
+            var written = BuildManifestWriter.Write(result, bundleDir, catalogDir, isUpdateBuild);
+            if (written.IsFailure)
+            {
+                LogError($"FAILURE: Could not write build manifest: {written.ErrorMessage}");
+                return false;
+            }
+
+            var manifestFile = new FileInfo(written.Value);
+            Log($"✓ Build manifest: {written.Value}");
+            Log($"  Size: {FormatBytes(manifestFile.Length)}");
+            Log("  Not under the per-platform folders, so a CI sync of ServerData/<platform>/ will");
+            Log("  not publish it. Archive it privately as the build's audit trail.");
+            return true;
+        }
 
         /// <summary>
         /// Assert that the catalog produced by this build is named for the version players
