@@ -25,9 +25,10 @@ namespace AddressableManager.Editor.Cdn
     /// to confirm the §2 layout separation took effect.
     /// </summary>
     /// <remarks>
-    /// Task 1.1 of Phase 1. Does not handle content-update (task 1.2) — only full builds.
+    /// Tasks 1.1 (BuildContent, full builds) and 1.2 (BuildContentUpdate, delta builds).
     ///
     /// Usage: Unity -batchmode -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent -cdnProfile Local
+    ///        Unity -batchmode -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate -cdnProfile Local
     ///
     /// Exit codes:
     ///   0 = success, build complete and verified
@@ -127,9 +128,347 @@ namespace AddressableManager.Editor.Cdn
             }
         }
 
+        /// <summary>
+        /// Build a delta content update against the content state file left by a previous build.
+        /// </summary>
+        /// <remarks>
+        /// Task 1.2. Every gate below runs BEFORE the build, because the failure this method
+        /// exists to prevent is invisible after the fact.
+        ///
+        /// THE FAILURE BEING PREVENTED
+        /// Addressables reads the update's version from two unrelated places and never
+        /// reconciles them:
+        ///   - the catalog FILENAME comes from the state file's playerVersion
+        ///     (ContentUpdateScript.cs:659 → BuildScriptPackedMode.cs:713)
+        ///   - the catalog FOLDER comes from the active profile, evaluated at build time
+        ///     against the live PlayerSettings.bundleVersion (BuildScriptPackedMode.cs:714)
+        /// Bump bundleVersion to 0.2.0, build an update against a 0.1.0 state file, and the
+        /// output is catalog/0.2.0/catalog_0.1.0.bin — with an empty result.Error and exit 0.
+        /// Players on 0.1.0 poll catalog/0.1.0/catalog_0.1.0.hash and get a permanent 404.
+        /// The patch is not slow or broken; it is invisible. ContentStateManager.Validate is
+        /// the only thing that detects it, which is why it is called before the build here.
+        ///
+        /// THREE DISTINCT API FAILURE SHAPES, none of which look alike:
+        ///   - state file missing   → LoadContentState THROWS FileNotFoundException; it opens
+        ///                            a FileStream with no existence check and no try/catch
+        ///                            (ContentUpdateScript.cs:616). Only IsNullOrEmpty is guarded.
+        ///   - state file invalid   → BuildContentUpdate RETURNS NULL with no Error to read
+        ///                            (ContentUpdateScript.cs:655-656).
+        ///   - built to wrong folder→ nothing reports it; see above.
+        ///
+        /// CONTENT STATE IS NOT RE-EMITTED BY AN UPDATE BUILD
+        /// BuildContentUpdate sets context.PreviousContentState, and the block that writes a
+        /// new state file is gated on PreviousContentState == null
+        /// (BuildScriptPackedMode.cs:575). So result.ContentStateFilePath is always null after
+        /// an update build, and ContentStateManager.ArchiveAfterBuild — which requires it —
+        /// must not be called here. The INPUT state file is carried forward as the artifact
+        /// instead. (Worse, on a full build a copy failure is swallowed by
+        /// BuildScriptBase.cs:376-389, so a null path there means "silently failed", not "n/a".)
+        ///
+        /// Usage: Unity -batchmode -quit -nographics -projectPath &lt;repo&gt; \
+        ///          -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate \
+        ///          -cdnProfile Local [-contentStatePath &lt;path&gt;] -logFile update.log
+        /// </remarks>
+        public static void BuildContentUpdate()
+        {
+            var args = ParseCommandLineArgs();
+            string profileName = GetArg(args, "cdnProfile", "Local");
+            string contentStateOverride = GetArg(args, "contentStatePath", null);
+            var buildStartTime = DateTime.Now;
+
+            try
+            {
+                Log("=== CDN Build CLI - Phase 1 Content Update (task 1.2) ===");
+                Log($"Target profile: {profileName}");
+                Log("");
+
+                // ========== GATE ON COMPILATION ==========
+                // Unity exits 0 even when the assembly did not compile and this method never
+                // ran, so every CLI in this module gates on it explicitly.
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    LogError("FAILURE: Script compilation failed before build started");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                var settings = AddressableAssetSettingsDefaultObject.Settings;
+                if (settings == null)
+                {
+                    LogError("FAILURE: No AddressableAssetSettings found. Run CdnSetupCLI first.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                // ========== ACTIVATE PROFILE ==========
+                // Must happen before resolving the state path: ResolvePath evaluates
+                // ContentStateBuildPath against the ACTIVE profile's variables.
+                Log($"Activating profile '{profileName}'...");
+                try
+                {
+                    CdnProfileManager.SetActiveProfile(profileName);
+                    Log($"✓ Profile '{profileName}' activated");
+                }
+                catch (ArgumentException ex)
+                {
+                    LogError($"FAILURE: Could not activate profile: {ex.Message}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    LogError($"FAILURE: {ex.Message}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
+
+                // ========== RESOLVE CONTENT STATE PATH ==========
+                string contentStatePath;
+                if (!string.IsNullOrEmpty(contentStateOverride))
+                {
+                    contentStatePath = contentStateOverride;
+                    Log($"Content state path (from -contentStatePath): {contentStatePath}");
+                }
+                else
+                {
+                    var resolved = ContentStateManager.ResolvePath();
+                    if (resolved.IsFailure)
+                    {
+                        LogError($"FAILURE: Could not resolve content state path: {resolved.ErrorMessage}");
+                        EditorApplication.Exit(1);
+                        return;
+                    }
+
+                    contentStatePath = resolved.Value;
+                    Log($"Content state path (resolved from profile): {contentStatePath}");
+                }
+
+                // ========== FAIL LOUDLY ON A MISSING STATE FILE ==========
+                // Phase 1 §1.2 is explicit that a missing state file must not degrade into a
+                // silent full build. Checked here rather than letting LoadContentState throw,
+                // so the operator gets a remediation hint instead of a stack trace.
+                if (!File.Exists(contentStatePath))
+                {
+                    LogError($"FAILURE: Content state file not found: {contentStatePath}");
+                    LogError("  A content update requires the addressables_content_state.bin produced by the");
+                    LogError("  matching FULL build. Without it there is no baseline, and Addressables cannot");
+                    LogError("  compute a delta. This is NOT recoverable by building a full player content set");
+                    LogError("  now — that would produce a new baseline that shipped players cannot patch to.");
+                    LogError("  Restore the archived state file for this app version, or ship a new player build.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
+
+                // ========== GATE 1: VERSION MATCH (the invisible-patch blocker) ==========
+                Log("Validating content state against the live player version...");
+                var validation = ContentStateManager.Validate(contentStatePath);
+                if (validation.IsFailure)
+                {
+                    LogError($"FAILURE: Content state validation refused the build: {validation.ErrorMessage}");
+                    LogError($"  Live PlayerSettings.bundleVersion = '{PlayerSettings.bundleVersion}'.");
+                    LogError("  Building anyway would write the catalog into the folder named after the LIVE");
+                    LogError("  version while naming the file after the STATE version, and Addressables would");
+                    LogError("  report success. Players on the old version would 404 forever.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("✓ Content state matches the current player version");
+                Log("");
+
+                // ========== GATE 2: CONTENT UPDATE RESTRICTIONS (task 1.4) ==========
+                Log("Checking content-update restrictions...");
+                var check = ContentUpdateRestrictions.Check(settings, contentStatePath);
+
+                if (!check.CanEvaluate)
+                {
+                    // Could not evaluate is a failure, not a pass. An unprovable build is not a safe one.
+                    LogError($"FAILURE: Content-update restriction check could not run: {check.Message}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                if (!check.Passed)
+                {
+                    LogError($"FAILURE: Content-update restrictions violated: {check.Message}");
+                    if (check.Violations != null)
+                    {
+                        LogError($"  {check.Violations.Count} offending entr{(check.Violations.Count == 1 ? "y" : "ies")}:");
+                        foreach (var violation in check.Violations)
+                        {
+                            LogError($"    {violation.AssetPath}  [group: {violation.GroupName}]" +
+                                     $"{(violation.IsExplicitModification ? "  (explicitly modified)" : "  (pulled in as a dependency)")}");
+                        }
+                    }
+                    LogError("  A static group changed, so this update is not actually delta-able.");
+                    LogError("  Either revert the static content or ship a new player build.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("✓ No content-update restriction violations");
+                Log("");
+
+                // ========== RUN UPDATE BUILD ==========
+                Log("Building content update...");
+                AddressablesPlayerBuildResult result;
+                try
+                {
+                    result = ContentUpdateScript.BuildContentUpdate(settings, contentStatePath);
+                }
+                catch (FileNotFoundException ex)
+                {
+                    // Defence in depth: the File.Exists gate above should make this unreachable,
+                    // but LoadContentState opens the stream unguarded, so a file deleted between
+                    // the two calls surfaces here rather than as a result.
+                    LogError($"FAILURE: Content state file disappeared during the build: {ex.Message}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                if (result == null)
+                {
+                    // IsCacheDataValid rejected the state file. There is no Error string to read
+                    // on this path — null IS the whole error report.
+                    LogError("FAILURE: BuildContentUpdate returned null.");
+                    LogError("  Addressables rejected the content state file as invalid (IsCacheDataValid);");
+                    LogError("  this path carries no error message. Usual causes: the file was produced by a");
+                    LogError("  different Unity version, by a different AddressableAssetSettings, or is corrupt.");
+                    LogError($"  State file: {contentStatePath}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    LogError($"FAILURE: Content update reported error: {result.Error}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log($"✓ Content update completed in {result.Duration:F2} seconds");
+                Log($"  Locations (addressable assets): {result.LocationCount}");
+                Log("");
+
+                // ========== VERIFY OUTPUT ==========
+                Log("Verifying build output...");
+                if (!VerifyBuildOutput(result, isUpdateBuild: true))
+                {
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
+
+                // ========== VERIFY THE CATALOG LANDED WHERE PLAYERS WILL LOOK ==========
+                // Gate 1 makes a mismatch impossible in theory. This proves it on disk, because
+                // the whole point of this method is that the theory failing is undetectable.
+                if (!VerifyCatalogMatchesPlayerVersion())
+                {
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log("");
+
+                // ========== CARRY THE INPUT STATE FILE FORWARD ==========
+                // An update build does not emit a new state file (see remarks), so the baseline
+                // for the NEXT update is still this build's input.
+                if (!string.IsNullOrEmpty(result.ContentStateFilePath))
+                {
+                    LogWarning($"Unexpected: this update build reported a content state file at " +
+                               $"{result.ContentStateFilePath}. Addressables 2.9.1 gates that write on " +
+                               "PreviousContentState == null, so this suggests the package changed behaviour. " +
+                               "Verify which file the next update should build against.");
+                }
+
+                Log($"✓ Content state to archive (unchanged, carried forward): {contentStatePath}");
+                Log($"  Size: {FormatBytes(new FileInfo(contentStatePath).Length)}");
+                Log($"  Last written: {new FileInfo(contentStatePath).LastWriteTime:O}");
+                Log("  CI must archive THIS file as the baseline for the next update build.");
+
+                Log("");
+                ReportResolvedPaths(profileName);
+
+                Log("");
+                Log($"✓ SUCCESS: Content update complete and verified (elapsed {(DateTime.Now - buildStartTime).TotalSeconds:F1}s)");
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Exception during content update: {ex.Message}");
+                LogError(ex.StackTrace);
+                EditorApplication.Exit(2);
+            }
+        }
+
         // ========== private implementation ==========
 
-        private static bool VerifyBuildOutput(AddressablesPlayerBuildResult result)
+        /// <summary>
+        /// Assert that the catalog produced by this build is named for the version players
+        /// are actually polling for, and that it sits in the folder named for that same version.
+        /// </summary>
+        /// <remarks>
+        /// This is the on-disk proof for the split-version failure described on
+        /// BuildContentUpdate. A build that trips it has already reported success.
+        /// </remarks>
+        private static bool VerifyCatalogMatchesPlayerVersion()
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                LogError("FAILURE: Cannot verify catalog version (no AddressableAssetSettings found)");
+                return false;
+            }
+
+            string expectedVersion = PlayerSettings.bundleVersion;
+            Log($"Verifying the catalog is addressed to player version '{expectedVersion}'...");
+
+            string catalogBuildPathTemplate = settings.profileSettings.GetValueByName(
+                settings.activeProfileId,
+                CdnProfileManager.RemoteCatalogBuildPathVariable);
+            string catalogDir = settings.profileSettings.EvaluateString(settings.activeProfileId, catalogBuildPathTemplate);
+
+            if (string.IsNullOrEmpty(catalogDir) || !Directory.Exists(catalogDir))
+            {
+                LogError($"FAILURE: Catalog directory does not exist after build: {catalogDir}");
+                return false;
+            }
+
+            string[] catalogFiles = Directory.GetFiles(catalogDir, "catalog_*.bin")
+                .Concat(Directory.GetFiles(catalogDir, "catalog_*.json"))
+                .Select(Path.GetFileName)
+                .ToArray();
+
+            if (catalogFiles.Length == 0)
+            {
+                LogError($"FAILURE: No catalog file in {catalogDir}");
+                return false;
+            }
+
+            string expectedBin = $"catalog_{expectedVersion}.bin";
+            string expectedJson = $"catalog_{expectedVersion}.json";
+
+            if (!catalogFiles.Any(f => f == expectedBin || f == expectedJson))
+            {
+                LogError($"FAILURE: The catalog in {catalogDir} is not addressed to player version '{expectedVersion}'.");
+                LogError($"  Expected: {expectedBin} (or .json)");
+                LogError($"  Found:    {string.Join(", ", catalogFiles)}");
+                LogError("  The catalog filename comes from the content state file's playerVersion while the");
+                LogError("  folder comes from the live profile. They have diverged, so shipped players polling");
+                LogError("  their own version's path will 404. Do NOT upload this build.");
+                return false;
+            }
+
+            Log($"✓ Catalog {expectedBin.Replace(".bin", "")} is in the folder players on '{expectedVersion}' will poll");
+            return true;
+        }
+
+        private static bool VerifyBuildOutput(AddressablesPlayerBuildResult result, bool isUpdateBuild = false)
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
@@ -230,6 +569,14 @@ namespace AddressableManager.Editor.Cdn
                 }
 
                 Log($"  Total bundle size: {FormatBytes(totalBundleSize)}");
+            }
+
+            // An update build never emits a state file (BuildScriptPackedMode.cs:575 gates that
+            // write on PreviousContentState == null), so checking for one here would always
+            // warn. BuildContentUpdate carries the input file forward and reports it instead.
+            if (isUpdateBuild)
+            {
+                return true;
             }
 
             // Verify content state file exists (artifact risk R1 — losing it ends delta updates permanently)
