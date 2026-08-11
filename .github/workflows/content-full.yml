@@ -1,0 +1,110 @@
+# Full addressable content build — runs alongside a player release.
+#
+# Produces a new baseline: the bundles, the catalog, and the addressables_content_state.bin that
+# every later content update for this app version will be built against. See infrastructure §5 and
+# §7 of Documentation/CDN_SYSTEM.html.
+#
+# workflow_dispatch only, on purpose. A full build establishes a baseline players will be pinned to;
+# it should never happen because someone pushed.
+
+name: Content Full Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Unity build target
+        required: true
+        type: choice
+        options: [Android, iOS, StandaloneWindows64]
+      environment:
+        description: CDN profile to build against
+        required: true
+        type: choice
+        options: [Dev, Staging, Prod]
+      app_version:
+        description: PlayerSettings.bundleVersion this build is for
+        required: true
+        type: string
+
+concurrency:
+  # Two full builds for the same version and platform would race on the archived baseline, and the
+  # loser would leave an archive that does not match what was published.
+  group: content-${{ inputs.platform }}-${{ inputs.app_version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, unity]
+    env:
+      PLATFORM: ${{ inputs.platform }}
+      APP_VERSION: ${{ inputs.app_version }}
+      GAME: ${{ vars.CDN_GAME_PREFIX }}
+      BUCKET: ${{ vars.R2_BUCKET }}
+      ARCHIVE_BUCKET: ${{ vars.R2_ARCHIVE_BUCKET }}
+      CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clean previous output
+        # The runner is self-hosted, so ServerData survives between jobs. Publishing leftovers from
+        # an earlier build would inflate the upload and put objects on the CDN that this build's
+        # manifest does not describe.
+        run: rm -rf ServerData
+
+      - name: Apply the settings contract
+        # Also the cheapest compile gate: the CLI refuses to run when scriptCompilationFailed.
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
+            -profile "${{ inputs.environment }}"
+
+      - name: Build addressable content
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}"
+
+      - name: Verify output before anything reaches the network
+        # Gate, not a report. Everything after this touches the CDN.
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput \
+            -cdnProfile "${{ inputs.environment }}" \
+            -manifest "ServerData/build-manifest.json"
+
+      - name: Upload bundles
+        run: ./ci/upload-bundles.sh
+
+      - name: Upload catalog
+        # Always after bundles. See the script header for why this ordering is load-bearing.
+        run: ./ci/upload-catalog.sh
+
+      - name: Purge edge cache
+        run: ./ci/purge-catalog.sh
+
+      - name: Post-deploy check
+        run: ./ci/verify-urls.sh
+
+      - name: Archive content state
+        # Never skip. Losing this file ends delta updates for this app version permanently.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-state-${{ inputs.platform }}-${{ inputs.app_version }}
+          path: |
+            ServerData/ContentState/**/addressables_content_state.bin
+            ServerData/build-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Mirror content state to durable storage
+        # The artifact above expires; this copy does not.
+        run: ./ci/archive-content-state.sh

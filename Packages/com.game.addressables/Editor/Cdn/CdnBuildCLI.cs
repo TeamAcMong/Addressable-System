@@ -440,7 +440,11 @@ namespace AddressableManager.Editor.Cdn
         {
             var args = ParseCommandLineArgs();
             string profileName = GetArg(args, "cdnProfile", "Local");
-            string manifestPath = GetArg(args, "manifestPath", null);
+
+            // -manifest is accepted as well as -manifestPath: infrastructure §7 writes the CI step
+            // with -manifest, and a CI job that silently verifies the default path instead of the
+            // one it was pointed at would pass while checking the wrong artifact.
+            string manifestPath = GetArg(args, "manifestPath", null) ?? GetArg(args, "manifest", null);
 
             try
             {
