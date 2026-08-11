@@ -251,20 +251,20 @@ namespace AddressableManager.Editor.Cdn
                 isSatisfied: () => settings.OverridePlayerVersion == RequiredOverridePlayerVersion,
                 fix: () => { settings.OverridePlayerVersion = RequiredOverridePlayerVersion; EditorUtility.SetDirty(settings); }));
 
-            // Automated via literal path (not a profile variable) because ContentStateBuildPath is
-            // project-global, not environment-specific. Platform subfolders are appended automatically
-            // by GetContentStateBuildPath() via PlatformMappingService.GetPlatformPathSubFolder()
-            // (AddressableAssetSettings.cs:1207). The build system creates the directory as part of
-            // the content build process (CcdBuildEvents.cs:568-570), not the settings fix.
+            // ContentStateBuildPath must include [BuildTarget] token so that each platform (Android, iOS,
+            // Windows, etc.) stores its content state file separately. Without platform separation, a
+            // second platform build silently overwrites the first's state file, permanently ending
+            // delta updates for that platform version (infrastructure §6, risk R1). The token is expanded
+            // at build time by AddressableAssetSettings.ContentStateBuildPath / EvaluateString.
             rules.Add(new SettingsRule(
                 id: "settings.ContentStateBuildPath",
-                description: "addressables_content_state.bin must build outside Assets/ (task 0.4) so it survives a clean and CI can archive it independently. Losing it permanently ends delta updates for that app version.",
+                description: "addressables_content_state.bin must build outside Assets/ (task 0.4) so it survives a clean and CI can archive it independently. Losing it permanently ends delta updates for that app version. Path must include [BuildTarget] token to prevent Android/iOS/Windows from overwriting each other's state files.",
                 readCurrent: () => settings.ContentStateBuildPath,
-                expectedDisplay: "a path outside Assets/",
-                isSatisfied: () => IsOutsideAssetsFolder(settings.ContentStateBuildPath),
+                expectedDisplay: "a path outside Assets/ with [BuildTarget] token (e.g., 'ServerData/ContentState/[BuildTarget]')",
+                isSatisfied: () => IsOutsideAssetsFolder(settings.ContentStateBuildPath) && settings.ContentStateBuildPath.Contains("[BuildTarget]"),
                 fix: () =>
                 {
-                    settings.ContentStateBuildPath = "ServerData/ContentState";
+                    settings.ContentStateBuildPath = "ServerData/ContentState/[BuildTarget]";
                     EditorUtility.SetDirty(settings);
                 }));
 
@@ -374,8 +374,23 @@ namespace AddressableManager.Editor.Cdn
                     isGroupScoped: true,
                     groupName: groupName));
 
-                // The remaining group rules only make sense once a schema exists to read from.
-                if (group.GetSchema<BundledAssetGroupSchema>() == null)
+                // Correction #6 (Phase 1, task 1.0): every group that builds also needs a
+                // ContentUpdateGroupSchema to participate in content updates. If absent, the group
+                // is silently excluded from delta logic even if it is buildable. No Fix - same
+                // reasoning as HasBundledAssetGroupSchema: a human must decide whether this group
+                // should be static (shipped with player, immutable) or dynamic (patchable).
+                rules.Add(new SettingsRule(
+                    id: $"group:{groupName}:HasContentUpdateGroupSchema",
+                    description: $"Group '{groupName}' has no ContentUpdateGroupSchema, so it cannot participate in content updates. Attach one from a group template.",
+                    readCurrent: () => group.GetSchema<ContentUpdateGroupSchema>() != null ? "present" : "MISSING",
+                    expectedDisplay: "present",
+                    isSatisfied: () => group.GetSchema<ContentUpdateGroupSchema>() != null,
+                    fix: null,
+                    isGroupScoped: true,
+                    groupName: groupName));
+
+                // The remaining group rules only make sense once schemas exist to read from.
+                if (group.GetSchema<BundledAssetGroupSchema>() == null || group.GetSchema<ContentUpdateGroupSchema>() == null)
                     continue;
 
                 // Correction #1 (asset audit): Default Local Group_BundledAssetGroupSchema.asset has
