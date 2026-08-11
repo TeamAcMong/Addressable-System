@@ -16,20 +16,31 @@ namespace AddressableManager.Editor.Cdn
     /// </summary>
     /// <remarks>
     /// This CLI:
-    /// 1. Creates or reuses test content at Assets/Examples/CdnTest/TestAsset.asset
+    /// 1. Creates or reuses test content at Assets/Examples/CdnTest/test-content.txt (a TextAsset)
     /// 2. Creates or reuses a "Remote Test" Addressable group bound to Remote profile variables
     /// 3. Ensures the group has both BundledAssetGroupSchema and ContentUpdateGroupSchema
     /// 4. Adds the test asset as an entry with address "cdn-test/example"
-    /// 5. Verifies all effects before reporting success
+    /// 5. Verifies all effects, including runtime-loadable type (TextAsset, not System.Object)
+    ///
+    /// TextAsset is chosen deliberately: it is a built-in type available at runtime
+    /// (unlike Editor-assembly classes), can be verified by content, and forces the test to
+    /// actually exercise the round-trip download and load. See VerifyConfiguration.
     ///
     /// Idempotency: running multiple times does not create duplicates. If the group or entry
     /// already exists with the correct configuration, they are left as-is.
     /// </remarks>
     public static class CdnTestContentCLI
     {
-        private const string TestAssetPath = "Assets/Examples/CdnTest/TestAsset.asset";
+        /// <summary>TextAsset (.txt) with test content for CDN verification.</summary>
+        private const string TestAssetPath = "Assets/Examples/CdnTest/test-content.txt";
         private const string RemoteTestGroupName = "Remote Test";
         private const string TestAssetAddress = "cdn-test/example";
+
+        /// <summary>Test content string that the TextAsset contains. The integration test will verify this exact string arrived over HTTP.</summary>
+        // Deliberately pure ASCII. This string is asserted byte-for-byte after a round trip over
+        // HTTP; a non-ASCII character would add an encoding/BOM failure mode unrelated to what
+        // the test is proving.
+        private const string TestContentString = "CDN test content - Phase 0 task 0.8 remote asset verification.";
 
         /// <summary>
         /// Create remote test group and test content.
@@ -136,13 +147,15 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Create test content as a simple ScriptableObject, or return existing one.
+        /// Create test content as a TextAsset (.txt file), or return existing one.
+        /// TextAsset is a runtime-available type (unlike ScriptableObject subclasses in Editor assemblies),
+        /// so the asset can actually be loaded by a player. See AddressableAssetEntry.MainAssetType.
         /// Idempotent: if the asset already exists, it is returned as-is.
         /// </summary>
-        private static ScriptableObject CreateOrGetTestAsset()
+        private static TextAsset CreateOrGetTestAsset()
         {
             // Check if already exists
-            var existing = AssetDatabase.LoadAssetAtPath<ScriptableObject>(TestAssetPath);
+            var existing = AssetDatabase.LoadAssetAtPath<TextAsset>(TestAssetPath);
             if (existing != null)
             {
                 Log($"  Test asset already exists at {TestAssetPath}");
@@ -157,14 +170,20 @@ namespace AddressableManager.Editor.Cdn
                 Log($"  Created directory: {dir}");
             }
 
-            // Create a simple test ScriptableObject
-            var testAsset = ScriptableObject.CreateInstance<TestAssetData>();
-            testAsset.name = "TestAsset";
-            testAsset.Description = "Test asset for CDN remote verification (Phase 0 task 0.8)";
+            // Write .txt file with test content
+            System.IO.File.WriteAllText(TestAssetPath, TestContentString);
+            AssetDatabase.Refresh();
 
-            AssetDatabase.CreateAsset(testAsset, TestAssetPath);
-            AssetDatabase.SaveAssets();
+            // Load the newly created TextAsset
+            var testAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(TestAssetPath);
+            if (testAsset == null)
+            {
+                Log($"  Error: failed to load TextAsset after creation at {TestAssetPath}");
+                return null;
+            }
+
             Log($"  Created test asset at {TestAssetPath}");
+            Log($"  Content: {TestContentString}");
 
             return testAsset;
         }
@@ -226,7 +245,7 @@ namespace AddressableManager.Editor.Cdn
         /// Uses CreateOrMoveEntry which is idempotent: calling it for an entry already in that group
         /// moves it to itself without side effects. See AddressableAssetSettings.cs:2541.
         /// </summary>
-        private static AddressableAssetEntry AddAssetToGroup(AddressableAssetGroup group, AddressableAssetSettings settings, ScriptableObject testAsset)
+        private static AddressableAssetEntry AddAssetToGroup(AddressableAssetGroup group, AddressableAssetSettings settings, TextAsset testAsset)
         {
             string guid = AssetDatabase.AssetPathToGUID(TestAssetPath);
             if (string.IsNullOrEmpty(guid))
@@ -295,10 +314,16 @@ namespace AddressableManager.Editor.Cdn
         /// - Group has both required schemas
         /// - Entry exists with correct address
         /// - Entry points to the test asset
+        /// - Entry's recorded MainAssetType is TextAsset (not System.Object)
         /// - Group is bound to Remote profile variables
+        ///
+        /// CRITICAL: MainAssetType check catches the defect where an Editor-only class type
+        /// cannot be resolved at runtime and gets recorded as System.Object, which is then
+        /// unloadable by Addressables even though the bundle downloads correctly. See
+        /// AddressableAssetEntry.MainAssetType (AddressableAssetEntry.cs:188-200).
         /// </summary>
         private static bool VerifyConfiguration(AddressableAssetSettings settings, AddressableAssetGroup group,
-                                                 AddressableAssetEntry entry, ScriptableObject testAsset)
+                                                 AddressableAssetEntry entry, TextAsset testAsset)
         {
             bool allGood = true;
 
@@ -346,6 +371,22 @@ namespace AddressableManager.Editor.Cdn
                 allGood = false;
             }
 
+            // CRITICAL: Verify the recorded type is runtime-loadable (TextAsset), not System.Object.
+            // An Editor-only class in this assembly would record as System.Object and be unloadable at runtime.
+            // See AddressableAssetEntry.MainAssetType (AddressableAssetEntry.cs:188-200).
+            var recordedType = entry.MainAssetType;
+            if (recordedType == typeof(System.Object))
+            {
+                LogError($"  Verification: Entry type is System.Object (type information lost — likely an Editor-only class). " +
+                         $"The asset will download correctly but cannot be loaded at runtime.");
+                allGood = false;
+            }
+            else if (recordedType != typeof(TextAsset))
+            {
+                LogError($"  Verification: Entry type mismatch (expected TextAsset, got {recordedType.FullName})");
+                allGood = false;
+            }
+
             // Verify group is bound to Remote profile variables (not Local)
             if (bundleSchema != null)
             {
@@ -367,19 +408,6 @@ namespace AddressableManager.Editor.Cdn
 
             return allGood;
         }
-
-        #region Test Asset Definition
-
-        /// <summary>
-        /// Minimal test ScriptableObject for CDN testing.
-        /// </summary>
-        private class TestAssetData : ScriptableObject
-        {
-            [SerializeField]
-            public string Description = "";
-        }
-
-        #endregion
 
         #region Helpers
 
