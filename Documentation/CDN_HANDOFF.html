@@ -74,13 +74,13 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 
 <div class="head">
 <h1>CDN System — Bàn giao trạng thái &amp; chiến lược làm tiếp</h1>
-<p style="color:var(--mut);margin:0">Phase 0 đóng. Phase 1 còn 4 task, tất cả là CI và UI — phần build pipeline đã xong và đã đo được.</p>
+<p style="color:var(--mut);margin:0">Phase 0 và Phase 1 đã đóng. Tiêu chí thoát đo được và đạt. Việc tiếp theo là Phase 2 — runtime bootstrap.</p>
 <div class="meta">
 <span class="b a">branch: feat/cdn-system</span>
-<span class="b">HEAD: fb5b6e3</span>
-<span class="b">69 commit</span>
+<span class="b">HEAD: 2da72c1</span>
+<span class="b">75 commit</span>
 <span class="b g">Phase 0: đóng</span>
-<span class="b w">Phase 1: 9/13 task</span>
+<span class="b g">Phase 1: đóng, 13/13</span>
 <span class="b">Unity 6000.5.7f1 · Addressables 2.9.1</span>
 </div>
 </div>
@@ -102,7 +102,7 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 
 <h2 id="now">1. Đang ở đâu</h2>
 
-<p>Nhánh <code>feat/cdn-system</code>, 69 commit, working tree sạch, compile 0 lỗi,
+<p>Nhánh <code>feat/cdn-system</code>, 75 commit, <strong>chưa push</strong>, working tree sạch, compile 0 lỗi,
 settings contract <strong>70/70</strong> rule xanh (tăng từ 38 rồi 62 khi corpus thêm group).</p>
 
 <div class="tw"><table>
@@ -111,8 +111,8 @@ settings contract <strong>70/70</strong> rule xanh (tăng từ 38 rồi 62 khi c
 <tr><td>Tài liệu thiết kế (3 doc, 2 ngôn ngữ)</td><td class="ok">xong (nhưng có drift — xem §9)</td></tr>
 <tr><td>Quy trình subagent (<code>CLAUDE.md</code>)</td><td class="ok">xong</td></tr>
 <tr><td>Phase 0 — nền móng + pipeline tối thiểu</td><td class="ok">đóng, có test chứng minh</td></tr>
-<tr><td>Phase 1 — build &amp; content-update pipeline</td><td class="pend">9/13 task</td></tr>
-<tr><td>Phase 2–5</td><td>chưa bắt đầu</td></tr>
+<tr><td>Phase 1 — build &amp; content-update pipeline</td><td class="ok">đóng, 13/13 task</td></tr>
+<tr><td>Phase 2–5</td><td>chưa bắt đầu — <strong>Phase 2 là việc tiếp theo</strong></td></tr>
 </tbody></table></div>
 
 <div class="note g">
@@ -136,8 +136,10 @@ full build, content update, sinh manifest, verify output — chạy được t�
 <tr><td>1.6</td><td><code>CatalogVerifier</code> + <code>VerifyOutput</code> CLI</td><td class="ok"><code>fb5b6e3</code> — kiểm bằng 2 phép phá hoại</td></tr>
 <tr><td>1.7</td><td><code>build-manifest.json</code></td><td class="ok"><code>51e1232</code> — sinh từ cả hai đường build</td></tr>
 <tr><td>1.12</td><td>Corpus + harness snapshot/diff</td><td class="ok"><code>7111e7f</code> — viết lại lần 2, giờ đo được</td></tr>
-<tr><td>1.8</td><td>GitHub Actions + <code>ci/*.sh</code></td><td class="no">chưa — <strong>làm tiếp từ đây</strong></td></tr>
-<tr><td>1.9 / 1.10 / 1.11</td><td>Tab Update Preview, Build, Patch Diff</td><td class="no">chưa</td></tr>
+<tr><td>1.8</td><td>GitHub Actions + 7 script <code>ci/*.sh</code></td><td class="pend"><code>8456b18</code> — <strong>chưa chạy thật lần nào</strong> (§9)</td></tr>
+<tr><td>1.9</td><td>Tab Update Preview + nút Prepare</td><td class="ok"><code>10c9ba6</code></td></tr>
+<tr><td>1.10</td><td>Tab Build + <code>CdnBuildPipeline</code></td><td class="ok"><code>2da72c1</code></td></tr>
+<tr><td>1.11</td><td><code>ContentDiff</code> + patch panel</td><td class="ok"><code>006549a</code>, <code>2da72c1</code></td></tr>
 </tbody></table></div>
 
 <h2 id="risk">3. Rủi ro số 1 — đã chặn</h2>
@@ -245,25 +247,34 @@ ls / sha256sum &lt;file mong đợi&gt;   # nó có thật không</code></pre>
 
 <h2 id="next">7. Làm gì tiếp</h2>
 
-<h3>Task 1.8 — CI (ưu tiên, và độc lập)</h3>
-<p>Chỉ YAML + shell, không đụng C#, nên không xung đột với 1.9–1.11. Mọi thứ nó cần đã có entry point
-batchmode: <code>CdnSetupCLI.ApplyPhaseZeroSetup</code>, <code>CdnBuildCLI.BuildContent</code>,
-<code>BuildContentUpdate</code>, <code>VerifyOutput</code>, <code>CdnTestContentCLI.GenerateTestCorpus</code>.</p>
-<p>Hai job theo doc infra §7: <code>content-full</code> và <code>content-update</code>. Điểm phải làm đúng:</p>
-<ul>
-<li>Archive <code>addressables_content_state.bin</code> sau <strong>mọi</strong> build — mất nó là mất
-khả năng patch cho version đó vĩnh viễn. Sau update build thì archive <em>file đầu vào</em>, vì update
-không sinh state mới.</li>
-<li><code>build-manifest.json</code> archive vào bucket private, <strong>không</strong> upload lên CDN.
-Nó nằm ở <code>ServerData/</code> gốc, trên các thư mục platform mà CI sync, nên chỉ cần sync
-<code>ServerData/&lt;platform&gt;/</code> là tự nhiên không dính.</li>
-<li>Chạy <code>VerifyOutput</code> <strong>trước</strong> khi upload, không phải sau.</li>
-</ul>
+<p>Phase 1 không còn task nào. Ba việc dưới đây xếp theo thứ tự tôi sẽ làm.</p>
 
-<h3>Task 1.9 → 1.10 → 1.11 — tuần tự</h3>
-<p>Cả ba đều sửa <code>CdnManagerWindow.RegisterTabs()</code>, không fan-out được. 1.11 (Patch Diff) đã có
-sẵn nguyên liệu: so hai <code>build-manifest.json</code> theo <code>contentHash</code> cho ra new/changed/removed
-— đã kiểm bằng tay và ra đúng kết quả.</p>
+<h3>1. Chạy CI lần đầu — việc duy nhất của Phase 1 chưa được kiểm chứng</h3>
+<p>Task 1.8 viết xong nhưng <strong>chưa chạy lần nào</strong>: không có runner Unity self-hosted, không
+có credential R2, và máy dev không cài <code>aws</code> lẫn <code>jq</code>. Đã kiểm được cú pháp shell,
+cấu trúc YAML, và cả 13 đường dẫn JSON mà script đọc từ manifest. Chưa kiểm: mọi lời gọi
+<code>aws</code>/<code>curl</code>, các gate trong <code>require_manifest</code>, và hai workflow
+end-to-end.</p>
+<p>Lần chạy đầu nên nhắm vào <strong>Dev với bucket vứt đi được</strong>. Cần sẵn:
+<code>R2_ENDPOINT</code>, <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code>,
+<code>CF_ZONE_ID</code>, <code>CF_API_TOKEN</code> (secrets) và <code>R2_BUCKET</code>,
+<code>R2_ARCHIVE_BUCKET</code>, <code>CDN_GAME_PREFIX</code>, <code>CDN_BASE_URL</code> (vars).</p>
+
+<h3>2. Nhìn tận mắt 4 tab</h3>
+<p>Probe chứng minh chúng dựng được, refresh được, và kết luận đúng. Nó <strong>không</strong> chứng minh
+được chúng trông ra sao. Mở <code>Window → Addressable Manager → CDN Manager</code> và duyệt phần trình bày,
+đặc biệt là Build tab ở bề rộng 560px (tiêu chí §5.10).</p>
+
+<h3>3. Phase 2 — runtime bootstrap</h3>
+<p>Xem <code>#p-phase2</code>. Song song được: <code>2.1/2.2</code> (result, settings) ∥ <code>2.8</code>
+(network policy); <code>2.3</code> decorator phải xong trước <code>2.5</code> init.</p>
+
+<div class="note w">
+<span class="tag">Trước khi bắt đầu Phase 2</span>
+<p>Sửa doc §1.4 (xem §10) và vị trí <code>build-manifest.json</code> ở <strong>cả hai bản ngôn ngữ</strong>,
+giữ nguyên tập <code>id</code>. Doc là nguồn chân lý mà agent đọc khi được delegate; để nó mang lời khuyên
+sai thì mỗi lần delegate lại tái tạo lại cái sai đó.</p>
+</div>
 
 <h2 id="cmd">8. Lệnh cần dùng</h2>
 
