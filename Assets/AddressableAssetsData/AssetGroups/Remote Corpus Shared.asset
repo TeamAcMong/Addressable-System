@@ -10,18 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
-  m_Name: Remote Assets Group A
+  m_Name: Remote Corpus Shared
   m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.AddressableAssetGroup
-  m_GroupName: Remote Assets Group A
-  m_GUID: 3bbc6de1cf96a574f903d62d1d0e5240
+  m_GroupName: Remote Corpus Shared
+  m_GUID: a6331d8fcc42304439000eacf2eda91a
   m_SerializeEntries:
-  - m_GUID: b66de2996bc68274ebf2ff74d61f5a6e
-    m_Address: corpus/asset-a
-    m_ReadOnly: 0
-    m_SerializedLabels: []
-    FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: ef7d282a9ca531346b411c269e437f41
-    m_Address: corpus/mat-a
+  - m_GUID: c1b9a127e5302754ca454c01b5dce960
+    m_Address: corpus/shared-texture
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -29,5 +24,5 @@ MonoBehaviour:
   m_Settings: {fileID: 11400000, guid: dfafa217c038d904a85305fa22c28d8e, type: 2}
   m_SchemaSet:
     m_Schemas:
-    - {fileID: 11400000, guid: acca727474f387d46b96780001a2aa37, type: 2}
-    - {fileID: 11400000, guid: 190a1c742a551a244af9b9fab67a4dc8, type: 2}
+    - {fileID: 11400000, guid: d2793cd5cead4f54d96f97125de443b8, type: 2}
+    - {fileID: 11400000, guid: 7581090e2208bea4db0727952c8a8d20, type: 2}

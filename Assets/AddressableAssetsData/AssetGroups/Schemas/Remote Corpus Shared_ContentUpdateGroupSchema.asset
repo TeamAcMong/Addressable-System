@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5834b5087d578d24c926ce20cd31e6d6, type: 3}
-  m_Name: Remote Assets Group C_ContentUpdateGroupSchema
+  m_Name: Remote Corpus Shared_ContentUpdateGroupSchema
   m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.GroupSchemas.ContentUpdateGroupSchema
-  m_Group: {fileID: 11400000, guid: d51b3a8f1b426984c9dddc1cf2b3ce63, type: 2}
+  m_Group: {fileID: 11400000, guid: cbe6805183e8c3d44b62d7e72eb657a8, type: 2}
   m_StaticContent: 0

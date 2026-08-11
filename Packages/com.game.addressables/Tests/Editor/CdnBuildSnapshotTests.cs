@@ -170,11 +170,27 @@ namespace AddressableManager.Tests.Cdn
                     }
                 }
 
-                // Calculate total changed bytes (absolute value of size change)
+                // Bytes a player on the previous build must re-download: the FULL size of every
+                // bundle that changed, plus every bundle that is new. Bundles are fetched whole —
+                // there is no byte-range patching — so a bundle whose content changed while its
+                // size did not still costs its entire size on the wire.
+                //
+                // This previously summed |BytesUpdated - BytesBaseline|, the change in SIZE. That
+                // reports 0 for a bundle that was rebuilt with different content at the same size,
+                // which is the common case for a content update, and would have passed the
+                // "<= 2.5 MB" exit criterion while players re-downloaded several megabytes.
                 long totalChangedBytes = 0;
                 foreach (var entry in changed)
                 {
-                    totalChangedBytes += Math.Abs(entry.BytesUpdated - entry.BytesBaseline);
+                    totalChangedBytes += entry.BytesUpdated;
+                }
+
+                foreach (var filename in newBundles)
+                {
+                    if (updatedMap.TryGetValue(filename, out var newEntry))
+                    {
+                        totalChangedBytes += newEntry.Bytes;
+                    }
                 }
 
                 // Check if catalog hash changed
@@ -256,7 +272,11 @@ namespace AddressableManager.Tests.Cdn
             public bool CatalogHashChanged { get; set; }
 
             /// <summary>
-            /// Sum of absolute value of byte changes in Changed bundles.
+            /// Bytes a player on the baseline build must re-download: the full size of every
+            /// changed bundle plus every new bundle. Not a size delta — bundles are fetched
+            /// whole, so a bundle rebuilt with different content at an identical size still
+            /// costs its full size.
+            ///
             /// Used to verify the core exit criterion:
             /// "2 MB asset change produces ≤ 2.5 MB of changed bundles"
             /// </summary>
@@ -524,32 +544,27 @@ namespace AddressableManager.Tests.Cdn
 
             var baseline = BuildSnapshot.Capture(BundleOutputDir, CatalogHashFilePath);
 
-            // Act: Modify the shared bundle by +256 KB
+            // Act: Modify ONLY the shared bundle. Its dependents are untouched, mirroring the
+            // corpus topology: the shared payload is an entry of its own group, and groups A and B
+            // merely reference it, so a change to it does not force their bundles to be rebuilt.
+            // (If it did, that would be the over-bundling this criterion exists to catch.)
             File.Delete(Path.Combine(BundleOutputDir, "shared_assets.bundle"));
             CreateDummyBundle("shared_assets.bundle", (long)(2.256 * 1024 * 1024)); // +256 KB
-
-            // This would cascade to group_a and group_b bundles being rebuilt
-            // (In a real build, Addressables would re-bundle these)
-            File.Delete(Path.Combine(BundleOutputDir, "group_a_with_shared.bundle"));
-            CreateDummyBundle("group_a_with_shared.bundle", (long)(1.128 * 1024 * 1024)); // +128 KB
-
-            File.Delete(Path.Combine(BundleOutputDir, "group_b_with_shared.bundle"));
-            CreateDummyBundle("group_b_with_shared.bundle", (long)(1.128 * 1024 * 1024)); // +128 KB
 
             var updated = BuildSnapshot.Capture(BundleOutputDir, CatalogHashFilePath);
             var diff = baseline.Diff(updated);
 
-            // Assert: Only shared + dependent bundles changed
-            Assert.That(diff.Changed.Count, Is.EqualTo(3),
-                "Shared bundle and its two dependents should have changed");
+            // Assert: only the shared bundle changed
+            Assert.That(diff.Changed.Count, Is.EqualTo(1),
+                "Only the shared bundle should have changed");
 
             var changedNames = diff.Changed.Select(e => e.Filename).ToList();
             Assert.That(changedNames, Does.Contain("shared_assets.bundle"),
                 "The shared bundle must be in the changed list");
-            Assert.That(changedNames, Does.Contain("group_a_with_shared.bundle"),
-                "Group A (depends on shared) must be in the changed list");
-            Assert.That(changedNames, Does.Contain("group_b_with_shared.bundle"),
-                "Group B (depends on shared) must be in the changed list");
+            Assert.That(changedNames, Does.Not.Contain("group_a_with_shared.bundle"),
+                "Group A only references the shared asset; its bundle must not be rebuilt");
+            Assert.That(changedNames, Does.Not.Contain("group_b_with_shared.bundle"),
+                "Group B only references the shared asset; its bundle must not be rebuilt");
 
             // Independent bundles should NOT change
             // diff.Unchanged is IReadOnlyList<BuildDiff.DiffEntry>, not BuildSnapshot.BundleEntry.
@@ -565,9 +580,11 @@ namespace AddressableManager.Tests.Cdn
             Assert.That(diff.New.Count, Is.EqualTo(0));
             Assert.That(diff.Removed.Count, Is.EqualTo(0));
 
-            // Core criterion: 2 MB change → ≤ 2.5 MB bundle delta
+            // Core criterion: a ~2 MB asset change costs a player ≤ 2.5 MB of downloads.
+            // TotalChangedBytes is the full size of changed + new bundles, not a size delta,
+            // because that is what actually crosses the wire.
             Assert.That(diff.TotalChangedBytes, Is.LessThanOrEqualTo(2_500_000),
-                $"2 MB asset change should produce ≤ 2.5 MB bundle delta. Actual: {diff.TotalChangedBytes} bytes. " +
+                $"2 MB asset change should cost ≤ 2.5 MB of re-downloaded bundles. Actual: {diff.TotalChangedBytes} bytes. " +
                 $"Changed bundles: {string.Join(", ", changedNames)}");
         }
     }

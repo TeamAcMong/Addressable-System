@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Remote Assets Group A_ContentUpdateGroupSchema
   m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.GroupSchemas.ContentUpdateGroupSchema
   m_Group: {fileID: 11400000, guid: 4e469b68797de27469e8e4587321cf7c, type: 2}
-  m_StaticContent: 1
+  m_StaticContent: 0
