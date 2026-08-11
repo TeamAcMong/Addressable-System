@@ -280,9 +280,16 @@ namespace AddressableManager.Tests.Cdn
         [OneTimeSetUp]
         public void OneTimeSetUp()
         {
-            // Create test directories
             if (!Directory.Exists(TestOutputDir))
                 Directory.CreateDirectory(TestOutputDir);
+        }
+
+        // Must run per-test, not once: TearDown deletes BundleOutputDir after every test,
+        // so creating it only in OneTimeSetUp leaves every test after the first one writing
+        // into a directory that no longer exists (DirectoryNotFoundException in File.Create).
+        [SetUp]
+        public void SetUp()
+        {
             if (!Directory.Exists(BundleOutputDir))
                 Directory.CreateDirectory(BundleOutputDir);
         }
@@ -545,10 +552,13 @@ namespace AddressableManager.Tests.Cdn
                 "Group B (depends on shared) must be in the changed list");
 
             // Independent bundles should NOT change
-            Assert.That(diff.Unchanged, Has.Some.Matches<BuildSnapshot.BundleEntry>(
+            // diff.Unchanged is IReadOnlyList<BuildDiff.DiffEntry>, not BuildSnapshot.BundleEntry.
+            // Both types carry a Filename, so the wrong one reads fine but makes NUnit throw
+            // ArgumentException("The actual value is not of type BundleEntry") at runtime.
+            Assert.That(diff.Unchanged, Has.Some.Matches<BuildDiff.DiffEntry>(
                     b => b.Filename == "group_independent_x.bundle"),
                 "Independent group X should be unchanged");
-            Assert.That(diff.Unchanged, Has.Some.Matches<BuildSnapshot.BundleEntry>(
+            Assert.That(diff.Unchanged, Has.Some.Matches<BuildDiff.DiffEntry>(
                     b => b.Filename == "group_independent_y.bundle"),
                 "Independent group Y should be unchanged");
 
