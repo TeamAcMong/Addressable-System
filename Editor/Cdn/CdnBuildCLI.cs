@@ -424,6 +424,108 @@ namespace AddressableManager.Editor.Cdn
             }
         }
 
+        /// <summary>
+        /// Verify a build's output against its manifest and the settings contract — task 1.6.
+        /// </summary>
+        /// <remarks>
+        /// Runs standalone so CI can verify an artifact it did not build in the same step: unpack
+        /// the archived output plus its manifest, point this at them, and get a non-zero exit if
+        /// anything a player needs is missing or altered.
+        ///
+        /// Usage: Unity -batchmode -quit -nographics -projectPath &lt;repo&gt; \
+        ///          -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput \
+        ///          -cdnProfile Local [-manifestPath &lt;path&gt;] -logFile verify.log
+        /// </remarks>
+        public static void VerifyOutput()
+        {
+            var args = ParseCommandLineArgs();
+            string profileName = GetArg(args, "cdnProfile", "Local");
+            string manifestPath = GetArg(args, "manifestPath", null);
+
+            try
+            {
+                Log("=== CDN Build CLI - Output Verification (task 1.6) ===");
+                Log($"Target profile: {profileName}");
+                Log("");
+
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    LogError("FAILURE: Script compilation failed before verification started");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                try
+                {
+                    CdnProfileManager.SetActiveProfile(profileName);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"FAILURE: Could not activate profile: {ex.Message}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                var settings = AddressableAssetSettingsDefaultObject.Settings;
+                if (settings == null)
+                {
+                    LogError("FAILURE: No AddressableAssetSettings found");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                string profileId = settings.activeProfileId;
+                string bundleDir = settings.profileSettings.EvaluateString(
+                    profileId,
+                    settings.profileSettings.GetValueByName(profileId, AddressableAssetSettings.kRemoteBuildPath));
+                string catalogDir = settings.profileSettings.EvaluateString(
+                    profileId,
+                    settings.profileSettings.GetValueByName(profileId, CdnProfileManager.RemoteCatalogBuildPathVariable));
+
+                Log($"Bundles:  {bundleDir}");
+                Log($"Catalog:  {catalogDir}");
+                Log("");
+
+                var verification = CatalogVerifier.Verify(bundleDir, catalogDir, manifestPath);
+
+                foreach (string warning in verification.Warnings)
+                {
+                    LogWarning($"  {warning}");
+                }
+
+                if (!verification.Passed)
+                {
+                    foreach (string problem in verification.Problems)
+                    {
+                        LogError($"  {problem}");
+                    }
+
+                    LogError("");
+                    LogError($"FAILURE: {verification.Problems.Count} problem(s) found. Do NOT upload this output.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Log($"✓ {verification.BundlesChecked} bundle(s) verified against the manifest");
+                Log($"✓ Catalog and hash file present and unmodified");
+                Log($"✓ Settings contract holds");
+                if (verification.Warnings.Count > 0)
+                {
+                    Log($"  ({verification.Warnings.Count} warning(s) above, none blocking)");
+                }
+
+                Log("");
+                Log("✓ SUCCESS: Output is consistent with its manifest and safe to publish");
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Exception during verification: {ex.Message}");
+                LogError(ex.StackTrace);
+                EditorApplication.Exit(2);
+            }
+        }
+
         // ========== private implementation ==========
 
         /// <summary>

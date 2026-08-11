@@ -279,7 +279,16 @@ namespace AddressableManager.Editor.Cdn
             return CdnEditorResult<bool>.Success(true);
         }
 
-        private static string ComputeSha256(string filePath)
+        /// <summary>
+        /// SHA256 of a file's bytes, formatted "sha256:&lt;hex&gt;".
+        /// </summary>
+        /// <remarks>
+        /// Public so CatalogVerifier (task 1.6) recomputes hashes exactly the way the manifest
+        /// recorded them. Two implementations of this would compare equal until one of them
+        /// changed the prefix or the casing, and then every verification would fail for a reason
+        /// unrelated to the content.
+        /// </remarks>
+        public static string ComputeSha256(string filePath)
         {
             using (var sha256 = SHA256.Create())
             using (var stream = File.OpenRead(filePath))
