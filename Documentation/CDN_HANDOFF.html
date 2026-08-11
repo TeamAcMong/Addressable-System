@@ -96,6 +96,7 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 <li><a href="#next">Làm gì tiếp</a></li>
 <li><a href="#cmd">Lệnh cần dùng</a></li>
 <li><a href="#open">Việc còn treo</a></li>
+<li><a href="#decision">Quyết định: static group đổi</a></li>
 </ol>
 </div>
 
@@ -297,12 +298,10 @@ Unity.exe -batchmode -nographics -projectPath $ROOT -runTests -testPlatform Play
 <div class="tw"><table>
 <thead><tr><th>Việc</th><th>Ghi chú</th></tr></thead>
 <tbody>
-<tr><td><strong>Tiền đề của task 1.4 sai so với Addressables</strong></td>
-<td>Doc viết static group đổi nghĩa là <em>"needs a new player build"</em>. Không đúng: quy trình chuẩn là
-<code>ContentUpdateScript.CreateContentUpdateGroup</code> (<code>:1100</code>) dời entry đã đổi sang group mới
-không-static — bước "Prepare for Content Update". Code hiện hard-fail theo spec, và với CI thì fail to tiếng
-cũng có lý (không muốn CI tự cấu trúc lại group), nhưng <strong>thông điệp lỗi đang lặp lại lời khuyên sai</strong>.
-Cần chốt lại thiết kế rồi sửa cả code lẫn doc.</td></tr>
+<tr><td>Doc §1.4 vẫn viết remedy sai</td>
+<td><strong>Thiết kế đã chốt (xem §10).</strong> Hard-fail giữ nguyên vì đúng; thông điệp lỗi trong
+<code>CdnBuildCLI</code> đã sửa để chỉ đúng bước "Prepare for Content Update". <strong>Doc chưa sửa theo</strong> —
+nó vẫn viết <em>"needs a new player build"</em>, và cả hai bản ngôn ngữ đều cần sửa.</td></tr>
 <tr><td>Corpus tốn ~2 MB trong git</td>
 <td>Không nén được (đó là chủ đích). Tất định nên không churn, và <strong>không thể gitignore</strong>: group
 shared và hai material tham chiếu nó theo GUID.</td></tr>
@@ -323,6 +322,46 @@ build thì chưa kiểm trên máy sạch.</td></tr>
 tiền đề 1.4, và khoảng 10 chỗ khác. Cần <code>documentation-specialist</code> sửa <strong>cả hai bản ngôn ngữ</strong>,
 giữ nguyên tập <code>id</code>.</td></tr>
 </tbody></table></div>
+
+<h2 id="decision">10. Quyết định thiết kế: static group đổi thì làm gì</h2>
+
+<p>Câu hỏi này chặn tab 1.9, vì Update Preview chính là giao diện của 1.4. Đã trả lời bằng cách đọc
+<code>RevertUnchangedAssetsToPreviousAssetState.cs</code>, không phải bằng suy đoán.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Dòng</th><th>Điều kiện</th><th>Addressables làm gì</th></tr></thead>
+<tbody>
+<tr><td><code>:163</code></td><td>hash đổi, group <strong>không</strong> static</td><td><code>continue</code> → dùng bundle mới. Bình thường.</td></tr>
+<tr><td><code>:183</code></td><td>hash đổi, group <strong>static</strong></td><td>chỉ <code>Addressables.LogWarning</code></td></tr>
+<tr><td><code>:194+</code></td><td>—</td><td>tạo <code>AssetEntryRevertOperation</code> → entry bị <strong>trả về bundle cũ</strong></td></tr>
+</tbody></table></div>
+
+<div class="note d">
+<span class="tag">Hệ quả</span>
+<p>Bản patch <strong>build được, exit 0, upload sạch — và không chứa thay đổi đó</strong>. Người chơi vẫn
+nhận bundle cũ. Tín hiệu duy nhất là một dòng <code>LogWarning</code> trong log CI.</p>
+</div>
+
+<h3>Đã chốt</h3>
+<ol>
+<li><strong>Giữ hard-fail</strong> trong <code>CdnBuildCLI.BuildContentUpdate</code>. Sổ rủi ro mô tả đúng
+("update silently ineffective"); Addressables không tự chặn, nên gate này là thứ duy nhất chặn.</li>
+<li><strong>Sửa lời khuyên.</strong> Doc §1.4 viết <em>"needs a new player build"</em> — sai. Cách xử lý đúng là
+<code>ContentUpdateScript.CreateContentUpdateGroup</code> (<code>:1100</code>): dời entry đã đổi sang group mới
+không-static để update build lại chúng thành bundle mới. Thông điệp lỗi trong code đã sửa; doc thì chưa.</li>
+<li><strong>Không cho CI tự chạy bước prepare.</strong> Nó sửa <code>AddressableAssetSettings</code> và tạo group
+mới — thay đổi phải nằm trong diff được review, không phải do một CI job tự cấu trúc lại project.</li>
+<li><strong>Bước prepare thuộc về tab 1.9.</strong> Update Preview vốn đã phải liệt kê entry vi phạm; thêm một nút
+chạy <code>CreateContentUpdateGroup</code> để người dùng thấy trước cái gì sẽ bị dời rồi mới bấm. Đây là ràng buộc
+thiết kế cho 1.9, không phải tuỳ chọn.</li>
+</ol>
+
+<div class="note w">
+<span class="tag">Mức bằng chứng</span>
+<p>Kết luận trên <strong>đọc từ source, chưa tái hiện bằng thực nghiệm</strong>. Chưa chạy thử một update build
+có static group đổi mà bỏ qua gate, vì làm vậy phải mở một đường vòng qua chính gate đó. Nếu muốn chắc hơn nữa,
+đó là thí nghiệm nên làm khi viết 1.9.</p>
+</div>
 
 <h3>Doc liên quan</h3>
 <ul>
