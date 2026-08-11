@@ -107,16 +107,31 @@ namespace AddressableManager.Editor.Cdn.Windows
         /// Tab registration point. Tasks 0.9-0.10 register Validator and Local Server. Append new tabs
         /// here as later tasks land - do not replace this method's contents wholesale, and do not
         /// register any tab anywhere else:
-        ///   task 1.9   Update Preview tab
         ///   task 1.10  Build tab
         ///   task 4.6   Runtime Monitor tab
         ///   task 5.9   Catalog Inspector tab
+        ///
+        /// The list itself lives in <see cref="CreateTabs"/> so the batchmode smoke check
+        /// (CdnTabProbeCLI) exercises exactly the tabs this window shows. A second hand-written list
+        /// would drift, and the tab it forgot would be the one nobody ever probed.
         /// </summary>
         private void RegisterTabs()
         {
             _tabs.Clear();
-            _tabs.Add(new SettingsValidatorTab());
-            _tabs.Add(new LocalServerTab());
+            _tabs.AddRange(CreateTabs());
+        }
+
+        /// <summary>
+        /// The registered tabs, in display order. Single source of truth — see <see cref="RegisterTabs"/>.
+        /// </summary>
+        internal static List<ICdnManagerTab> CreateTabs()
+        {
+            return new List<ICdnManagerTab>
+            {
+                new SettingsValidatorTab(),
+                new LocalServerTab(),
+                new UpdatePreviewTab()
+            };
         }
 
         private void BuildTabStrip()

@@ -1,0 +1,159 @@
+/*
+ * Update Preview tab (task 1.9). Layout and spacing only; every colour comes from
+ * --unity-colors-* (design doc §5.11 / repo Invariant 5). No grid, no ::before, no box-shadow,
+ * no rem, no @media - USS supports none of them.
+ *
+ * Severity is carried by an Image glyph set from EditorGUIUtility.IconContent in the C#, plus the
+ * -error / -warning modifier classes below. Colour alone would not survive a colourblind user or a
+ * high-contrast theme, so the glyph is the primary signal and the tint is reinforcement.
+ */
+
+.cdn-preview-summary {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-preview-state {
+    flex-shrink: 0;
+    flex-direction: column;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.cdn-state-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 0;
+}
+
+.cdn-state-key {
+    width: 150px;
+    flex-shrink: 0;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-state-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-state-value-bad {
+    -unity-font-style: bold;
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-state-value-good {
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-preview-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+}
+
+.cdn-preview-rows {
+    flex-direction: column;
+}
+
+.cdn-section-header {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    background-color: var(--unity-colors-toolbar-background);
+    padding: 4px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-entry-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-entry-row:hover {
+    background-color: var(--unity-colors-highlight-background-inactive);
+}
+
+.cdn-entry-toggle {
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+
+.cdn-entry-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.cdn-entry-path {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-entry-path-blocking {
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-entry-group {
+    flex-shrink: 0;
+    margin-left: 8px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+}
+
+.cdn-entry-kind {
+    margin-left: 8px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    font-size: 9px;
+    color: var(--unity-colors-default-text);
+    flex-shrink: 0;
+}
+
+.cdn-empty-note {
+    padding: 10px 6px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.cdn-actions-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    padding-top: 6px;
+    justify-content: flex-end;
+}
+
+.cdn-btn {
+    min-width: 80px;
+    margin-left: 6px;
+}
+
+.cdn-btn-primary {
+    -unity-font-style: bold;
+}
+
+.cdn-btn-wide {
+    min-width: 160px;
+}
