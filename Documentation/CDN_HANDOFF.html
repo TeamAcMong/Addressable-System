@@ -74,12 +74,13 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 
 <div class="head">
 <h1>CDN System — Bàn giao trạng thái &amp; chiến lược làm tiếp</h1>
-<p style="color:var(--mut);margin:0">Tổng kết một phiên: Phase 0 đóng, Phase 1 đang dở. Tài liệu này để mở Claude Code lên là làm tiếp được ngay.</p>
+<p style="color:var(--mut);margin:0">Phase 0 đóng. Phase 1 còn 4 task, tất cả là CI và UI — phần build pipeline đã xong và đã đo được.</p>
 <div class="meta">
 <span class="b a">branch: feat/cdn-system</span>
-<span class="b">HEAD: 217302a</span>
+<span class="b">HEAD: fb5b6e3</span>
+<span class="b">69 commit</span>
 <span class="b g">Phase 0: đóng</span>
-<span class="b w">Phase 1: 6/12 task</span>
+<span class="b w">Phase 1: 9/13 task</span>
 <span class="b">Unity 6000.5.7f1 · Addressables 2.9.1</span>
 </div>
 </div>
@@ -87,227 +88,240 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 <div class="toc">
 <ol>
 <li><a href="#now">Đang ở đâu</a></li>
-<li><a href="#done">Phase 0 — đã đóng</a></li>
 <li><a href="#p1">Phase 1 — trạng thái từng task</a></li>
-<li><a href="#risk">Rủi ro số 1 chưa được chặn</a></li>
-<li><a href="#next">Làm gì tiếp — thứ tự cụ thể</a></li>
+<li><a href="#risk">Rủi ro số 1 — đã chặn</a></li>
+<li><a href="#measured">Tiêu chí thoát — đã đo</a></li>
+<li><a href="#api">Bẫy API Addressables 2.9.1</a></li>
+<li><a href="#lesson">Kiểu lỗi lặp lại nhiều nhất</a></li>
+<li><a href="#next">Làm gì tiếp</a></li>
 <li><a href="#cmd">Lệnh cần dùng</a></li>
-<li><a href="#agent">Làm việc với agent</a></li>
 <li><a href="#open">Việc còn treo</a></li>
 </ol>
 </div>
 
 <h2 id="now">1. Đang ở đâu</h2>
 
-<p>Nhánh <code>feat/cdn-system</code>, 31 commit. Working tree sạch, compile 0 lỗi, settings contract 38/38.</p>
+<p>Nhánh <code>feat/cdn-system</code>, 69 commit, working tree sạch, compile 0 lỗi,
+settings contract <strong>70/70</strong> rule xanh (tăng từ 38 rồi 62 khi corpus thêm group).</p>
 
 <div class="tw"><table>
 <thead><tr><th>Hạng mục</th><th>Trạng thái</th></tr></thead>
 <tbody>
-<tr><td>Tài liệu thiết kế (3 doc, 2 ngôn ngữ)</td><td class="ok">xong</td></tr>
-<tr><td>Quy trình subagent (<code>CLAUDE.md</code>)</td><td class="ok">xong, đã cập nhật 2 lần từ bài học thực tế</td></tr>
+<tr><td>Tài liệu thiết kế (3 doc, 2 ngôn ngữ)</td><td class="ok">xong (nhưng có drift — xem §9)</td></tr>
+<tr><td>Quy trình subagent (<code>CLAUDE.md</code>)</td><td class="ok">xong</td></tr>
 <tr><td>Phase 0 — nền móng + pipeline tối thiểu</td><td class="ok">đóng, có test chứng minh</td></tr>
-<tr><td>Phase 1 — build &amp; content-update pipeline</td><td class="pend">6/12 task, tất cả đã commit</td></tr>
+<tr><td>Phase 1 — build &amp; content-update pipeline</td><td class="pend">9/13 task</td></tr>
 <tr><td>Phase 2–5</td><td>chưa bắt đầu</td></tr>
 </tbody></table></div>
 
-<p><strong>Compile sạch, settings contract 38/38 rule xanh, working tree sạch.</strong> Chi tiết từng task ở <a href="#p1">§3</a>.</p>
-
-<h2 id="done">2. Phase 0 — đã đóng</h2>
-
-<p>Tiêu chí thoát chính, nguyên văn từ doc: <em>"A player build with Local profile boots, fetches its catalog from localhost:8080, and loads a remote asset — with zero new runtime code written."</em></p>
-
-<p>Chứng minh bằng PlayMode test, chạy hai lượt liên tiếp cho kết quả giống hệt:</p>
-
-<pre><code>GET /StandaloneWindows64/catalog/0.1.0/catalog_0.1.0.hash
-    → 200  public, max-age=0, must-revalidate      PathMatches=True
-GET /StandaloneWindows64/bundles/remotetest_assets_all_d291b9ba….bundle
-    → 200  public, max-age=31536000, immutable     PathMatches=True</code></pre>
-
-<h3>Cái gì đã tồn tại và dùng được</h3>
-
-<div class="tw"><table>
-<thead><tr><th>File</th><th>Làm gì</th></tr></thead>
-<tbody>
-<tr><td><code>Editor/Cdn/SettingsContract.cs</code></td><td>38 rule, nguồn duy nhất, dùng chung CI + GUI</td></tr>
-<tr><td><code>Editor/Cdn/CdnSetupCLI.cs</code></td><td>Áp toàn bộ contract, idempotent, báo trước/sau</td></tr>
-<tr><td><code>Editor/Cdn/CdnBuildCLI.cs</code></td><td>Full content build + verify output trên đĩa</td></tr>
-<tr><td><code>Editor/Cdn/CdnProfileManager.cs</code></td><td>4 profile + 2 biến catalog riêng + tiêm host từ env</td></tr>
-<tr><td><code>Editor/Cdn/CdnTestContentCLI.cs</code></td><td>Remote test group, entry <code>cdn-test/example</code></td></tr>
-<tr><td><code>Editor/Cdn/LocalContentServer.cs</code></td><td>Server tĩnh + header §3 thật + range request</td></tr>
-<tr><td><code>Editor/Cdn/Windows/**</code></td><td><code>CdnManagerWindow</code> + tab Validator + tab Local Server</td></tr>
-<tr><td><code>Tests/Runtime/Phase0LocalServerIntegrationTests.cs</code></td><td>Test HTTP end-to-end, 6 assertion</td></tr>
-<tr><td><code>Tests/Editor/PlayModeTestSetup.cs</code></td><td>Đặt packed play mode — <strong>phải chạy trước test</strong></td></tr>
-</tbody></table></div>
-
-<h3>Hai bug có sẵn trong package đã sửa luôn</h3>
-<ul>
-<li><code>AddressRule.cs:173</code> tạo group không có schema nào → group không build được, im lặng. <code>Scene.asset</code> đã hỏng sẵn từ trước, nay đã vá.</li>
-<li><code>HierarchyAssetScope.cs:50</code> dùng <code>GetInstanceID()</code>, Unity 6000.5 đánh obsolete mức error. Đã bọc <code>#if UNITY_6000_5_OR_NEWER</code> để <strong>không phải nâng floor package</strong>.</li>
-</ul>
-
-<div class="note w">
-<span class="tag">Giới hạn đã biết</span>
-<p>Determinism chỉ kiểm trên máy đã ấm — <strong>chưa chạy trên CI checkout sạch</strong>. Và tiêu chí gốc nói "player build"; ở đây chứng minh in-process, chưa build player thật.</p>
+<div class="note g">
+<span class="tag">Đã thay đổi so với bản handoff trước</span>
+<p>Rủi ro số 1 (patch vô hình) <strong>đã bị chặn</strong> và chứng minh bằng cách chạy thật.
+Tiêu chí thoát của Phase 1 <strong>đã đo được và đạt</strong>. Toàn bộ pipeline build —
+full build, content update, sinh manifest, verify output — chạy được từ batchmode.</p>
 </div>
 
-<h2 id="p1">3. Phase 1 — trạng thái từng task</h2>
+<h2 id="p1">2. Phase 1 — trạng thái từng task</h2>
 
 <div class="tw"><table>
 <thead><tr><th>Task</th><th>Nội dung</th><th>Trạng thái</th></tr></thead>
 <tbody>
-<tr><td>1.0</td><td>Bật <code>StaticContent</code>, platform-scope <code>ContentStateBuildPath</code></td><td class="ok">commit <code>dd8dd78</code></td></tr>
-<tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td class="ok">commit <code>afd59cc</code> (kéo lên từ Phase 0)</td></tr>
-<tr><td>1.3</td><td><code>ContentStateManager</code> + <code>CdnEditorResult</code></td><td class="ok">commit <code>dd8dd78</code></td></tr>
-<tr><td>1.4</td><td><code>ContentUpdateRestrictions</code></td><td class="ok">commit <code>217302a</code></td></tr>
-<tr><td>1.5</td><td>Tiêm CDN host từ env var</td><td class="ok">commit <code>217302a</code></td></tr>
-<tr><td>1.12</td><td>Corpus test ≥2 MB + harness snapshot/diff</td><td class="pend">code xong (<code>217302a</code>) — <strong>chưa chạy lần nào</strong></td></tr>
-<tr><td>1.2</td><td><code>BuildContentUpdate</code> CLI</td><td class="no">chưa</td></tr>
-<tr><td>1.6</td><td><code>CatalogVerifier</code></td><td class="no">chưa</td></tr>
-<tr><td>1.7</td><td><code>build-manifest.json</code></td><td class="no">chưa — agent báo xong nhưng <strong>không tạo file</strong></td></tr>
-<tr><td>1.8</td><td>GitHub Actions + 6 script <code>ci/*.sh</code></td><td class="no">chưa</td></tr>
+<tr><td>1.0</td><td><code>StaticContent</code>, platform-scope <code>ContentStateBuildPath</code></td><td class="ok">xong — đã xác nhận file nằm ở <code>ServerData/ContentState/StandaloneWindows64/</code></td></tr>
+<tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td class="ok">xong</td></tr>
+<tr><td>1.2</td><td><code>CdnBuildCLI.BuildContentUpdate</code></td><td class="ok"><code>35e6811</code> — 4 lượt chạy thật</td></tr>
+<tr><td>1.3</td><td><code>ContentStateManager</code></td><td class="ok">xong; <code>ResolvePath</code> đã vá (§5)</td></tr>
+<tr><td>1.4</td><td><code>ContentUpdateRestrictions</code></td><td class="ok">xong, đã nối vào 1.2 — nhưng tiền đề của doc sai (§9)</td></tr>
+<tr><td>1.5</td><td>Tiêm CDN host từ env var</td><td class="ok">xong</td></tr>
+<tr><td>1.6</td><td><code>CatalogVerifier</code> + <code>VerifyOutput</code> CLI</td><td class="ok"><code>fb5b6e3</code> — kiểm bằng 2 phép phá hoại</td></tr>
+<tr><td>1.7</td><td><code>build-manifest.json</code></td><td class="ok"><code>51e1232</code> — sinh từ cả hai đường build</td></tr>
+<tr><td>1.12</td><td>Corpus + harness snapshot/diff</td><td class="ok"><code>7111e7f</code> — viết lại lần 2, giờ đo được</td></tr>
+<tr><td>1.8</td><td>GitHub Actions + <code>ci/*.sh</code></td><td class="no">chưa — <strong>làm tiếp từ đây</strong></td></tr>
 <tr><td>1.9 / 1.10 / 1.11</td><td>Tab Update Preview, Build, Patch Diff</td><td class="no">chưa</td></tr>
 </tbody></table></div>
 
-<div class="note g">
-<span class="tag">Working tree sạch</span>
-<p>Tất cả đã compile (0 error CS) và commit. Settings contract 38/38 rule xanh. Không có việc dọn dẹp nào trước khi làm tiếp.</p>
+<h2 id="risk">3. Rủi ro số 1 — đã chặn</h2>
+
+<p>Addressables lấy <strong>tên</strong> catalog từ <code>playerVersion</code> trong file state
+(<code>ContentUpdateScript.cs:659</code> → <code>BuildScriptPackedMode.cs:713</code>) nhưng lấy
+<strong>thư mục</strong> từ profile, đánh giá lúc build theo <code>bundleVersion</code> sống
+(<code>:714</code>), và không đối chiếu hai nguồn. Bump lên <code>0.2.0</code> rồi update với state
+<code>0.1.0</code> sẽ ra <code>catalog/0.2.0/catalog_0.1.0.bin</code>, <code>result.Error</code> rỗng,
+exit 0 — người chơi <code>0.1.0</code> nhận 404 vĩnh viễn.</p>
+
+<p><code>CdnBuildCLI.BuildContentUpdate</code> đặt <strong>bốn gate trước khi build</strong>:
+compile → state file tồn tại → <code>ContentStateManager.Validate</code> (so version) →
+<code>ContentUpdateRestrictions.Check</code>. Sau build còn khẳng định trên đĩa rằng catalog mang
+đúng tên version người chơi poll.</p>
+
+<pre><code>bundleVersion = 0.2.0, state = 0.1.0
+  → exit 1 tại gate 3
+  → KHÔNG có thư mục catalog/0.2.0 nào được tạo</code></pre>
+
+<div class="note">
+<span class="tag">Ba dạng thất bại của API, không giống nhau chút nào</span>
+<p><strong>Thiếu file</strong> → <code>LoadContentState</code> <em>ném</em> <code>FileNotFoundException</code>
+(mở <code>FileStream</code> không check tồn tại, <code>ContentUpdateScript.cs:616</code>).<br>
+<strong>Cache không hợp lệ</strong> → <code>BuildContentUpdate</code> <em>trả <code>null</code></em>,
+không có <code>Error</code> để đọc (<code>:655-656</code>).<br>
+<strong>Sai thư mục</strong> → không gì báo cả.</p>
 </div>
+
+<h2 id="measured">4. Tiêu chí thoát — đã đo</h2>
+
+<p>Doc: <em>"a 2 MB asset change produces ≤ 2.5 MB of changed bundles"</em>. Đo thật:</p>
+
+<pre><code>đổi corpus/shared-texture (2.073.600 B pixel) → BuildContentUpdate, exit 0
+
+  remotecorpusshared_...3b2ec756   MỚI            2.076.103 B
+  remotecorpusshared_...62b4c2a9   giữ lại (player cũ)
+  Remote Assets Group A            byte-identical  ← phụ thuộc texture, KHÔNG build lại
+  Remote Assets Group B            byte-identical  ← phụ thuộc texture, KHÔNG build lại
+  Remote Assets Group C            byte-identical  ← control
+
+  người chơi tải lại: 2.076.103 / 2.500.000 B — dư 424 KB</code></pre>
+
+<p>Điểm quan trọng không phải con số mà là A và B <strong>không</strong> bị build lại: đó mới là tính
+chất "no over-bundling" mà tiêu chí nhắm tới.</p>
 
 <div class="note w">
-<span class="tag">1.12 có code nhưng chưa chạy</span>
-<p><code>GenerateTestCorpus</code> đã viết xong nhưng <strong>chưa thực thi lần nào</strong>, nên corpus 2.5 MB chưa tồn tại trên đĩa và <code>CdnBuildSnapshotTests</code> chưa từng chạy. Việc đầu tiên nên làm là chạy nó và xem 4 test kia có xanh không — đây đúng là loại "code có, hiệu quả chưa biết" mà cả phiên này đã học cách không tin.</p>
-<p><strong>Trước khi chạy, quyết định về gitignore:</strong> <code>Assets/Examples/CdnTest/</code> hiện không được ignore, nên chạy CLI một lần là 2.5 MB lorem ipsum vào git vĩnh viễn. Đề xuất: gitignore corpus sinh ra, để CI tự sinh — nội dung là procedural nên tái tạo được y hệt, không có lý do lưu.</p>
+<span class="tag">Corpus bản đầu không đo được gì — ba lý do độc lập</span>
+<p><strong>1. Không có shared dependency.</strong> Generator thêm cùng một asset vào group A rồi group B.
+Một <code>AddressableAssetEntry</code> chỉ thuộc <em>một</em> group, nên lần thêm thứ hai đã <em>dời</em>
+nó. Trên đĩa có 4 entry, không phải 5. Bộ self-check đếm qua dict khoá <code>"group:address"</code> nên
+đếm entry bị dời hai lần — <strong>nó che đúng cái lỗi nó sinh ra để bắt</strong>.</p>
+<p><strong>2. Payload bốc hơi khi nén.</strong> 2,5 MB lorem ipsum lặp → bundle 13.899 B, tỉ lệ ~180×.
+Không thể tạo delta 2 MB. Nay là texture 720×720 RGBA32 nhiễu xorshift32, importer ép
+<code>Uncompressed</code>, không mipmap → bundle 2.076.103 B.</p>
+<p><strong>3. Mọi group đều <code>StaticContent</code>.</strong> Đổi gì cũng vi phạm, không đổi gì thì
+không có delta — không tồn tại trạng thái update được. Nay set tường minh <code>false</code>.</p>
+<p>Và <code>TotalChangedBytes</code> cộng <code>|sizeMới − sizeCũ|</code>: bundle build lại với nội dung
+khác nhưng cùng kích thước bị chấm 0 trong khi player tải trọn. Nay cộng full size của changed + new.</p>
 </div>
 
-<h2 id="risk">4. Rủi ro số 1 chưa được chặn</h2>
-
-<p>Đây là thứ quan trọng nhất trong cả tài liệu này. Đã xác minh từng dòng trong source Addressables 2.9.1.</p>
-
-<pre><code>ContentUpdateScript.cs:659    // PlayerVersion lấy từ FILE .bin
-  var context = new AddressablesDataBuilderInput(settings, cacheData.playerVersion);
-
-BuildScriptPackedMode.cs:713  // TÊN catalog lấy từ .bin
-  var versionedFileName = ...EvaluateString(..., "/catalog_" + builderInput.PlayerVersion);
-BuildScriptPackedMode.cs:714  // THƯ MỤC lấy từ profile, đánh giá NGAY LÚC BUILD
-  var remoteBuildFolder = aaSettings.RemoteCatalogBuildPath.GetValue(aaSettings);</code></pre>
-
-<p>Hai nguồn version khác nhau, không chỗ nào đối chiếu. Bump <code>bundleVersion</code> lên <code>0.2.0</code> rồi chạy update với state file <code>0.1.0</code>:</p>
-
-<pre><code>ServerData/StandaloneWindows64/catalog/0.2.0/catalog_0.1.0.bin   ← sai chỗ
-result.Error rỗng · exit 0 · mọi verification hiện có đều pass</code></pre>
-
-<p>Người chơi <code>0.1.0</code> poll <code>catalog/0.1.0/catalog_0.1.0.hash</code> và nhận <strong>404 vĩnh viễn</strong>. Bản patch không chậm, không hỏng — nó vô hình.</p>
-
-<div class="note g">
-<span class="tag">Đã có bộ chặn, chưa được nối vào</span>
-<p><code>ContentStateManager.Validate()</code> so <code>playerVersion</code> với <code>PlayerSettings.bundleVersion</code> và <strong>từ chối</strong>. Nhưng task 1.2 chưa viết nên chưa ai gọi nó. <strong>Đây là lý do 1.2 phải là task tiếp theo.</strong></p>
-</div>
-
-<h3>Ba API của Addressables 2.9.1 không dùng được như tưởng</h3>
+<h2 id="api">5. Bẫy API Addressables 2.9.1 — đã xác minh từng cái trong source</h2>
 
 <div class="tw"><table>
 <thead><tr><th>API</th><th>Thực tế</th></tr></thead>
 <tbody>
-<tr><td><code>RemoteCatalogHashFilePath</code><br><code>RemoteCatalogJsonFilePath</code></td><td>Public, đúng kiểu, compile sạch — và <strong>không bao giờ được gán</strong> ở bất kỳ đâu trong 2.9.1. Luôn <code>null</code>.</td></tr>
-<tr><td><code>ContentStateFilePath</code></td><td>Có gán, nhưng <strong>luôn null sau update build</strong> (gate trên <code>PreviousContentState == null</code>, <code>BuildScriptPackedMode.cs:575</code>). Cũng null nếu <code>File.Copy</code> ném — exception bị nuốt ở <code>BuildScriptBase.cs:377-388</code> mà build vẫn báo thành công.</td></tr>
-<tr><td><code>ContentCatalogData.LoadFromFile</code></td><td><code>internal</code>, không có <code>InternalsVisibleTo</code>. <strong>Không parse được catalog nhị phân</strong> → task 1.6 phải lấy danh sách bundle từ manifest của 1.7.</td></tr>
+<tr><td><code>RemoteCatalogHashFilePath</code><br><code>RemoteCatalogJsonFilePath</code></td>
+<td>Public, đúng kiểu, compile sạch — và <strong>không có một chỗ nào gán</strong> trong cả package. Luôn <code>null</code>. Phải tìm catalog trên đĩa.</td></tr>
+<tr><td><code>ContentStateFilePath</code></td>
+<td><strong>Luôn null sau update build</strong>: khối ghi state gate trên <code>PreviousContentState == null</code> (<code>BuildScriptPackedMode.cs:575</code>) mà <code>BuildContentUpdate</code> luôn set nó. Sau <em>full</em> build thì null nghĩa là <em>copy đã lỗi và bị nuốt</em> (<code>BuildScriptBase.cs:376-389</code> catch rồi log, không rethrow) — không phải "không áp dụng".</td></tr>
+<tr><td><code>ContentCatalogData.LoadFromFile</code></td>
+<td><code>internal</code>, không có <code>InternalsVisibleTo</code>. <strong>Không parse được catalog nhị phân</strong> → 1.6 lấy danh sách bundle từ manifest của 1.7.</td></tr>
+<tr><td><code>AssetBundleBuildResults</code></td>
+<td><em>Có</em> được điền (<code>BuildScriptPackedMode.cs:1532</code>) nhưng chỉ chứa bundle <strong>build lại trong lượt này</strong>. Sau update, thư mục output vẫn còn bundle của các build trước và chúng phải nằm trong manifest — player trên catalog cũ vẫn tải chúng. <code>Hash</code> chỉ được gán khi bundle resolve ra catalog location (<code>:1461-1463</code>), nên có thể rỗng hợp lệ.</td></tr>
+<tr><td><code>ContentStateBuildPath</code></td>
+<td>Là <strong>thư mục</strong>; Addressables tự nối <code>addressables_content_state.bin</code> (<code>ContentUpdateScript.cs:574</code>). <code>ContentStateManager.ResolvePath</code> từng quên bước nối này và báo "file not found" với chính thư mục chứa file. Chưa ai gọi nó nên chưa ai thấy.</td></tr>
+<tr><td>Newtonsoft.Json</td>
+<td><strong>Không có trong project.</strong> Vắng khỏi <code>packages-lock.json</code>, vắng khỏi package cache, và Addressables 2.9.1 không kéo về. Dùng <code>JsonUtility</code> — nó xử lý được field public + nested <code>[Serializable]</code> + <code>List&lt;T&gt;</code>; giới hạn thật của nó là dictionary, đa hình, array ở top level.</td></tr>
 </tbody></table></div>
 
-<h2 id="next">5. Làm gì tiếp — thứ tự cụ thể</h2>
+<h2 id="lesson">6. Kiểu lỗi lặp lại nhiều nhất</h2>
 
-<h3>Bước 0 — chạy 1.12 lần đầu (30 phút)</h3>
-<p>Không có việc dọn dẹp; working tree sạch và mọi thứ đã push. Nhưng 1.12 mới chỉ có code.</p>
-<ol>
-<li><strong>Quyết định gitignore trước.</strong> Chạy CLI là 2.5 MB vào git vĩnh viễn nếu không ignore <code>Assets/Examples/CdnTest/corpus-*</code>.</li>
-<li>Chạy <code>CdnTestContentCLI.GenerateTestCorpus</code>, kiểm 3 group và 4 asset thật sự xuất hiện.</li>
-<li>Build content, rồi chạy <code>CdnBuildSnapshotTests</code>. Bốn test đó chưa từng chạy — kỳ vọng có lỗi ở lượt đầu.</li>
-</ol>
-<p>Làm bước này trước 1.2 vì nó cho bạn baseline snapshot để đo, và vì một harness chưa chạy lần nào thì chưa phải harness.</p>
+<p>Không phải code sai. Là <strong>code chạy sạch, tự kiểm tra xanh, và không kiểm cái nó tưởng đang kiểm</strong>.
+Phiên vừa rồi gặp bốn lần:</p>
 
-<h3>Bước 1 — task 1.2, ưu tiên cao nhất</h3>
-<p><code>CdnBuildCLI.BuildContentUpdate</code>. Đây là chỗ nối mọi thứ đã xây và là chỗ duy nhất chặn được rủi ro §4.</p>
-<p>Phải xử lý ba dạng thất bại khác nhau của API:</p>
 <ul>
-<li>thiếu file state → <code>LoadContentState</code> <strong>ném</strong> <code>FileNotFoundException</code> (<code>ContentUpdateScript.cs:616</code>)</li>
-<li>cache không hợp lệ → <code>BuildContentUpdate</code> <strong>trả <code>null</code></strong>, không có <code>Error</code> để đọc (<code>:655-656</code>)</li>
-<li>build được nhưng sai thư mục → chính là §4, chỉ <code>ContentStateManager.Validate</code> bắt được</li>
+<li><code>CdnBuildSnapshotTests</code> — 4 test tên nghe như đo hành vi bundling thật, nhưng dựng bundle giả
+bằng <code>File.Create</code> trong thư mục temp. Test "quan trọng nhất" tự xoá rồi tạo lại đúng những
+bundle nó sắp khẳng định là đã đổi.</li>
+<li>Corpus self-check đếm entry qua dict khoá ghép, che mất việc entry bị dời group.</li>
+<li><code>TotalChangedBytes</code> đo hiệu kích thước thay vì số byte phải tải.</li>
+<li><code>ArchiveAfterBuild</code>, <code>ResolvePath</code> — viết xong, chưa ai gọi, nên bug nằm im.</li>
 </ul>
-<p>Gọi <code>ContentStateManager.Validate</code> và <code>ContentUpdateRestrictions.Check</code> <strong>trước</strong> khi build, không phải sau.</p>
 
-<h3>Bước 2 — 1.12 rồi 1.7</h3>
-<p>1.12 trước vì không có corpus thì <strong>tiêu chí thoát của Phase 1 không đo được</strong>: hiện toàn bộ remote content là một bundle 1294 byte, không thể tạo thay đổi 2 MB.</p>
-
-<h3>Bước 3 — 1.6, 1.8 song song</h3>
-<p>1.6 cần manifest của 1.7. 1.8 chỉ YAML + shell, không đụng C#.</p>
-
-<h3>Bước 4 — 1.9 → 1.10 → 1.11, tuần tự</h3>
-<p>Cả ba đều sửa <code>CdnManagerWindow.RegisterTabs()</code>. Không fan-out được.</p>
-
-<div class="note">
-<span class="tag">Bản đồ song song đã sửa</span>
-<p>Doc gốc nói <code>1.1–1.3</code> ∥ <code>1.6/1.7</code>. Sai: 1.2, 1.3, 1.4, 1.7 <strong>cùng ghi <code>CdnBuildCLI.cs</code></strong> nếu viết theo kiểu tích hợp. Cách tránh: mỗi task ship một class độc lập trong file riêng, chỉ 1.2 làm phần nối. Đó là cách 1.3 và 1.4 đã làm và nó hoạt động.</p>
-</div>
-
-<h2 id="cmd">6. Lệnh cần dùng</h2>
-
-<p>Unity: <code>C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe</code></p>
-
-<h4>Compile + áp settings contract</h4>
-<pre><code>Unity.exe -batchmode -quit -nographics -projectPath &lt;repo&gt; \
-  -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
-  -profile Local -logFile build.log</code></pre>
-
-<h4>Build content</h4>
-<pre><code>Unity.exe -batchmode -quit -nographics -projectPath &lt;repo&gt; \
-  -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent \
-  -cdnProfile Local -logFile build.log</code></pre>
-
-<h4>Chạy integration test — hai bước, không gộp được</h4>
-<pre><code>Unity.exe -batchmode -quit -nographics -projectPath &lt;repo&gt; \
-  -executeMethod AddressableManager.Tests.PlayModeTestSetup.EnsurePackedPlayModeBuilder
-
-Unity.exe -batchmode -nographics -projectPath &lt;repo&gt; \
-  -runTests -testPlatform PlayMode -testResults results.xml</code></pre>
+<p>Cả bốn chỉ lộ ra khi <strong>chạy thật và kiểm tác dụng phụ trên đĩa</strong>. Không cái nào bị review
+bắt được, kể cả review nhiều vòng.</p>
 
 <div class="note d">
 <span class="tag">Bắt buộc sau mọi lệnh Unity</span>
 <pre style="margin:.5rem 0 0"><code>grep -c "error CS" build.log     # phải là 0
-git status --short               # tác dụng phụ có xảy ra không</code></pre>
-<p style="margin-top:.6rem"><strong>Exit code của Unity là 0 kể cả khi assembly không compile và method không hề chạy.</strong> Đã xảy ra thật trong phiên này: một CLI thiếu <code>using UnityEngine</code>, không chạy dòng nào, Unity vẫn exit 0 và <code>AddressableAssetSettings.asset</code> không đổi một byte.</p>
+git status --short               # tác dụng phụ có xảy ra không
+ls / sha256sum &lt;file mong đợi&gt;   # nó có thật không</code></pre>
+<p style="margin-top:.6rem"><strong>Unity exit 0 kể cả khi assembly không compile và method không hề chạy.</strong></p>
 </div>
 
-<h2 id="agent">7. Làm việc với agent</h2>
+<h2 id="next">7. Làm gì tiếp</h2>
 
-<p><code>CLAUDE.md</code> ở gốc repo đã có đầy đủ routing table, bảng quyền ghi và ba tầng kiểm chứng. Ba điều quan trọng nhất rút từ phiên này:</p>
+<h3>Task 1.8 — CI (ưu tiên, và độc lập)</h3>
+<p>Chỉ YAML + shell, không đụng C#, nên không xung đột với 1.9–1.11. Mọi thứ nó cần đã có entry point
+batchmode: <code>CdnSetupCLI.ApplyPhaseZeroSetup</code>, <code>CdnBuildCLI.BuildContent</code>,
+<code>BuildContentUpdate</code>, <code>VerifyOutput</code>, <code>CdnTestContentCLI.GenerateTestCorpus</code>.</p>
+<p>Hai job theo doc infra §7: <code>content-full</code> và <code>content-update</code>. Điểm phải làm đúng:</p>
+<ul>
+<li>Archive <code>addressables_content_state.bin</code> sau <strong>mọi</strong> build — mất nó là mất
+khả năng patch cho version đó vĩnh viễn. Sau update build thì archive <em>file đầu vào</em>, vì update
+không sinh state mới.</li>
+<li><code>build-manifest.json</code> archive vào bucket private, <strong>không</strong> upload lên CDN.
+Nó nằm ở <code>ServerData/</code> gốc, trên các thư mục platform mà CI sync, nên chỉ cần sync
+<code>ServerData/&lt;platform&gt;/</code> là tự nhiên không dính.</li>
+<li>Chạy <code>VerifyOutput</code> <strong>trước</strong> khi upload, không phải sau.</li>
+</ul>
 
-<h3>Kiểm đĩa trước khi đọc báo cáo</h3>
-<p>Ở wave 1 của Phase 1, <strong>4 trong 6 agent báo hoàn thành mà không tạo file nào</strong>. Một agent báo cả đường dẫn lẫn GUID cụ thể cho file chưa từng được ghi. Một agent khác giao bản thiết kế rồi viết "agent viết code sẽ cần…" trong khi chính nó là agent đó.</p>
-<pre><code>git status --short
-find . -name "&lt;File&gt;*" -not -path "./Library/*"
-grep -rn "&lt;Symbol&gt;" --include=*.cs Packages/</code></pre>
-<p>Cả bốn đều giao hàng thật sau khi bị gửi lại kèm output của lệnh làm bằng chứng.</p>
+<h3>Task 1.9 → 1.10 → 1.11 — tuần tự</h3>
+<p>Cả ba đều sửa <code>CdnManagerWindow.RegisterTabs()</code>, không fan-out được. 1.11 (Patch Diff) đã có
+sẵn nguyên liệu: so hai <code>build-manifest.json</code> theo <code>contentHash</code> cho ra new/changed/removed
+— đã kiểm bằng tay và ra đúng kết quả.</p>
 
-<h3>Dán sẵn API vào prompt, kèm namespace</h3>
-<p>Dặn "hãy xác minh" thất bại <strong>5 lần</strong>: <code>GetVariableId</code>, <code>GetDefaultProfileId</code>, <code>FindAssetEntry</code>, <code>AddAssetEntry</code>, <code>Assert.IsNotEqual</code> — không cái nào tồn tại. Dán sẵn chữ ký kèm <code>file:line</code> <strong>và namespace</strong> thì đúng ngay lần đầu.</p>
-<p>Bắt chỉ ra <strong>access modifier</strong>, không chỉ sự tồn tại: <code>AddAssetEntry</code> có thật — nhưng <code>internal</code>.</p>
-<p>Và bắt chỉ ra <strong>cơ chế</strong>, không phải bằng chứng: <em>"hàm nào expand token này?"</em> ra kết quả đúng; <em>"tìm bằng chứng token này đúng"</em> ra một trích dẫn đúng chuỗi nhưng sai cơ chế.</p>
+<h2 id="cmd">8. Lệnh cần dùng</h2>
 
-<h3>Bảng toàn dấu tick là dấu hiệu xấu</h3>
-<p>Kiểu thất bại đắt nhất là một bảng đảm bảo viết ra để <em>bảo vệ</em> quyết định đã chọn thay vì <em>thử phá</em> nó. Nó đọc rất thuyết phục và đã gây 4 quyết định sai. Dấu hiệu: toàn ✅, không dòng nào nói "chỗ này tôi chưa chắc". Gặp bảng như vậy thì đừng đọc — chạy thử.</p>
+<p>Unity: <code>C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe</code></p>
+<p>Repo nằm ở worktree: <code>.claude/worktrees/cdn-system-package-review-5545d3</code></p>
 
-<h2 id="open">8. Việc còn treo</h2>
+<pre><code>ROOT=.claude/worktrees/cdn-system-package-review-5545d3
+
+# Áp settings contract (cũng là cách compile nhanh nhất)
+Unity.exe -batchmode -quit -nographics -projectPath $ROOT \
+  -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
+  -profile Local -logFile setup.log
+
+# Sinh corpus (idempotent, tất định)
+Unity.exe ... -executeMethod AddressableManager.Editor.Cdn.CdnTestContentCLI.GenerateTestCorpus
+
+# Full build  /  Content update  /  Verify
+Unity.exe ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent       -cdnProfile Local
+Unity.exe ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate -cdnProfile Local
+Unity.exe ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput       -cdnProfile Local
+
+# EditMode test
+Unity.exe -batchmode -nographics -projectPath $ROOT \
+  -runTests -testPlatform EditMode -testFilter CdnBuildSnapshotTests -testResults r.xml
+
+# PlayMode test — hai bước, không gộp được
+Unity.exe ... -executeMethod AddressableManager.Tests.PlayModeTestSetup.EnsurePackedPlayModeBuilder
+Unity.exe -batchmode -nographics -projectPath $ROOT -runTests -testPlatform PlayMode -testResults r.xml</code></pre>
+
+<h2 id="open">9. Việc còn treo</h2>
 
 <div class="tw"><table>
 <thead><tr><th>Việc</th><th>Ghi chú</th></tr></thead>
 <tbody>
-<tr><td>Chạy <code>GenerateTestCorpus</code> lần đầu</td><td>Code xong nhưng chưa thực thi; quyết định gitignore corpus trước khi chạy</td></tr>
-<tr><td>Xác nhận platform-scoped content state</td><td>Rule đã xanh nhưng file trên đĩa còn phẳng từ build cũ. Cần một build mới để xác nhận.</td></tr>
-<tr><td>TMP vẫn là hard dependency</td><td>Task 0.2 cố ý không làm. Muốn optional thật phải tách <code>AddressableProgressBar</code> sang assembly riêng với <code>defineConstraints</code> — có rủi ro mất reference prefab.</td></tr>
-<tr><td>3 menu item trùng có sẵn</td><td><code>Layout Rule Editor</code>, <code>Layout Viewer</code>, <code>Dashboard</code> đều đăng ký ở hai nơi. Không thuộc CDN.</td></tr>
-<tr><td><code>build-manifest.json</code> đặt ở đâu</td><td>Doc ghi 4 chỗ mâu thuẫn. Đã chọn: <code>ServerData/</code> gốc, không upload CDN, archive vào bucket private. <strong>Doc chưa sửa theo.</strong></td></tr>
-<tr><td>Doc drift</td><td>Khoảng 10 chỗ doc lệch code, có danh sách đầy đủ trong log phiên. Cần <code>documentation-specialist</code> sửa <strong>cả hai bản ngôn ngữ</strong>, giữ nguyên tập <code>id</code>.</td></tr>
-<tr><td>Nâng URP 17.2 → 17.5</td><td>Hệ quả ngoài ý muốn của việc mở project bằng 6000.5.7f1. Đã tách riêng commit <code>5911567</code> để truy nguyên/revert được.</td></tr>
+<tr><td><strong>Tiền đề của task 1.4 sai so với Addressables</strong></td>
+<td>Doc viết static group đổi nghĩa là <em>"needs a new player build"</em>. Không đúng: quy trình chuẩn là
+<code>ContentUpdateScript.CreateContentUpdateGroup</code> (<code>:1100</code>) dời entry đã đổi sang group mới
+không-static — bước "Prepare for Content Update". Code hiện hard-fail theo spec, và với CI thì fail to tiếng
+cũng có lý (không muốn CI tự cấu trúc lại group), nhưng <strong>thông điệp lỗi đang lặp lại lời khuyên sai</strong>.
+Cần chốt lại thiết kế rồi sửa cả code lẫn doc.</td></tr>
+<tr><td>Corpus tốn ~2 MB trong git</td>
+<td>Không nén được (đó là chủ đích). Tất định nên không churn, và <strong>không thể gitignore</strong>: group
+shared và hai material tham chiếu nó theo GUID.</td></tr>
+<tr><td>4 test snapshot vẫn dùng fixture giả</td>
+<td>Chúng kiểm <code>BuildSnapshot.Capture/Diff</code>, không kiểm Addressables. Phép đo thật hiện làm bằng tay
+(§4). Nên có một test nối harness vào <code>ServerData/&lt;platform&gt;/bundles</code> thật — giờ đã khả thi vì 1.2 có rồi.</td></tr>
+<tr><td>Determinism chưa chạy trên CI checkout sạch</td>
+<td>Corpus generator đã chứng minh tất định byte-for-byte trên máy này (sinh → băm → xoá → sinh lại). Toàn bộ
+build thì chưa kiểm trên máy sạch.</td></tr>
+<tr><td>Tiêu chí Phase 0 "player build" chưa làm</td>
+<td>Đã chứng minh in-process, chưa build player thật.</td></tr>
+<tr><td>TMP vẫn là hard dependency</td>
+<td>Task 0.2 cố ý không làm.</td></tr>
+<tr><td>3 menu item trùng có sẵn</td>
+<td><code>Layout Rule Editor</code>, <code>Layout Viewer</code>, <code>Dashboard</code> đăng ký ở hai nơi. Không thuộc CDN.</td></tr>
+<tr><td>Doc drift</td>
+<td>Vị trí <code>build-manifest.json</code> (doc ghi 4 chỗ mâu thuẫn; đã chốt <code>ServerData/</code> gốc),
+tiền đề 1.4, và khoảng 10 chỗ khác. Cần <code>documentation-specialist</code> sửa <strong>cả hai bản ngôn ngữ</strong>,
+giữ nguyên tập <code>id</code>.</td></tr>
 </tbody></table></div>
 
 <h3>Doc liên quan</h3>
