@@ -313,8 +313,23 @@ namespace AddressableManager.Editor.Cdn
                                      $"{(violation.IsExplicitModification ? "  (explicitly modified)" : "  (pulled in as a dependency)")}");
                         }
                     }
-                    LogError("  A static group changed, so this update is not actually delta-able.");
-                    LogError("  Either revert the static content or ship a new player build.");
+                    LogError("");
+                    LogError("  These assets live in groups marked StaticContent, which means \"not rebuilt by a");
+                    LogError("  content update\". Addressables does NOT fail on this: it logs a warning and reverts");
+                    LogError("  each changed entry to point at its PREVIOUS bundle");
+                    LogError("  (RevertUnchangedAssetsToPreviousAssetState.cs:183-199). The patch would build, exit 0,");
+                    LogError("  upload cleanly — and not contain these changes. That is why this is a hard failure");
+                    LogError("  here rather than a warning nobody reads in a CI log.");
+                    LogError("");
+                    LogError("  A new player build is NOT required. The fix is the \"Prepare for Content Update\"");
+                    LogError("  step: move the changed entries into a fresh non-static group via");
+                    LogError("  ContentUpdateScript.CreateContentUpdateGroup (ContentUpdateScript.cs:1100), so the");
+                    LogError("  update rebuilds them into a new bundle players will actually download.");
+                    LogError("  Run it from the Update Preview tab, review which entries move, and commit the group");
+                    LogError("  change — it edits AddressableAssetSettings and belongs in a reviewed diff, not in a");
+                    LogError("  CI job that restructures your groups on its own.");
+                    LogError("");
+                    LogError("  Reverting the offending assets is the other valid resolution.");
                     EditorApplication.Exit(1);
                     return;
                 }
