@@ -585,6 +585,26 @@ namespace AddressableManager.Editor.Cdn
             var manifestFile = new FileInfo(written.Value);
             Log($"✓ Build manifest: {written.Value}");
             Log($"  Size: {FormatBytes(manifestFile.Length)}");
+
+            // Task 1.11: the patch cost, so CI can read it off the build log as well as the manifest.
+            var reloaded = ContentDiff.Load(written.Value);
+            if (reloaded.IsSuccess && reloaded.Value.patch != null)
+            {
+                var patch = reloaded.Value.patch;
+                if (patch.available)
+                {
+                    Log($"  Patch vs previous build ({patch.comparedToGitSha}, {patch.comparedToBuildDate}):");
+                    Log($"    {patch.newBundleCount} new, {patch.changedBundleCount} changed, " +
+                        $"{patch.removedBundleCount} removed, {patch.unchangedBundleCount} unchanged" +
+                        $"{(patch.catalogChanged ? ", catalog changed" : "")}");
+                    Log($"    A player on that build downloads {FormatBytes(patch.patchSizeBytes)} " +
+                        $"({patch.patchSizeBytes:N0} B)");
+                }
+                else
+                {
+                    Log("  No previous manifest to compare against, so no patch size for this build.");
+                }
+            }
             Log("  Not under the per-platform folders, so a CI sync of ServerData/<platform>/ will");
             Log("  not publish it. Archive it privately as the build's audit trail.");
             return true;

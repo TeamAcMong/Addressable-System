@@ -70,6 +70,57 @@ namespace AddressableManager.Editor.Cdn
         /// Task 1.11 compares contentHash values between old and new manifests to detect actual changes.
         /// </summary>
         public List<BundleInfo> bundles = new List<BundleInfo>();
+
+        /// <summary>
+        /// What this build costs a player who has the previous one (task 1.11).
+        /// Computed at write time by diffing against the manifest this one replaces.
+        /// Check <see cref="PatchInfo.available"/> before reading the numbers.
+        /// </summary>
+        public PatchInfo patch = new PatchInfo();
+    }
+
+    /// <summary>
+    /// Diff of this build against the one it replaced, embedded so CI can assert on patch size
+    /// without re-running the comparison, and without needing both manifests on hand.
+    /// </summary>
+    [System.Serializable]
+    public class PatchInfo
+    {
+        /// <summary>
+        /// False when there was no previous manifest to compare against — a first build, or a clean
+        /// output directory. The counts below are then all zero and mean nothing; a consumer that
+        /// skips this flag would read "0 bytes to download" as good news.
+        /// </summary>
+        public bool available = false;
+
+        /// <summary>buildDate of the manifest this was compared against.</summary>
+        public string comparedToBuildDate = "";
+
+        /// <summary>gitSha of the manifest this was compared against.</summary>
+        public string comparedToGitSha = "";
+
+        /// <summary>Bundles present only in this build.</summary>
+        public int newBundleCount = 0;
+
+        /// <summary>Bundles in both builds whose content hash differs.</summary>
+        public int changedBundleCount = 0;
+
+        /// <summary>Bundles present only in the previous build.</summary>
+        public int removedBundleCount = 0;
+
+        /// <summary>Bundles byte-identical in both builds.</summary>
+        public int unchangedBundleCount = 0;
+
+        /// <summary>True when the catalog's content hash differs.</summary>
+        public bool catalogChanged = false;
+
+        /// <summary>
+        /// Bytes a player on the previous build must download: full sizes of new and changed
+        /// bundles, plus the catalog pair when it changed. Not a size delta — bundles are fetched
+        /// whole, so a bundle rebuilt with different content at the same size still costs its full
+        /// size. This is the number the Phase 1 exit criterion is measured against.
+        /// </summary>
+        public long patchSizeBytes = 0;
     }
 
     /// <summary>

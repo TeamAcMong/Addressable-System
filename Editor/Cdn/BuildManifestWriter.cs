@@ -121,6 +121,12 @@ namespace AddressableManager.Editor.Cdn
 
                 Directory.CreateDirectory(outputDir);
                 string manifestPath = Path.Combine(outputDir, ManifestFileName);
+
+                // Task 1.11: diff against the manifest this one is about to replace. The previous
+                // build's manifest is sitting at exactly this path until the write below, so no
+                // separate bookkeeping is needed — but it must be read BEFORE the overwrite.
+                DescribePatch(manifestPath, manifest);
+
                 File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
 
                 // Verify by reading back, not by trusting the write. A manifest that cannot be
@@ -239,6 +245,55 @@ namespace AddressableManager.Editor.Cdn
             }
 
             return bundles;
+        }
+
+        /// <summary>
+        /// Fill in <see cref="BuildManifest.patch"/> by comparing against the manifest currently at
+        /// <paramref name="previousManifestPath"/>, if there is one.
+        /// </summary>
+        /// <remarks>
+        /// A missing or unreadable previous manifest leaves patch.available false rather than
+        /// producing zeroes. Zeroes would read as "nothing to download", which is the opposite of
+        /// what a first build means.
+        /// </remarks>
+        private static void DescribePatch(string previousManifestPath, BuildManifest current)
+        {
+            if (!File.Exists(previousManifestPath))
+            {
+                return;
+            }
+
+            var previous = ContentDiff.Load(previousManifestPath);
+            if (previous.IsFailure)
+            {
+                Debug.LogWarning($"[BuildManifestWriter] Previous manifest could not be read, so this build " +
+                                 $"records no patch size: {previous.ErrorMessage}");
+                return;
+            }
+
+            ContentDiffResult diff;
+            try
+            {
+                diff = ContentDiff.Compare(previous.Value, current);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[BuildManifestWriter] Could not diff against the previous manifest: {ex.Message}");
+                return;
+            }
+
+            current.patch = new PatchInfo
+            {
+                available = true,
+                comparedToBuildDate = previous.Value.buildDate ?? string.Empty,
+                comparedToGitSha = previous.Value.gitSha ?? string.Empty,
+                newBundleCount = diff.NewBundles.Count,
+                changedBundleCount = diff.ChangedBundles.Count,
+                removedBundleCount = diff.RemovedBundles.Count,
+                unchangedBundleCount = diff.UnchangedCount,
+                catalogChanged = diff.CatalogChanged,
+                patchSizeBytes = diff.PatchSizeBytes
+            };
         }
 
         private static CdnEditorResult<bool> VerifyWritten(string manifestPath, BuildManifest expected)
