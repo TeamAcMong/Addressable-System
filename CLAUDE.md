@@ -51,10 +51,66 @@ Bước 1: unity-tech-lead-orchestrator  → đọc doc phase, ra plan + danh s�
 Bước 2: implementer agent phù hợp     → code theo plan (song song được thì fan-out)
 Bước 3: unity-code-reviewer           → review, đối chiếu Tiêu chí thoát của phase
 Bước 4: implementer agent             → vá theo finding của reviewer
+Bước 5: COMPILE                       → chạy Unity batchmode, phải 0 error CS
+Bước 6: CHẠY THẬT                     → thực thi và kiểm tác dụng phụ mong đợi
 ```
 
 **Bước 4 không được bỏ và không được làm ở main.** `unity-code-reviewer` là read-only — nó chỉ ra lỗi,
 không sửa được. Finding phải quay lại đúng agent đã viết đoạn code đó.
+
+**Bước 5 và 6 không phải tuỳ chọn.** Xem §Ba tầng kiểm chứng. "Agent báo xong" và "xong" là hai
+trạng thái khác nhau.
+
+---
+
+## Ba tầng kiểm chứng (rút từ Phase 0)
+
+Mỗi tầng bắt đúng loại lỗi mà tầng trước để lọt. Bỏ tầng nào là mù loại lỗi đó.
+
+| Tầng | Bắt được | Ví dụ thật ở Phase 0 |
+|------|----------|----------------------|
+| Đọc code | Sai logic, sai giá trị, thiếu liên kết | Token `[PlayerVersion]`, cờ default `true`, `Instance` không ai dùng |
+| **Compile** | API bịa, shadow, thiếu `using` | 5 API không tồn tại, 1 CS0136, 2 CS0246 — **review 6 vòng không thấy** |
+| **Chạy thật** | API đúng mà vô dụng, config sai, false green | `RemoteCatalogHashFilePath` luôn `null`; content build được mà không load nổi |
+
+### Quy tắc cứng
+
+1. **Không commit code Editor/runtime chưa qua một lượt compile.** Không có ngoại lệ.
+
+2. **Không tin exit code của Unity.** `-executeMethod` mà assembly hỏng thì method không chạy và Unity
+   **vẫn exit 0**. Mọi lệnh batchmode phải: grep `error CS` trong log, **và** kiểm tác dụng phụ mong đợi
+   có thật không (file sinh ra? `git status` đổi?).
+
+3. **Mọi CLI phải gate trên `EditorUtility.scriptCompilationFailed`** và tự kiểm tác dụng của chính nó
+   trước khi báo thành công.
+
+4. **Khẳng định phải có bằng chứng độc lập với cơ chế tạo ra nó.** Test HTTP không được chỉ kiểm
+   "load thành công" — phải kiểm server *thực sự nhận được request*. Nếu không, Addressables ở Fast Mode
+   đọc AssetDatabase và test xanh mà chứng minh số không.
+
+5. **Test không được tự vá điều kiện tiên quyết của nó.** Vá được nghĩa là không kiểm được. `[SetUp]`
+   phải **khẳng định** môi trường đúng và fail to tiếng kèm lệnh cần chạy, không được tự sửa.
+
+6. **Test phải chạy hai lần liên tiếp ra cùng kết quả.** State của Unity (bundle cache, play mode script)
+   sống xuyên qua các lần chạy. Xanh một lần không có nghĩa gì.
+
+### Khi delegate task đụng API
+
+Dặn "hãy xác minh" **không có tác dụng ổn định** — đã thất bại 5 lần. Cái có tác dụng:
+
+- **Dán sẵn chữ ký API vào prompt**, kèm `file:line` **và namespace**. Thiếu namespace vẫn ra CS0246.
+- **Bắt chỉ ra dòng khai báo kèm access modifier**, không phải "có tồn tại không".
+  `AddAssetEntry` có thật — nhưng `internal`. Tên đúng, dùng sai.
+- **Bắt chỉ ra *cơ chế*, không phải bằng chứng.** "Hàm nào expand token này?" ra kết quả đúng;
+  "tìm bằng chứng token này đúng" ra một trích dẫn đúng chuỗi nhưng sai cơ chế.
+
+### Kiểu thất bại đắt nhất
+
+Một **bảng đảm bảo viết ra để bảo vệ quyết định đã chọn**, thay vì để thử phá nó. Nó trông giống
+verification, đọc rất thuyết phục, và đã gây 4 quyết định sai trong Phase 0. Dấu hiệu nhận biết: toàn ✅,
+không có dòng nào nói "chỗ này tôi chưa chắc".
+
+Khi agent nộp bảng như vậy, đừng đọc bảng — chạy thử.
 
 ### Flow cho bug / compile error
 
