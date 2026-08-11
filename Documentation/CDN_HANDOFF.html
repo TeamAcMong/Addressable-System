@@ -77,9 +77,9 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 <p style="color:var(--mut);margin:0">Tổng kết một phiên: Phase 0 đóng, Phase 1 đang dở. Tài liệu này để mở Claude Code lên là làm tiếp được ngay.</p>
 <div class="meta">
 <span class="b a">branch: feat/cdn-system</span>
-<span class="b">HEAD: dd8dd78</span>
+<span class="b">HEAD: 217302a</span>
 <span class="b g">Phase 0: đóng</span>
-<span class="b w">Phase 1: 3/12 task</span>
+<span class="b w">Phase 1: 6/12 task</span>
 <span class="b">Unity 6000.5.7f1 · Addressables 2.9.1</span>
 </div>
 </div>
@@ -99,7 +99,7 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 
 <h2 id="now">1. Đang ở đâu</h2>
 
-<p>Nhánh <code>feat/cdn-system</code>, 28 commit, remote đồng bộ tới <code>8e84b24</code> (hai commit cuối <code>2a1e62d</code>, <code>dd8dd78</code> chưa push).</p>
+<p>Nhánh <code>feat/cdn-system</code>, 31 commit. Working tree sạch, compile 0 lỗi, settings contract 38/38.</p>
 
 <div class="tw"><table>
 <thead><tr><th>Hạng mục</th><th>Trạng thái</th></tr></thead>
@@ -159,9 +159,9 @@ GET /StandaloneWindows64/bundles/remotetest_assets_all_d291b9ba….bundle
 <tr><td>1.0</td><td>Bật <code>StaticContent</code>, platform-scope <code>ContentStateBuildPath</code></td><td class="ok">commit <code>dd8dd78</code></td></tr>
 <tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td class="ok">commit <code>afd59cc</code> (kéo lên từ Phase 0)</td></tr>
 <tr><td>1.3</td><td><code>ContentStateManager</code> + <code>CdnEditorResult</code></td><td class="ok">commit <code>dd8dd78</code></td></tr>
-<tr><td>1.4</td><td><code>ContentUpdateRestrictions</code></td><td class="pend">file có, <strong>chưa compile, chưa commit</strong></td></tr>
-<tr><td>1.5</td><td>Tiêm CDN host từ env var</td><td class="pend">code có, <strong>chưa compile, chưa commit</strong></td></tr>
-<tr><td>1.12</td><td>Corpus test ≥2 MB + harness snapshot/diff</td><td class="pend">đang dở trong <code>CdnTestContentCLI.cs</code></td></tr>
+<tr><td>1.4</td><td><code>ContentUpdateRestrictions</code></td><td class="ok">commit <code>217302a</code></td></tr>
+<tr><td>1.5</td><td>Tiêm CDN host từ env var</td><td class="ok">commit <code>217302a</code></td></tr>
+<tr><td>1.12</td><td>Corpus test ≥2 MB + harness snapshot/diff</td><td class="pend">code xong (<code>217302a</code>) — <strong>chưa chạy lần nào</strong></td></tr>
 <tr><td>1.2</td><td><code>BuildContentUpdate</code> CLI</td><td class="no">chưa</td></tr>
 <tr><td>1.6</td><td><code>CatalogVerifier</code></td><td class="no">chưa</td></tr>
 <tr><td>1.7</td><td><code>build-manifest.json</code></td><td class="no">chưa — agent báo xong nhưng <strong>không tạo file</strong></td></tr>
@@ -169,9 +169,15 @@ GET /StandaloneWindows64/bundles/remotetest_assets_all_d291b9ba….bundle
 <tr><td>1.9 / 1.10 / 1.11</td><td>Tab Update Preview, Build, Patch Diff</td><td class="no">chưa</td></tr>
 </tbody></table></div>
 
-<div class="note d">
-<span class="tag">Việc đầu tiên khi mở lại</span>
-<p>Working tree có 4 file chưa commit (<code>ContentUpdateRestrictions.cs</code> + meta, <code>CdnProfileManager.cs</code>, <code>CdnTestContentCLI.cs</code>). <strong>Compile trước rồi mới commit</strong> — chưa file nào trong số đó qua compiler.</p>
+<div class="note g">
+<span class="tag">Working tree sạch</span>
+<p>Tất cả đã compile (0 error CS) và commit. Settings contract 38/38 rule xanh. Không có việc dọn dẹp nào trước khi làm tiếp.</p>
+</div>
+
+<div class="note w">
+<span class="tag">1.12 có code nhưng chưa chạy</span>
+<p><code>GenerateTestCorpus</code> đã viết xong nhưng <strong>chưa thực thi lần nào</strong>, nên corpus 2.5 MB chưa tồn tại trên đĩa và <code>CdnBuildSnapshotTests</code> chưa từng chạy. Việc đầu tiên nên làm là chạy nó và xem 4 test kia có xanh không — đây đúng là loại "code có, hiệu quả chưa biết" mà cả phiên này đã học cách không tin.</p>
+<p><strong>Trước khi chạy, quyết định về gitignore:</strong> <code>Assets/Examples/CdnTest/</code> hiện không được ignore, nên chạy CLI một lần là 2.5 MB lorem ipsum vào git vĩnh viễn. Đề xuất: gitignore corpus sinh ra, để CI tự sinh — nội dung là procedural nên tái tạo được y hệt, không có lý do lưu.</p>
 </div>
 
 <h2 id="risk">4. Rủi ro số 1 chưa được chặn</h2>
@@ -293,7 +299,7 @@ grep -rn "&lt;Symbol&gt;" --include=*.cs Packages/</code></pre>
 <div class="tw"><table>
 <thead><tr><th>Việc</th><th>Ghi chú</th></tr></thead>
 <tbody>
-<tr><td>Push 2 commit</td><td><code>2a1e62d</code>, <code>dd8dd78</code> — remote đang ở <code>8e84b24</code></td></tr>
+<tr><td>Chạy <code>GenerateTestCorpus</code> lần đầu</td><td>Code xong nhưng chưa thực thi; quyết định gitignore corpus trước khi chạy</td></tr>
 <tr><td>Xác nhận platform-scoped content state</td><td>Rule đã xanh nhưng file trên đĩa còn phẳng từ build cũ. Cần một build mới để xác nhận.</td></tr>
 <tr><td>TMP vẫn là hard dependency</td><td>Task 0.2 cố ý không làm. Muốn optional thật phải tách <code>AddressableProgressBar</code> sang assembly riêng với <code>defineConstraints</code> — có rủi ro mất reference prefab.</td></tr>
 <tr><td>3 menu item trùng có sẵn</td><td><code>Layout Rule Editor</code>, <code>Layout Viewer</code>, <code>Dashboard</code> đều đăng ký ở hai nơi. Không thuộc CDN.</td></tr>
