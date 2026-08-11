@@ -1,0 +1,28 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="build-root" class="cdn-tab-page">
+        <ui:VisualElement name="build-target-row" class="cdn-build-target-row">
+            <ui:Label name="build-platform-label" text="Platform: -" class="cdn-build-platform" />
+            <ui:Button name="build-switch-platform-btn" text="Build Settings..." class="cdn-btn" />
+            <ui:DropdownField name="build-profile-dropdown" label="Profile" class="cdn-build-profile" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="build-state" class="cdn-build-state" />
+
+        <ui:HelpBox name="build-summary" text="Reading build state..." class="cdn-build-summary" />
+
+        <ui:VisualElement name="build-actions" class="cdn-actions-row">
+            <ui:Button name="build-full-btn" text="Build Full" class="cdn-btn cdn-btn-primary cdn-btn-wide" />
+            <ui:Button name="build-update-btn" text="Build Update" class="cdn-btn cdn-btn-wide" />
+            <ui:Button name="build-verify-btn" text="Verify output" class="cdn-btn" />
+            <ui:Button name="build-refresh-btn" text="Refresh" class="cdn-btn" />
+        </ui:VisualElement>
+
+        <ui:Label text="Patch cost of the last build" class="cdn-section-header" />
+        <ui:VisualElement name="build-patch" class="cdn-build-patch" />
+
+        <ui:Label text="Build log" class="cdn-section-header" />
+        <ui:ScrollView name="build-log-scroll" class="cdn-build-log-scroll">
+            <ui:VisualElement name="build-log" class="cdn-build-log" />
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

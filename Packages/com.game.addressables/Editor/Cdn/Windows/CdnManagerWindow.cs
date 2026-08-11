@@ -107,7 +107,6 @@ namespace AddressableManager.Editor.Cdn.Windows
         /// Tab registration point. Tasks 0.9-0.10 register Validator and Local Server. Append new tabs
         /// here as later tasks land - do not replace this method's contents wholesale, and do not
         /// register any tab anywhere else:
-        ///   task 1.10  Build tab
         ///   task 4.6   Runtime Monitor tab
         ///   task 5.9   Catalog Inspector tab
         ///
@@ -130,7 +129,8 @@ namespace AddressableManager.Editor.Cdn.Windows
             {
                 new SettingsValidatorTab(),
                 new LocalServerTab(),
-                new UpdatePreviewTab()
+                new UpdatePreviewTab(),
+                new BuildTab()
             };
         }
 

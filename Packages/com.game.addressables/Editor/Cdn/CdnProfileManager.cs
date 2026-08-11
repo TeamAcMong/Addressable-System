@@ -86,7 +86,12 @@ namespace AddressableManager.Editor.Cdn
         /// <summary>
         /// The four profiles required by design doc §9, task 0.5.
         /// </summary>
-        private static class ProfileNames
+        /// <remarks>
+        /// internal rather than private so the Build tab's profile dropdown lists exactly the
+        /// profiles this manager creates. A hand-typed list in the UI would drift the first time a
+        /// profile is renamed, and the symptom would be a dropdown entry that fails to activate.
+        /// </remarks>
+        internal static class ProfileNames
         {
             public const string Local = "Local";
             public const string Dev = "Dev";
