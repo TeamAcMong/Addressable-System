@@ -124,8 +124,16 @@ namespace AddressableManager.Editor.Cdn
     public class BundleInfo
     {
         /// <summary>
-        /// Internal bundle name from the Addressables build (e.g., "assets_scene_main", "assets_ui_common").
-        /// Used by task 1.6 (CatalogVerifier) to cross-reference with catalog entries and verify URLs.
+        /// BundleBuildResult.InternalBundleName as reported by the build. In practice this is a
+        /// 32-character hash (e.g. "15790ca3624471fe3b4a8dfd6385a912"), not a readable name — the
+        /// readable part lives in <see cref="fileName"/>. Kept for correlation with Unity's build
+        /// output; falls back to the file name without extension for bundles carried over from an
+        /// earlier build, which are not in this build's results.
+        ///
+        /// Task 1.6 (CatalogVerifier) should key off <see cref="fileName"/>, not this: the binary
+        /// catalog cannot be parsed (ContentCatalogData.LoadFromFile is internal with no
+        /// InternalsVisibleTo), so verification works from file names and the CDN URLs built from
+        /// them.
         /// </summary>
         public string name = "";
 
