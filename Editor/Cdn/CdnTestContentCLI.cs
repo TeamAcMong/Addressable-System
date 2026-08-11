@@ -312,7 +312,30 @@ namespace AddressableManager.Editor.Cdn
             bundleSchema.BuildPath.SetVariableByName(settings, "Remote.BuildPath");
             bundleSchema.LoadPath.SetVariableByName(settings, "Remote.LoadPath");
 
-            Log($"  Configured bundle paths: BuildPath=[Remote.BuildPath], LoadPath=[Remote.LoadPath]");
+            // The corpus groups must be NON-static, set explicitly rather than left to the schema
+            // default. StaticContent = true means "these bundles are not rebuilt by a content
+            // update"; changing an asset in such a group is a restriction violation, which
+            // CdnBuildCLI.BuildContentUpdate treats as a hard failure per Phase 1 §1.4. With every
+            // corpus group static there is no reachable state: change something and the build is
+            // refused, change nothing and there is no delta to measure. The corpus exists to be
+            // changed, so it is dynamic.
+            //
+            // This is a TEST corpus, not a model of shipping configuration. Real shipped content is
+            // normally static, and a change there is resolved by moving the modified entries into a
+            // fresh group via ContentUpdateScript.CreateContentUpdateGroup (ContentUpdateScript.cs:1100)
+            // — the "Prepare for Content Update" step — not by rebuilding the player.
+            var contentUpdateSchema = group.GetSchema<ContentUpdateGroupSchema>();
+            if (contentUpdateSchema == null)
+            {
+                LogWarning("  ContentUpdateGroupSchema not found on group - cannot set StaticContent");
+            }
+            else
+            {
+                contentUpdateSchema.StaticContent = false;
+                EditorUtility.SetDirty(contentUpdateSchema);
+            }
+
+            Log($"  Configured bundle paths: BuildPath=[Remote.BuildPath], LoadPath=[Remote.LoadPath], StaticContent=false");
         }
 
         /// <summary>
@@ -452,57 +475,92 @@ namespace AddressableManager.Editor.Cdn
                     return;
                 }
 
-                Log("Step 1: Creating shared asset (2.5 MB texture)...");
-                var sharedAsset = CreateOrGetSharedAsset();
-                if (sharedAsset == null)
+                Log("Step 1: Creating the shared payload texture (~2 MB, incompressible)...");
+                var sharedTexture = CreateOrGetSharedTexture();
+                if (sharedTexture == null)
                 {
-                    LogError("Failed to create or retrieve shared asset");
+                    LogError("Failed to create or retrieve the shared texture");
                     EditorApplication.Exit(2);
                     return;
                 }
-                Log($"✓ Shared asset ready at {GetSharedAssetPath()} (~2.5 MB)");
+                Log($"✓ Shared texture ready at {GetSharedTexturePath()}");
                 Log("");
 
-                // Create groups and their independent assets
                 var groups = new Dictionary<string, AddressableAssetGroup>();
-                var groupAssets = new Dictionary<string, List<(string address, TextAsset asset)>>();
+                var groupAssets = new Dictionary<string, List<(string address, UnityEngine.Object asset)>>();
 
-                Log("Step 2: Creating remote groups and independent assets...");
+                Log("Step 2: Creating remote groups and their assets...");
 
-                // Group A: shared + independent A
+                // The shared payload is an entry in its OWN group. Groups A and B do not contain
+                // it; they contain materials that REFERENCE it. That is the only way one asset can
+                // be shared by two groups in Addressables — an AddressableAssetEntry belongs to
+                // exactly one group, so adding the same asset to A and then B silently MOVES it out
+                // of A. The previous version of this generator did exactly that and produced a
+                // corpus with no shared dependency at all.
+                string groupSharedName = "Remote Corpus Shared";
+                var groupShared = CreateOrGetGroup(groupSharedName, settings);
+                groups[groupSharedName] = groupShared;
+                groupAssets[groupSharedName] = new List<(string, UnityEngine.Object)>
+                {
+                    ("corpus/shared-texture", sharedTexture)
+                };
+                Log($"✓ {groupSharedName}: shared-texture (the ~2 MB payload)");
+
+                // Group A: a material referencing the shared texture, plus an independent asset
                 string groupAName = "Remote Assets Group A";
                 var groupA = CreateOrGetGroup(groupAName, settings);
                 groups[groupAName] = groupA;
+                var materialA = CreateOrGetMaterial("A", sharedTexture);
                 var assetA = CreateOrGetIndependentAsset("A", groupAName);
-                groupAssets[groupAName] = new List<(string, TextAsset)>
+                if (materialA == null || assetA == null)
                 {
-                    ("corpus/shared", sharedAsset),
+                    LogError($"Failed to create assets for {groupAName}");
+                    EditorApplication.Exit(2);
+                    return;
+                }
+                groupAssets[groupAName] = new List<(string, UnityEngine.Object)>
+                {
+                    ("corpus/mat-a", materialA),
                     ("corpus/asset-a", assetA)
                 };
-                Log($"✓ {groupAName}: shared + independent-A");
+                Log($"✓ {groupAName}: mat-a (→ shared-texture) + independent-A");
 
-                // Group B: shared + independent B
+                // Group B: same shape as A, so a shared-texture change must hit both A and B
                 string groupBName = "Remote Assets Group B";
                 var groupB = CreateOrGetGroup(groupBName, settings);
                 groups[groupBName] = groupB;
+                var materialB = CreateOrGetMaterial("B", sharedTexture);
                 var assetB = CreateOrGetIndependentAsset("B", groupBName);
-                groupAssets[groupBName] = new List<(string, TextAsset)>
+                if (materialB == null || assetB == null)
                 {
-                    ("corpus/shared", sharedAsset),
+                    LogError($"Failed to create assets for {groupBName}");
+                    EditorApplication.Exit(2);
+                    return;
+                }
+                groupAssets[groupBName] = new List<(string, UnityEngine.Object)>
+                {
+                    ("corpus/mat-b", materialB),
                     ("corpus/asset-b", assetB)
                 };
-                Log($"✓ {groupBName}: shared + independent-B");
+                Log($"✓ {groupBName}: mat-b (→ shared-texture) + independent-B");
 
-                // Group C: independent C only (no shared)
+                // Group C: the control. Nothing here depends on the shared texture, so its bundle
+                // must stay byte-identical when the shared texture changes.
                 string groupCName = "Remote Assets Group C";
                 var groupC = CreateOrGetGroup(groupCName, settings);
                 groups[groupCName] = groupC;
                 var assetC = CreateOrGetIndependentAsset("C", groupCName);
-                groupAssets[groupCName] = new List<(string, TextAsset)>
+                if (assetC == null)
+                {
+                    LogError($"Failed to create assets for {groupCName}");
+                    EditorApplication.Exit(2);
+                    return;
+                }
+                groupAssets[groupCName] = new List<(string, UnityEngine.Object)>
                 {
                     ("corpus/asset-c", assetC)
                 };
-                Log($"✓ {groupCName}: independent-C only");
+                Log($"✓ {groupCName}: independent-C only (control group)");
                 Log("");
 
                 Log("Step 3: Attaching schemas to groups...");
@@ -566,17 +624,22 @@ namespace AddressableManager.Editor.Cdn
                 Log("=== SUCCESS ===");
                 Log("Test corpus generated successfully");
                 Log("");
-                Log("Corpus topology:");
-                Log("  Shared asset: corpus/shared (2.5 MB Texture2D, in Groups A & B)");
-                Log("  Group A: corpus/shared, corpus/asset-a (TextAsset)");
-                Log("  Group B: corpus/shared, corpus/asset-b (TextAsset)");
-                Log("  Group C: corpus/asset-c (TextAsset, no shared)");
+                Log("Corpus topology (all groups Remote + StaticContent=false):");
+                Log($"  Remote Corpus Shared   : corpus/shared-texture  ({SharedTextureSize}x{SharedTextureSize} RGBA32 uncompressed, ~2 MB, incompressible)");
+                Log("  Remote Assets Group A  : corpus/mat-a  → shared-texture, corpus/asset-a");
+                Log("  Remote Assets Group B  : corpus/mat-b  → shared-texture, corpus/asset-b");
+                Log("  Remote Assets Group C  : corpus/asset-c  (control: no dependency on shared)");
                 Log("");
-                Log("Phase 1 exit criterion test:");
-                Log("  1. Modify corpus/shared.png or run BuildContentUpdate");
-                Log("  2. Verify that ONLY Groups A & B bundles change");
-                Log("  3. Verify that Group C bundles remain unchanged");
-                Log("  4. Measure: 2.5 MB change → ~2.5 MB bundles changed (≤ 2.5 MB target)");
+                Log("The shared payload is an entry of its OWN group and a DEPENDENCY of A and B.");
+                Log("An AddressableAssetEntry belongs to exactly one group, so a shared asset cannot");
+                Log("be an entry of two groups — adding it twice moves it, it does not duplicate.");
+                Log("");
+                Log("Phase 1 exit criterion — how to measure it:");
+                Log("  1. Full build, snapshot ServerData/<platform>/bundles");
+                Log("  2. Change corpus/shared-texture (any pixel), run BuildContentUpdate");
+                Log("  3. Expect: the shared group's bundle changes; group C's bundle byte-identical");
+                Log("  4. Measure changed+new bundle bytes (what a player re-downloads, not size deltas)");
+                Log($"     against the target: a ~2 MB change should stay under 2.5 MB");
                 Log("");
 
                 EditorApplication.Exit(0);
@@ -590,43 +653,131 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Create or retrieve the 2.5 MB shared asset used across multiple groups.
-        /// Uses Texture2D.Create() to procedurally generate without committing binary blobs.
-        /// Idempotent: returns existing asset if already present.
+        /// Side length of the shared payload texture. 720 x 720 x RGBA32 = 2,073,600 bytes,
+        /// just under 2 MB, which is the size the Phase 1 exit criterion is written against
+        /// ("a 2 MB asset change produces <= 2.5 MB of changed bundles").
         /// </summary>
-        private static TextAsset CreateOrGetSharedAsset()
-        {
-            string path = GetSharedAssetPath();
+        private const int SharedTextureSize = 720;
 
-            // Check if already exists
-            var existing = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+        /// <summary>
+        /// Create or retrieve the shared payload texture: ~2 MB that survives into the bundle
+        /// at full size.
+        /// </summary>
+        /// <remarks>
+        /// TWO PROPERTIES MATTER HERE, AND THEY PULL AGAINST EACH OTHER.
+        ///
+        /// Deterministic — the same bytes on every machine and every run, so a rebuild with no
+        /// source change produces byte-identical bundles and the diff harness can tell "rebuilt"
+        /// from "actually changed".
+        ///
+        /// Incompressible — the criterion is measured in BUNDLE bytes, not source bytes. The
+        /// previous shared asset was 2.5 MB of a repeated lorem-ipsum string, which LZ4 crushed
+        /// into a 13.9 KB bundle: a ~180x ratio that made a 2 MB delta impossible to produce.
+        /// Pseudo-random bytes do not compress, so the payload keeps its size on the wire.
+        ///
+        /// The texture importer is forced to Uncompressed with no mipmaps, because DXT/BC would
+        /// otherwise shrink RGBA32 by 4x and reintroduce the same problem in a different layer.
+        ///
+        /// Idempotent: returns the existing asset if present.
+        /// </remarks>
+        private static Texture2D CreateOrGetSharedTexture()
+        {
+            string path = GetSharedTexturePath();
+
+            var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (existing != null)
             {
-                Log($"  Shared asset already exists at {path}");
+                Log($"  Shared texture already exists at {path}");
                 return existing;
             }
 
-            // Create directory
             string dir = System.IO.Path.GetDirectoryName(path);
             if (!System.IO.Directory.Exists(dir))
             {
                 System.IO.Directory.CreateDirectory(dir);
             }
 
-            // Generate 2.5 MB of procedural content
-            // We'll create a TextAsset with repeating pattern data (more efficient than binary blob)
-            string largeContent = GenerateLargeContent(2500000); // ~2.5 MB
-            System.IO.File.WriteAllText(path, largeContent);
-            AssetDatabase.Refresh();
+            int byteCount = SharedTextureSize * SharedTextureSize * 4;
+            byte[] pixels = GenerateIncompressibleBytes(byteCount);
 
-            var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-            if (asset == null)
+            var texture = new Texture2D(SharedTextureSize, SharedTextureSize, TextureFormat.RGBA32, false);
+            try
             {
-                Log($"  Error: failed to load TextAsset after creation at {path}");
+                texture.LoadRawTextureData(pixels);
+                texture.Apply();
+                System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+
+            // Keep the payload at full size in the bundle. Without this the importer applies
+            // platform texture compression and the ~2 MB becomes ~0.5 MB.
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer)
+            {
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.mipmapEnabled = false;
+                importer.isReadable = false;
+                importer.npotScale = TextureImporterNPOTScale.None;
+                importer.maxTextureSize = 8192;
+                importer.SaveAndReimport();
+            }
+            else
+            {
+                LogError($"  Error: no TextureImporter for {path}; the payload may be compressed in the bundle");
                 return null;
             }
 
-            Log($"  Created shared asset at {path} (~{largeContent.Length / 1024 / 1024} MB)");
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (asset == null)
+            {
+                LogError($"  Error: failed to load Texture2D after creation at {path}");
+                return null;
+            }
+
+            long onDisk = new System.IO.FileInfo(path).Length;
+            Log($"  Created shared texture at {path} " +
+                $"({SharedTextureSize}x{SharedTextureSize} RGBA32, {byteCount:N0} B raw, {onDisk:N0} B as PNG)");
+            return asset;
+        }
+
+        /// <summary>
+        /// Create or retrieve a material that references the shared texture.
+        /// This is what makes the shared payload a real cross-group dependency.
+        /// </summary>
+        private static Material CreateOrGetMaterial(string suffix, Texture2D sharedTexture)
+        {
+            string path = $"Assets/Examples/CdnTest/corpus-mat-{suffix.ToLower()}.mat";
+
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            // Unlit/Texture is a built-in always-present shader with a _MainTex slot. The corpus
+            // is never rendered — only the asset reference matters — so shader choice is
+            // irrelevant beyond having a texture property.
+            var shader = Shader.Find("Unlit/Texture") ?? Shader.Find("Sprites/Default");
+            if (shader == null)
+            {
+                LogError("  Error: neither Unlit/Texture nor Sprites/Default could be found");
+                return null;
+            }
+
+            var material = new Material(shader) { mainTexture = sharedTexture };
+            AssetDatabase.CreateAsset(material, path);
+
+            var asset = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (asset == null)
+            {
+                LogError($"  Error: failed to load Material after creation at {path}");
+                return null;
+            }
+
             return asset;
         }
 
@@ -690,7 +841,7 @@ namespace AddressableManager.Editor.Cdn
         /// </summary>
         private static AddressableAssetEntry AddAssetToGroupWithAddress(AddressableAssetGroup group,
                                                                          AddressableAssetSettings settings,
-                                                                         TextAsset asset,
+                                                                         UnityEngine.Object asset,
                                                                          string address)
         {
             string guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(asset));
@@ -781,23 +932,73 @@ namespace AddressableManager.Editor.Cdn
                              $"The asset will download correctly but cannot be loaded at runtime.");
                     allGood = false;
                 }
-                else if (recordedType != typeof(TextAsset))
+            }
+
+            // ---- Topology, checked against the settings rather than against our own bookkeeping ----
+            //
+            // The previous version counted entries in a dictionary keyed by "group:address", so the
+            // shared asset appeared under both "Group A:corpus/shared" and "Group B:corpus/shared"
+            // and the count came to 5. On disk there were only 4 entries: an AddressableAssetEntry
+            // lives in exactly one group, so adding the shared asset to B had MOVED it out of A.
+            // The bookkeeping hid the very defect the check existed to catch. These assertions ask
+            // AddressableAssetSettings where each entry actually is.
+
+            if (groups.Count < 4)
+            {
+                LogError($"  Verification: Expected at least 4 groups (Shared, A, B, C), found {groups.Count}");
+                allGood = false;
+            }
+
+            var expectedPlacement = new Dictionary<string, string>
+            {
+                { "corpus/shared-texture", "Remote Corpus Shared" },
+                { "corpus/mat-a", "Remote Assets Group A" },
+                { "corpus/asset-a", "Remote Assets Group A" },
+                { "corpus/mat-b", "Remote Assets Group B" },
+                { "corpus/asset-b", "Remote Assets Group B" },
+                { "corpus/asset-c", "Remote Assets Group C" }
+            };
+
+            foreach (var (address, expectedGroup) in expectedPlacement)
+            {
+                AddressableAssetEntry found = null;
+                foreach (var group in settings.groups)
                 {
-                    LogError($"  Verification: Entry '{entry.address}' expected TextAsset but got {recordedType.FullName}");
+                    if (group == null) continue;
+                    foreach (var entry in group.entries)
+                    {
+                        if (entry != null && entry.address == address)
+                        {
+                            found = entry;
+                            break;
+                        }
+                    }
+                    if (found != null) break;
+                }
+
+                if (found == null)
+                {
+                    LogError($"  Verification: no entry addressed '{address}' exists in any group");
+                    allGood = false;
+                }
+                else if (found.parentGroup == null || found.parentGroup.Name != expectedGroup)
+                {
+                    LogError($"  Verification: '{address}' is in group '{found.parentGroup?.Name ?? "<none>"}', " +
+                             $"expected '{expectedGroup}'");
                     allGood = false;
                 }
             }
 
-            // Verify corpus topology
-            if (groups.Count < 3)
+            // The point of the corpus: the shared texture must be a real dependency of the two
+            // materials. If this breaks, changing the texture stops affecting A and B and the
+            // shared-asset scenario silently degrades into three unrelated groups.
+            if (!VerifyMaterialReferencesSharedTexture("corpus-mat-a"))
             {
-                LogError($"  Verification: Expected at least 3 groups, found {groups.Count}");
                 allGood = false;
             }
 
-            if (allEntries.Count < 5) // 3 groups with (2,2,1) entries = 5 total
+            if (!VerifyMaterialReferencesSharedTexture("corpus-mat-b"))
             {
-                LogError($"  Verification: Expected at least 5 entries, found {allEntries.Count}");
                 allGood = false;
             }
 
@@ -805,37 +1006,73 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Generate large procedural content for the shared asset.
-        /// Uses repeating pattern to keep the generated text efficient.
+        /// Assert that a corpus material actually depends on the shared texture, as Unity records
+        /// dependencies — not merely that we set the property a moment ago.
         /// </summary>
-        private static string GenerateLargeContent(int targetBytes)
+        private static bool VerifyMaterialReferencesSharedTexture(string materialFileName)
         {
-            const string pattern = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " +
-                                 "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ";
-            var sb = new System.Text.StringBuilder();
+            string materialPath = $"Assets/Examples/CdnTest/{materialFileName}.mat";
+            string texturePath = GetSharedTexturePath();
 
-            // Repeat pattern until we reach target size
-            while (sb.Length < targetBytes)
+            if (!System.IO.File.Exists(materialPath))
             {
-                sb.Append(pattern);
+                LogError($"  Verification: material not found at {materialPath}");
+                return false;
             }
 
-            // Trim to exact size
-            string content = sb.ToString();
-            if (content.Length > targetBytes)
+            string[] dependencies = AssetDatabase.GetDependencies(materialPath, true);
+            foreach (string dependency in dependencies)
             {
-                content = content.Substring(0, targetBytes);
+                if (dependency == texturePath)
+                {
+                    return true;
+                }
             }
 
-            return content;
+            LogError($"  Verification: {materialPath} does not depend on {texturePath}. " +
+                     "The shared-dependency topology is not in place, so a texture change would not " +
+                     "propagate to this group's bundle.");
+            return false;
         }
 
         /// <summary>
-        /// Get the standard path for the shared asset.
+        /// Generate <paramref name="byteCount"/> bytes that are deterministic across machines
+        /// and runs, but do not compress.
         /// </summary>
-        private static string GetSharedAssetPath()
+        /// <remarks>
+        /// Hand-rolled xorshift32 rather than System.Random on purpose: System.Random's algorithm
+        /// is an implementation detail and has changed between .NET Framework and .NET Core, so
+        /// the same seed is not guaranteed to give the same stream on a different runtime. This
+        /// corpus is compared byte-for-byte across builds and potentially across machines, so the
+        /// generator has to be pinned, not merely seeded.
+        ///
+        /// The output is high-entropy, so LZ4 (Addressables' default bundle compression) leaves it
+        /// essentially unchanged — which is the whole point; see CreateOrGetSharedTexture.
+        /// </remarks>
+        private static byte[] GenerateIncompressibleBytes(int byteCount)
         {
-            return "Assets/Examples/CdnTest/corpus-shared.txt";
+            const uint seed = 0x5EED1234;
+            var bytes = new byte[byteCount];
+            uint state = seed;
+
+            for (int i = 0; i < byteCount; i++)
+            {
+                // xorshift32 (Marsaglia). Fixed shifts, fixed seed, no library dependency.
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                bytes[i] = (byte)(state & 0xFF);
+            }
+
+            return bytes;
+        }
+
+        /// <summary>
+        /// Get the standard path for the shared payload texture.
+        /// </summary>
+        private static string GetSharedTexturePath()
+        {
+            return "Assets/Examples/CdnTest/corpus-shared-texture.png";
         }
 
         #region Helpers
