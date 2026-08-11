@@ -57,8 +57,8 @@ MonoBehaviour:
   m_RemoteCatalogLoadPath:
     m_Id: f770c1537aedcc847aada415d8ecb446
   m_ContentStateBuildPathProfileVariableName: <default settings path>
-  m_CustomContentStateBuildPath: ServerData/ContentState
-  m_ContentStateBuildPath: ServerData/ContentState
+  m_CustomContentStateBuildPath: 'ServerData/ContentState/[BuildTarget]'
+  m_ContentStateBuildPath: 'ServerData/ContentState/[BuildTarget]'
   m_BuildAddressablesWithPlayerBuild: 2
   m_overridePlayerVersion: '[UnityEditor.PlayerSettings.bundleVersion]'
   m_GroupAssets:
