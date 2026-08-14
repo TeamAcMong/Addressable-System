@@ -2,6 +2,63 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.3] - 2026-08-14 - Downloads, cache and diagnostics (Phases 3 and 4)
+
+`pre.2` could boot against a CDN and apply a catalog update. This one downloads content
+properly and stops the install growing forever.
+
+### Added
+
+- **`CdnManager.DownloadAsync` / `GetDownloadSizeAsync`** — progress in real bytes,
+  cancellation, retry with exponential backoff and jitter, and pre-flight checks for
+  reachability, metered network and free disk. Size returns `CdnResult<long>`, so
+  "nothing to download" is distinguishable from "could not find out".
+- **`RetryPolicy`** — retryability comes from the error, not the policy, so the CLI, the
+  GUI and the runtime cannot disagree about what is worth retrying.
+- **`CdnErrorMapper`** — classifies from the HTTP response code rather than by matching
+  words in a message. A 404 on a bundle and a 404 on a catalog mean different things
+  about your deploy and now produce different codes.
+- **`CacheService`** — usage stats, eviction by key, and obsolete-bundle cleanup.
+- **`ICdnTelemetry`** — an interface with no transport bundled; wire it to whatever you
+  already use.
+- **`LoadErrorCode.ContentNotDownloaded`** — "the address is valid but the bundle is not
+  on this device", previously indistinguishable from `AssetNotFound`.
+- **Runtime Monitor tab** and a **CDN status row** in the Addressables dashboard.
+- **`AddressableProgressBar.SetDownloadProgress`** — real bytes, speed and ETA.
+- **Fault injection** for the local test server: HTTP errors, dropped connections,
+  latency and bandwidth throttling.
+- **Troubleshooting guide** with an entry for every `CdnErrorCode`.
+
+### Fixed
+
+- **Obsolete bundles are now removed after a catalog update.** Addressables leaves the
+  superseded bundles on disk and nothing else removes them, so an install accumulates a
+  generation of content per patch. `ApplyUpdateAsync` cleans them automatically.
+- **Download speed and ETA were meaningless.** `ProgressiveAssetLoader` computed speed as
+  a fraction-per-second multiplied by 100 and labelled it KB/s — a 10 MB and a 10 GB
+  download reported the same number — over an elapsed time that was never reset, so the
+  figure decayed toward zero regardless of the network. `ProgressInfo.BytesDownloaded`
+  and `TotalBytes` existed and were never populated. Both are correct now.
+- **Catalog operations never retried.** `CatalogService` classified its own failures with
+  a placeholder that returned `Unknown`, which is not retryable, so a transient 503 during
+  an update check was treated as permanent.
+- **Line endings could change bundle contents.** With `core.autocrlf` on and no
+  `.gitattributes`, git rewrote LF to CRLF in TextAssets on checkout — the same commit
+  then produced different bundles on different machines.
+
+### Deprecated
+
+`AssetLoader.DownloadDependenciesAsync` / `GetDownloadSizeAsync`, `Assets.Download` /
+`GetDownloadSize`, `StandardAPI.DownloadDependencies` / `GetDownloadSize`. Warnings only,
+kept until 5.0.0, each naming its replacement.
+
+### Still not here
+
+Phase 5's field validation: no device matrix, no staging soak, no measurement against a real CDN,
+and the CI workflows have never run. Three Phase 3 measurements are also unrun — the
+cancel-and-resume proof, speed accuracy under throttling, and the allocation check — each
+needing test infrastructure rather than code.
+
 ## [4.1.0-pre.2] - 2026-08-14 - CDN runtime layer (Phase 2)
 
 The half that was missing. `4.1.0-pre.1` could produce and verify content; this one

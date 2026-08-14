@@ -1,4 +1,4 @@
-# Addressable Manager v4.1.0-pre.2
+# Addressable Manager v4.1.0-pre.3
 
 **Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and a rule-based automation engine. Async surface auto-switches between `Task<T>` and `UniTask<T>` based on whether `com.cysharp.unitask` is installed.
 
@@ -682,17 +682,32 @@ Solution: Use TieredCache with aggressive config or increase MaxCacheSizeBytes
 
 ## 🌐 CDN Content Delivery (preview)
 
-`4.1.0-pre.2` adds the runtime layer on top of the Editor pipeline from
-`pre.1`. A game can now boot against a CDN, check for a newer catalog and apply
-it. Downloads still go through Addressables' own path — orchestration, progress
-in real bytes, retry and cache management are Phase 3. See CHANGELOG for gaps.
+`4.1.0-pre.3` completes the Editor pipeline, the runtime layer and download
+orchestration. A game can boot against a CDN, check for and apply catalog
+updates, download content with byte-accurate progress and cancellation, and keep
+its cache from growing with every patch.
+
+Not yet validated on real devices or against a real CDN — only a local server.
+See CHANGELOG for the full list of gaps.
 
 ```csharp
-var init = await CdnManager.InitializeAsync();   // before any other Addressables call
+// Must run before anything else touches Addressables.
+var init = await CdnManager.InitializeAsync();
+if (init.IsFailure) { /* CdnErrorCode.NoContentAvailableOffline => blocking setup screen */ }
+
 var check = await CdnManager.CheckForUpdateAsync();
 if (check.IsSuccess && check.Value.HasUpdate)
-    await CdnManager.ApplyUpdateAsync(check.Value);
+    await CdnManager.ApplyUpdateAsync(check.Value);   // also cleans obsolete bundles
+
+// Downloading, with progress and cancellation
+var request = DownloadRequest.For("level-2");
+var progress = new Progress<DownloadProgress>(p => bar.SetDownloadProgress(p));
+var result = await CdnManager.DownloadAsync(request, progress, cancellation.Token);
 ```
+
+Every call returns a `CdnResult<T>` carrying an error code, the HTTP status and
+whether a retry can help. See `Documentation/TROUBLESHOOTING.md` for one entry per
+error code.
 
 Open **Window → Addressable Manager → CDN Manager**:
 
