@@ -2,6 +2,104 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.4] - 2026-08-14 - Catalog Inspector, samples, and a clear-out
+
+Closes the last piece of Editor tooling, moves the examples to where a package is
+supposed to keep them, and removes code that was doing nothing.
+
+### Added
+
+- **Catalog Inspector tab** (task 5.9) — reads a built binary catalog and shows what is
+  in it: every entry with the bundle it comes from, every bundle with its size, CRC and
+  dependents, and a cross-check against the bundles on disk. Missing, orphaned and
+  size-mismatched bundles are reported separately because they mean different things:
+  missing breaks players, orphaned costs storage, mismatched means the catalog and the
+  bundles came from different builds.
+
+  No third-party dependency was added. `AddressablesTools` would have meant owning a
+  binary-format parser that has to track every Addressables release; instead
+  `CatalogReader` reflects two internals — `ContentCatalogData.LoadFromFile` and
+  `CreateCustomLocator` — and everything after that is public interface.
+  `CatalogReaderTests` resolves both against the installed Addressables, so an upgrade
+  that renames either fails a test rather than producing an empty inspector.
+
+- **`CatalogInspectCLI`** — the same check in batchmode, exit 1 when the output is not
+  publishable. Worth running before an upload: a catalog that references a bundle you
+  did not upload produces a 404 on a device and nothing in the build log.
+
+- **Samples, as UPM samples.** `CDN Boot`, `API Examples` and `Rule Automation Presets`
+  now install from Package Manager instead of sitting in `Assets/`. They are opt-in and
+  no longer compile in every project that installs the package. The rule preset set is
+  wired together — a layout rule referencing real filters and a provider, and a
+  composite referencing the layout rule — so it demonstrates something rather than
+  being empty scriptable objects.
+
+- **`Documentation/CDN_USAGE_GUIDE.md`** (task 5.5) — a guide for the person building
+  the game, shipped inside the package: whether you need remote content at all, setup,
+  the boot sequence, downloads, patching, the cache, environments, one row per error
+  code, CI, and the things that will catch you out. Every API name in it was checked
+  against the source.
+
+- `TROUBLESHOOTING.md` now ships **inside the package**, so it is available offline to
+  whoever hits the error message that names it.
+
+### Fixed
+
+- **Bundle location shown for what it is.** Found on the Catalog Inspector's first run
+  against a real catalog, which reported 8 missing bundles and 6 orphans on a build that
+  was fine. Two causes, both worth knowing about:
+
+  `AssetBundleRequestOptions.BundleName` in a built catalog is an internal hash, not a
+  file name — the requested file name is the last segment of `InternalId`. And a
+  catalog holds both remote bundles and bundles that ship inside the player; comparing
+  the second kind against a CDN folder produces a false alarm per bundle.
+
+  A load path the package cannot classify is now reported as unchecked rather than
+  quietly skipped, so a clean verdict cannot silently cover less than it claims.
+
+- **Shared tab styles are actually loaded.** `.cdn-tab-page` and the row, button and
+  section classes were defined in individual tab stylesheets, which are attached to that
+  tab's root and torn down when the shell rebuilds the tab body. Three tabs used classes
+  that did not exist while they were showing. The shared vocabulary moved to
+  `CdnManagerWindow.uss`, which is always loaded; per-tab overrides still win.
+
+- **A characterization test that had never passed.** `Message_ExtraWhitespace_StillMatches`
+  asserted that `"not  found"` matches the keyword `"not found"`. It does not — the
+  classifier lowercases and calls `Contains`, nothing more. The test was written from the
+  doc comment rather than from a run. It now records the real behaviour, with a
+  counterpart test for padding around an intact keyword.
+
+### Removed
+
+- **`AddressableProgressBar.autoFindTracker`** — a serialized inspector toggle,
+  defaulted to true, read by nothing. No auto-find code was ever written; binding has
+  always been explicit through `BindToTracker`. A checkbox promising behaviour the
+  component does not have is worse than no checkbox.
+
+- **`README.backup.md`** — 1273 lines of superseded README that `git subtree split` was
+  shipping to every consumer.
+
+### Changed
+
+- `MemoryGraphView.Clear()` is now `ClearSamples()`. It hid `VisualElement.Clear()`,
+  which means the same call did two unrelated things depending on the static type of the
+  reference. It had no callers.
+- Two private `DrawHeader()` methods in custom inspectors renamed to `DrawTitleSection()`;
+  they hid `Editor.DrawHeader()`.
+- Deprecated Unity APIs replaced: `FindObjectOfType` → `FindAnyObjectByType`,
+  `FindObjectsByType(…, FindObjectsSortMode)` → the overload without it.
+- README rewritten around what the package is now: correct Unity and Addressables
+  versions, the current install URL, all six CDN tabs, the samples, and a deprecation
+  table instead of a version history that stopped at 3.0.0.
+
+### Still not here
+
+Phase 5's field validation: no device matrix, no staging soak, no measurement against a
+real CDN, and the CI workflows have never run. Three Phase 3 measurements are also unrun
+— cancel-and-resume, speed accuracy under throttling, and the allocation check — each
+needing test infrastructure rather than code. The six tabs build and reach correct
+conclusions in batchmode; nobody has looked at them.
+
 ## [4.1.0-pre.3] - 2026-08-14 - Downloads, cache and diagnostics (Phases 3 and 4)
 
 `pre.2` could boot against a CDN and apply a catalog update. This one downloads content

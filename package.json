@@ -1,6 +1,6 @@
 {
   "name": "com.game.addressables",
-  "version": "4.1.0-pre.3",
+  "version": "4.1.0-pre.4",
   "displayName": "Addressable Manager",
   "description": "Professional Addressable Asset Management System with tiered API (Simple/Standard/Advanced), complete thread-safety, intelligent tiered caching, hybrid scopes, advanced pooling, automatic memory management, explicit error handling, runtime validation, automatic monitoring, comprehensive Editor tools, rule-based automation system with 8 filter types and extensible providers, Layout Rule Editor, Layout Viewer with conflict detection, CLI tools for CI/CD, auto-apply on import, semantic versioning, composite rule merging, batch operations, custom inspectors, and real-time dashboard.",
   "unity": "2023.1",
@@ -25,5 +25,22 @@
   "dependencies": {
     "com.unity.addressables": "2.9.1",
     "com.unity.textmeshpro": "3.0.6"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "CDN Boot",
+      "description": "The canonical boot sequence for a game that ships content from a CDN: initialise, check for a catalog update, apply it. One branch per boot outcome, each commented with what a real game should do there.",
+      "path": "Samples~/CdnBoot"
+    },
+    {
+      "displayName": "API Examples",
+      "description": "Six runnable examples showing the Simple, Standard and Advanced tiers side by side: simple load, session management, progress tracking, object pooling, scene scope and hierarchy scope.",
+      "path": "Samples~/ApiExamples"
+    },
+    {
+      "displayName": "Rule Automation Presets",
+      "description": "A working set of layout rule, filter and provider assets wired to each other, so the automation system can be explored from something that runs rather than from empty scriptable objects.",
+      "path": "Samples~/RuleAutomation"
+    }
+  ]
 }
