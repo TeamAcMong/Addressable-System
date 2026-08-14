@@ -343,33 +343,20 @@ namespace AddressableManager.Cdn
         /// Best-effort classification of a network-stage failure.
         /// </summary>
         /// <remarks>
-        /// Design doc §8 requires classification from the response code rather than by matching
-        /// substrings, and notes that the exact exception type has to be confirmed against the
-        /// pinned Addressables version in Phase 3. That confirmation has not happened, so this
-        /// deliberately does the coarse thing: offline if unreachable, otherwise Unknown carrying
-        /// the exception. Guessing a specific code from message text is how the existing
-        /// DetermineErrorCode became unreliable, and a wrong-but-confident code is worse here than
-        /// an honest Unknown.
+        /// Delegates to <see cref="CdnErrorMapper"/>, which classifies from the HTTP response code
+        /// as design doc §8 requires.
+        ///
+        /// This used to be a local implementation returning Unknown for everything reachable, added
+        /// in Phase 2 before the mapper existed, with a comment saying Phase 3 would replace it.
+        /// Phase 3 added the mapper and did not come back here — so an injected 503 on the catalog
+        /// came out as Unknown and non-retryable, meaning a transient server error would have been
+        /// treated as permanent and the retry policy would never have run for catalog operations.
+        /// The fault-injection suite caught it; nothing else would have, because both codes look
+        /// like a failure to a caller that only checks IsFailure.
         /// </remarks>
         private CdnError ClassifyNetworkFailure(Exception exception)
         {
-            if (!_network.IsReachable)
-            {
-                return new CdnError(
-                    CdnErrorCode.Offline,
-                    "The connection dropped during the request",
-                    hint: "Keep playing on cached content and retry when connectivity returns.",
-                    url: _rewriter.ActiveBaseUrl,
-                    exception: exception);
-            }
-
-            return new CdnError(
-                CdnErrorCode.Unknown,
-                exception?.Message ?? "The catalog operation failed without an exception",
-                hint: "Reachable, so this is not a connectivity problem. Phase 3 maps this to a " +
-                      "specific code from the HTTP response; until then the exception is the detail.",
-                url: _rewriter.ActiveBaseUrl,
-                exception: exception);
+            return CdnErrorMapper.Map(exception, _rewriter.ActiveBaseUrl, _network.IsReachable);
         }
 
         /// <summary>

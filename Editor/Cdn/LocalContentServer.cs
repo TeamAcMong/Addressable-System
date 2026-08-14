@@ -166,6 +166,16 @@ namespace AddressableManager.Editor.Cdn
                 // Evaluate cache policy once for this request, reuse across all response paths
                 var (cacheControl, matchesPolicy) = GetCacheControlHeader(requestPath);
 
+                // Fault injection runs before anything else, so an injected 500 or a dropped
+                // connection is indistinguishable to the client from the real thing. Tasks 5.1
+                // and design doc §12 need failures that are reproducible on demand; waiting for
+                // a real CDN to misbehave is not a test strategy.
+                if (ServerFaults.TryApply(requestPath, context, out int injectedStatus))
+                {
+                    RaiseRequestEvent(request.HttpMethod, requestPath, injectedStatus, cacheControl, 0, matchesPolicy);
+                    return;
+                }
+
                 var filePath = Path.Combine(_serverDataPath, requestPath.TrimStart('/'));
 
                 // Security: prevent directory traversal
@@ -212,7 +222,10 @@ namespace AddressableManager.Editor.Cdn
 
                     using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
                     {
-                        fileStream.CopyTo(response.OutputStream);
+                        // Throttled when a bandwidth cap is set, so the reported download speed can
+                        // be checked against a known rate (Phase 3 exit criterion: within ±15%).
+                        // CopyTo would finish a local file instantly and measure nothing.
+                        ServerFaults.CopyThrottled(fileStream, response.OutputStream);
                     }
 
                     RaiseRequestEvent(request.HttpMethod, requestPath, 200, cacheControl, fileSize, matchesPolicy);
