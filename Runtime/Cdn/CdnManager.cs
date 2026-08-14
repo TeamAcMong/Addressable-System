@@ -53,6 +53,7 @@ namespace AddressableManager.Cdn
         private static NetworkPolicy _network;
         private static IHostRewriter _rewriter;
         private static CatalogService _catalog;
+        private static DownloadService _downloads;
 
         /// <summary>Whether the CDN layer has initialised successfully.</summary>
         public static bool IsInitialized => _catalog != null && _catalog.IsInitialized;
@@ -129,6 +130,8 @@ namespace AddressableManager.Cdn
                 return CdnResult<bool>.Failure(installed.Error);
 
             _catalog = new CatalogService(_settings, _network, _rewriter);
+            _downloads = new DownloadService(_network, RetryPolicy.Default, _rewriter);
+
             return await _catalog.InitializeAsync(cancellationToken);
         }
 
@@ -189,6 +192,50 @@ namespace AddressableManager.Cdn
             return _rewriter.PromoteFailover();
         }
 
+#if UNITASK_PRESENT
+        /// <summary>Bytes still to download for the given keys — task 3.2.</summary>
+        /// <remarks>
+        /// Returns a result, not a number: zero is a real answer meaning "already cached", and a
+        /// failed lookup must not be indistinguishable from it.
+        /// </remarks>
+        public static UniTask<CdnResult<long>> GetDownloadSizeAsync(
+            DownloadRequest request, CancellationToken cancellationToken = default)
+#else
+        /// <summary>Bytes still to download for the given keys — task 3.2.</summary>
+        /// <remarks>
+        /// Returns a result, not a number: zero is a real answer meaning "already cached", and a
+        /// failed lookup must not be indistinguishable from it.
+        /// </remarks>
+        public static Task<CdnResult<long>> GetDownloadSizeAsync(
+            DownloadRequest request, CancellationToken cancellationToken = default)
+#endif
+        {
+            if (_downloads == null)
+                return FromResult(CdnResult<long>.Failure(NotInitialized()));
+
+            return _downloads.GetDownloadSizeAsync(request, cancellationToken);
+        }
+
+#if UNITASK_PRESENT
+        /// <summary>Download content, with progress, cancellation, retry and repair — task 3.3.</summary>
+        public static UniTask<CdnResult<DownloadReport>> DownloadAsync(
+            DownloadRequest request,
+            IProgress<DownloadProgress> progress = null,
+            CancellationToken cancellationToken = default)
+#else
+        /// <summary>Download content, with progress, cancellation, retry and repair — task 3.3.</summary>
+        public static Task<CdnResult<DownloadReport>> DownloadAsync(
+            DownloadRequest request,
+            IProgress<DownloadProgress> progress = null,
+            CancellationToken cancellationToken = default)
+#endif
+        {
+            if (_downloads == null)
+                return FromResult(CdnResult<DownloadReport>.Failure(NotInitialized()));
+
+            return _downloads.DownloadAsync(request, progress, cancellationToken);
+        }
+
         /// <summary>How the device is connected right now.</summary>
         public static NetworkReachabilityState NetworkState =>
             _network?.CurrentState ?? NetworkReachabilityState.Offline;
@@ -203,6 +250,7 @@ namespace AddressableManager.Cdn
             _network = null;
             _rewriter = null;
             _catalog = null;
+            _downloads = null;
         }
 
         // ========== internals ==========
