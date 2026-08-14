@@ -879,3 +879,272 @@ If your issue isn't covered here:
 ---
 
 **Version**: 3.5.0 | **Last Updated**: January 2025
+
+---
+
+## CDN Content Delivery
+
+One entry per `CdnErrorCode`. Every CDN operation returns a `CdnResult<T>`; on failure
+`result.Error.Code` is one of these, and `result.Error.Hint` carries the same advice in
+one line.
+
+Before anything else: **`CdnManager.InitializeAsync` must be the first Addressables call
+in your boot sequence.** Addressables initialises implicitly on its first load, and the
+CDN hooks only apply to content resolved after they are installed. A stray
+`LoadAssetAsync`, or an `AssetReference` on an object in your first scene, is enough to
+lose them. Initialisation fails loudly with this cause rather than half-applying.
+
+### Quick triage
+
+| Symptom | Likely code | Start here |
+|---|---|---|
+| First launch hangs on a loading screen, no network | `NoContentAvailableOffline` | [below](#nocontentavailableoffline) |
+| Works on Wi-Fi, nothing happens on mobile data | `MeteredNetworkBlocked` | [below](#meterednetworkblocked) |
+| Boots fine for you, 404s for shipped players | `CatalogNotFound` | [below](#catalognotfound) |
+| Update applies but the changed asset is still old | not an error — see [Static content](#the-update-applied-but-my-change-is-missing) | |
+| Game size grows with every patch | not an error — see [Disk](#the-game-keeps-growing-after-every-update) | |
+
+---
+
+### Offline
+
+**Symptom.** `CheckForUpdateAsync` returns success with `WasOfflineFallback == true`, or an
+operation fails with this code mid-flight.
+
+**Cause.** No usable network. Note that this is not necessarily an error state: with a warm
+cache the game is fully playable and simply cannot check for new content.
+
+**Fix.** Keep playing on cached content and retry later. Do not block the player. The one
+thing worth doing is distinguishing this from "checked, nothing new" — `WasOfflineFallback`
+exists for exactly that, and treating them the same is how a client ends up stuck on old
+content after one bad boot.
+
+---
+
+### NoContentAvailableOffline
+
+**Symptom.** `InitializeAsync` fails on a fresh install. Nothing loads at all.
+
+**Cause.** First launch with no cached catalog and no network. There is genuinely nothing to
+play — this is the one case that justifies a blocking screen.
+
+**Fix.** Show a setup screen that retries when connectivity returns. Do not show a generic
+error: the player has not done anything wrong and the game is not broken.
+
+**If it happens with a network available**, the network came up after the check but before
+the request, or reachability is lying — a captive portal reports as connected. Retry once
+before showing the screen.
+
+---
+
+### MeteredNetworkBlocked
+
+**Symptom.** Downloads work on Wi-Fi and silently do nothing on mobile data.
+
+**Cause.** `DownloadPolicy.RequireUnmeteredNetwork` is on and the device is on carrier data.
+The layer refused rather than spending the player's data without asking.
+
+**Fix.** Prompt, then retry with `DownloadRequest(..., allowMeteredOverride: true)`. Consent
+belongs on the request rather than in settings because it is per download, not permanent.
+
+**Caveat worth knowing.** Unity only reports "carrier data network", so a metered Wi-Fi
+hotspot reads as unmetered and a corporate APN reads as metered. This gate is a good default,
+not a guarantee.
+
+---
+
+### CatalogNotFound
+
+**Symptom.** Boots fine in the Editor and for you, 404s for shipped players.
+
+**Cause.** No catalog at the URL the player is polling. Almost always one of:
+
+1. **App version mismatch.** The catalog folder is named for `PlayerSettings.bundleVersion`
+   at build time. A player on 1.2.0 polls `catalog/1.2.0/…`; if content was published under
+   1.3.0, they get a permanent 404. This is the failure `ContentStateManager.Validate` blocks
+   at build time — if you see it in production, a build bypassed that gate.
+2. **Nothing was published for this platform.** Check the platform folder name: the build
+   publishes under the `BuildTarget` name (`StandaloneWindows64`), which is *not* what
+   Addressables' own `PlatformMappingService` returns (`Windows`).
+3. **Wrong environment.** Check `CdnManager.CurrentBaseUrl` against where you uploaded.
+
+**Fix.** Not retryable. Republish for the version players actually have, or ship a player
+build whose version matches what is on the CDN.
+
+**Diagnose it before shipping** with `CdnBuildCLI.VerifyOutput`, which fails when the catalog
+is not named for the current app version.
+
+---
+
+### CatalogParseFailed
+
+**Symptom.** The catalog downloads and then initialisation fails.
+
+**Cause.** Truncated or corrupt catalog — usually a partial upload, occasionally a proxy that
+rewrote the body.
+
+**Fix.** Clear the catalog cache and retry once. If it recurs, the object on the CDN is
+damaged: re-upload it and purge the edge cache. Verify with a plain `curl` that the byte
+count matches `build-manifest.json`.
+
+---
+
+### CatalogVersionIncompatible
+
+**Symptom.** The catalog loads but Addressables rejects it.
+
+**Cause.** Built by a different Addressables version, or for a different player version, than
+the running build expects.
+
+**Fix.** Force a store update. Not retryable, and not fixable from the server side: the client
+binary cannot read that catalog format.
+
+---
+
+### BundleNotFound
+
+**Symptom.** The game boots, the catalog loads, and loading a specific asset 404s.
+
+**Cause.** The catalog references a bundle that is not on the CDN. This is a deploy ordering
+mistake: **bundles must be uploaded before the catalog.** Uploading the catalog first creates
+a window where clients read a catalog naming bundles that do not exist yet.
+
+**Fix.** Upload the missing bundles, then purge the catalog at the edge. `ci/upload-bundles.sh`
+runs before `ci/upload-catalog.sh` for this reason — if you deploy by hand, keep that order.
+
+**Verify** with `CdnBuildCLI.VerifyOutput`, which checks every bundle in the manifest exists.
+
+---
+
+### BundleCrcMismatch
+
+**Symptom.** A download completes and then fails verification, sometimes repeatedly on one
+device.
+
+**Cause.** The cached copy is corrupt — interrupted write, failing storage, or a truncated
+response cached by an intermediary.
+
+**Fix.** Handled automatically: `DownloadService` evicts the cached dependency and retries
+once. If it fails again, the bytes on the CDN are wrong rather than the local copy — compare
+the object's SHA256 against `build-manifest.json`.
+
+---
+
+### ServerError
+
+**Symptom.** Intermittent failures, often several clients at once.
+
+**Cause.** 5xx from the origin or edge, or 429 (rate limited).
+
+**Fix.** Handled automatically by `RetryPolicy` with exponential backoff and jitter. If it
+persists past the retry budget, tell the player the servers are busy — not that something is
+wrong with their device. 429 specifically means retrying faster makes it worse.
+
+---
+
+### Timeout
+
+**Symptom.** Requests hang, then fail with HTTP status 0.
+
+**Cause.** No response arrived: DNS failure, connection refused, or the request exceeded
+`DownloadPolicy.TimeoutSeconds`. Status 0 means "never got a response", not "success".
+
+**Fix.** Retried automatically. If it only happens on large bundles, raise
+`TimeoutSeconds` — the default 30s is per request, and a slow connection on a large bundle
+can legitimately exceed it.
+
+---
+
+### Unauthorized
+
+**Symptom.** 401 or 403 on every request, or after a period of working.
+
+**Cause.** Missing, expired or rejected auth token; or a signed-URL policy that has lapsed;
+or bucket permissions.
+
+**Fix.** Set `CdnManager.AuthTokenProvider` **before** `InitializeAsync`. It is called per
+request, so a refreshed token is picked up without reinstalling anything. If a fresh token is
+still rejected, the problem is the bucket policy rather than the token.
+
+---
+
+### InsufficientDiskSpace
+
+**Symptom.** A download refuses to start.
+
+**Cause.** Free space is below the download size plus `DownloadRequest.MinFreeDiskBytes`
+(64 MB by default). The headroom is deliberate — filling the volume breaks the OS, not just
+the game.
+
+**Fix.** The error message states how much to free. Consider calling
+`CdnManager.Cache.CleanObsoleteAsync()` first: on a long-lived install that often recovers
+more than the player would by deleting photos.
+
+---
+
+### Cancelled
+
+Not a failure. The caller cancelled. `CdnResult.IsCancelled` distinguishes it so cancellation
+does not surface as an error dialog or a telemetry event. Partial downloads stay cached, so
+restarting resumes rather than starting over.
+
+---
+
+### Unknown
+
+**Symptom.** Anything not covered above.
+
+**Cause.** No HTTP response was available to classify the failure. The exception is attached
+to `error.Exception`.
+
+**Fix.** Read the exception. If you find a case that should have its own code, it belongs in
+`CdnErrorMapper` — classification there is driven by `UnityWebRequestResult.ResponseCode`
+rather than by matching words in the message, so adding a case is a small change.
+
+---
+
+## Problems that are not error codes
+
+### The update applied but my change is missing
+
+**Cause.** The changed asset is in a group marked `StaticContent`, which means "not rebuilt by
+a content update". Addressables does not fail on this — it logs a warning and reverts the
+entry to its previous bundle, so the patch builds, uploads and simply does not contain your
+change.
+
+**Fix.** Open **Window → Addressable Manager → CDN Manager → Update Preview** and use
+**Prepare content update**. It moves the changed entries into a fresh non-static group so the
+next update rebuilds them. Commit the resulting group change.
+
+`CdnBuildCLI.BuildContentUpdate` refuses to build in this state rather than producing a patch
+with a hole in it. **A new player build is not required** — that advice appears in older
+revisions of the design document and is wrong.
+
+### The game keeps growing after every update
+
+**Cause.** Superseded bundles are not removed automatically by Addressables.
+
+**Fix.** `CdnManager.ApplyUpdateAsync` now calls `CleanObsoleteAsync` for you. If you apply
+catalogs through Addressables directly, call `CdnManager.Cache.CleanObsoleteAsync()`
+afterwards. Check with `CdnManager.GetCacheStats()`.
+
+### It works in the Editor and 404s in a build
+
+**Cause.** Almost always Play Mode script: **Use Asset Database** and **Simulate Groups** never
+touch the network, so the CDN path is not exercised at all. The Editor was reading your
+project folder.
+
+**Fix.** Switch to **Use Existing Build** in the Addressables Groups window. This is also why
+the integration tests assert against the local server's request log rather than the client's
+return value — a green result under Fast Mode proves nothing.
+
+### Everything 404s and the URL contains the wrong platform folder
+
+**Cause.** The `{platform}` token in a base URL was resolved with Unity's own
+`PlatformMappingService.GetPlatformPathSubFolder()`, which returns `Windows` where the build
+published under `StandaloneWindows64`.
+
+**Fix.** Use `HostRewriter.ResolvePlatformToken()`, which reproduces the `BuildTarget` name —
+or better, drop `{platform}` from the base URL entirely. Addressables bakes the platform
+segment into the catalog URL at build time, so environments that differ only by host need no
+token at all.
