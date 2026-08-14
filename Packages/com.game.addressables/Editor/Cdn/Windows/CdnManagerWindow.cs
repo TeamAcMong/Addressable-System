@@ -130,7 +130,8 @@ namespace AddressableManager.Editor.Cdn.Windows
                 new SettingsValidatorTab(),
                 new LocalServerTab(),
                 new UpdatePreviewTab(),
-                new BuildTab()
+                new BuildTab(),
+                new RuntimeMonitorTab()
             };
         }
 

@@ -88,6 +88,11 @@ namespace AddressableManager.Editor.Windows
             {
                 _root = visualTree.CloneTree();
                 rootVisualElement.Add(_root);
+
+                // Task 4.8. One compact row rather than a sixth tab: this dashboard already carries
+                // enough, and the CDN work has its own window. The strip answers "which environment
+                // and how much cache" at a glance and hands off to CdnManagerWindow for anything more.
+                rootVisualElement.Insert(0, CreateCdnStatusStrip());
             }
             else
             {
@@ -748,5 +753,74 @@ namespace AddressableManager.Editor.Windows
         }
 
         #endregion
+
+        /// <summary>
+        /// Compact CDN status row — task 4.8.
+        /// </summary>
+        /// <remarks>
+        /// Built in code rather than added to the window's UXML on purpose: this file's UXML is
+        /// shared with the rest of the dashboard, and threading a CDN row through it would couple
+        /// two features that are otherwise independent. Rebuilt whenever the window is opened, so
+        /// there is no staleness to manage.
+        ///
+        /// Reads live state only in play mode. Outside it the runtime has nothing to report, and
+        /// showing the last known values would be worse than showing none.
+        /// </remarks>
+        private VisualElement CreateCdnStatusStrip()
+        {
+            var strip = new VisualElement();
+            strip.style.flexDirection = FlexDirection.Row;
+            strip.style.alignItems = Align.Center;
+            strip.style.paddingLeft = 6;
+            strip.style.paddingRight = 6;
+            strip.style.paddingTop = 3;
+            strip.style.paddingBottom = 3;
+            strip.style.borderBottomWidth = 1;
+            strip.style.borderBottomColor = new StyleColor(new Color(0f, 0f, 0f, 0.25f));
+
+            var label = new Label(DescribeCdnState());
+            label.style.flexGrow = 1;
+            label.style.overflow = Overflow.Hidden;
+            label.style.textOverflow = TextOverflow.Ellipsis;
+            label.tooltip = "CDN environment, catalog version and cache usage. Live values appear in play mode.";
+            strip.Add(label);
+
+            var open = new Button(() =>
+                AddressableManager.Editor.Cdn.Windows.CdnManagerWindow.ShowWindow())
+            {
+                text = "CDN Manager"
+            };
+            open.style.minWidth = 100;
+            strip.Add(open);
+
+            // 1 Hz while the window is open; stopped on detach so a closed window does not keep
+            // waking the editor.
+            var poll = strip.schedule.Execute(() => label.text = DescribeCdnState()).Every(1000);
+            strip.RegisterCallback<DetachFromPanelEvent>(_ => poll?.Pause(), TrickleDown.TrickleDown);
+
+            return strip;
+        }
+
+        /// <summary>One line describing CDN state, or why there is none.</summary>
+        private static string DescribeCdnState()
+        {
+            string version = UnityEditor.PlayerSettings.bundleVersion;
+
+            if (!EditorApplication.isPlaying)
+                return $"CDN  ·  app {version}  ·  not in play mode";
+
+            if (!AddressableManager.Cdn.CdnManager.IsInitialized)
+                return $"CDN  ·  app {version}  ·  not initialised";
+
+            var cache = AddressableManager.Cdn.CdnManager.GetCacheStats();
+            string cacheText = cache.IsValid
+                ? $"cache {cache.OccupiedBytes / (1024 * 1024)} MB"
+                : "cache not reported";
+
+            return $"CDN  ·  {AddressableManager.Cdn.CdnManager.CurrentEnvironmentId}" +
+                   $"  ·  app {version}  ·  {cacheText}" +
+                   $"  ·  {AddressableManager.Cdn.CdnManager.NetworkState}";
+        }
+
     }
 }
