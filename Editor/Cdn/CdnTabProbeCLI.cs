@@ -54,9 +54,17 @@ namespace AddressableManager.Editor.Cdn
                     // childCount alone only proves a root exists. Report what the tab concluded and
                     // how many data rows it drew, so a run against a project that should produce
                     // findings can be told apart from one that silently rendered nothing.
+                    //
+                    // A virtualised ListView builds no row elements until it is laid out in a real
+                    // panel, so counting elements would report 0 for a tab that in fact found
+                    // thousands of rows. Count its itemsSource instead — that is populated by
+                    // OnShown, which is the thing under test.
                     var summary = view.Q<HelpBox>();
                     int dataRows = view.Query<VisualElement>(className: "cdn-entry-row").ToList().Count
                                    + view.Query<VisualElement>(className: "cdn-rule-row").ToList().Count;
+
+                    foreach (var list in view.Query<ListView>().ToList())
+                        dataRows += list.itemsSource?.Count ?? 0;
 
                     Debug.Log($"[CdnTabProbe] {tab.TabName}: OnShown completed, {dataRows} data row(s)");
                     if (summary != null)

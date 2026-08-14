@@ -41,12 +41,15 @@ namespace AddressableManager.Editor.Cdn
     /// to fetch everything the catalog points at?
     ///
     /// THE BUNDLE INVENTORY COMES FROM THE MANIFEST, NOT THE CATALOG.
-    /// Reading it from the catalog would be the obvious design and is not possible:
-    /// ContentCatalogData.LoadFromFile is internal and the package ships no InternalsVisibleTo for
-    /// it, so the binary catalog cannot be parsed from outside Addressables. build-manifest.json
-    /// (task 1.7) is written from the same build and is the authority instead. That makes 1.6
-    /// depend on 1.7 having run — verification without a manifest is refused rather than skipped,
-    /// because "nothing to check" and "everything is fine" must not look alike.
+    /// The catalog can be read — see CatalogReader (task 5.9) — but it is the wrong source for this
+    /// check. It records the size Addressables intended to write, not what is on disk, and it has no
+    /// content hash at all. Verifying a publish against it would confirm that the build agrees with
+    /// itself. build-manifest.json (task 1.7) carries a SHA256 over the bytes actually written, which
+    /// is the thing worth checking. That makes 1.6 depend on 1.7 having run — verification without a
+    /// manifest is refused rather than skipped, because "nothing to check" and "everything is fine"
+    /// must not look alike.
+    ///
+    /// The catalog-versus-disk comparison is a separate question, answered by CatalogInspection.
     ///
     /// SETTINGS RULES ARE NOT RESTATED HERE.
     /// The §9 contract is encoded once in SettingsContract and shared with the GUI validator tab.

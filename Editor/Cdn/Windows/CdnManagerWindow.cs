@@ -31,9 +31,9 @@ namespace AddressableManager.Editor.Cdn.Windows
     }
 
     /// <summary>
-    /// Tabbed shell window for the CDN subsystem (design doc §5.9-§5.10, task 0.9). Six tabs are planned
-    /// across Phases 0-5 (Validator, Local Server, Update Preview, Build, Catalog Inspector, Runtime
-    /// Monitor); this task wires up the shell and registers Validator only.
+    /// Tabbed shell window for the CDN subsystem (design doc §5.9-§5.10, task 0.9). All six planned
+    /// tabs are present: Validator, Local Server, Update Preview, Build, Catalog Inspector and
+    /// Runtime Monitor.
     /// </summary>
     public class CdnManagerWindow : EditorWindow
     {
@@ -104,11 +104,10 @@ namespace AddressableManager.Editor.Cdn.Windows
         }
 
         /// <summary>
-        /// Tab registration point. Tasks 0.9-0.10 register Validator and Local Server. Append new tabs
-        /// here as later tasks land - do not replace this method's contents wholesale, and do not
-        /// register any tab anywhere else:
-        ///   task 4.6   Runtime Monitor tab
-        ///   task 5.9   Catalog Inspector tab
+        /// Tab registration point. All six planned tabs are registered: Validator and Local Server
+        /// (tasks 0.9-0.10), Update Preview (1.9), Build (1.10), Catalog Inspector (5.9) and Runtime
+        /// Monitor (4.6). Append new tabs here - do not replace this method's contents wholesale, and
+        /// do not register any tab anywhere else.
         ///
         /// The list itself lives in <see cref="CreateTabs"/> so the batchmode smoke check
         /// (CdnTabProbeCLI) exercises exactly the tabs this window shows. A second hand-written list
@@ -131,6 +130,7 @@ namespace AddressableManager.Editor.Cdn.Windows
                 new LocalServerTab(),
                 new UpdatePreviewTab(),
                 new BuildTab(),
+                new CatalogInspectorTab(),
                 new RuntimeMonitorTab()
             };
         }

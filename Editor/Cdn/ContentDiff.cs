@@ -68,8 +68,9 @@ namespace AddressableManager.Editor.Cdn
     /// </summary>
     /// <remarks>
     /// Works from build-manifest.json (task 1.7) rather than the catalogs, for the same reason
-    /// CatalogVerifier does: ContentCatalogData.LoadFromFile is internal and the package ships no
-    /// InternalsVisibleTo, so a binary catalog cannot be read from outside Addressables.
+    /// CatalogVerifier does: a catalog records intended sizes and no content hash, so diffing two
+    /// catalogs would answer a weaker question than diffing two manifests. Catalogs can be read —
+    /// see CatalogReader (task 5.9) — they just are not the right input here.
     ///
     /// Comparison is by contentHash — SHA256 over the bytes on disk — never by Unity's internal
     /// hash or by size. On a content update Addressables rebuilds bundles whose assets did not
