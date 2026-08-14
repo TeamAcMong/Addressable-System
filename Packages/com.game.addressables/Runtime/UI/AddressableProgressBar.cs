@@ -46,8 +46,12 @@ namespace AddressableManager.UI
 #endif
 
         [Header("Settings")]
-        [Tooltip("Auto-find and bind to active progress tracker")]
-        [SerializeField] private bool autoFindTracker = true;
+        // There was an `autoFindTracker` toggle here, defaulted to true and never read by anything.
+        // No auto-find code was ever written: binding has always been explicit, through
+        // BindToTracker. An inspector checkbox that promises behaviour the component does not have
+        // is worse than no checkbox, so it is gone rather than wired up — wiring it would mean
+        // inventing a "find the active tracker" rule, and which tracker is active is a question only
+        // the game can answer.
 
         [Tooltip("Smooth fill animation")]
         [SerializeField] private bool smoothFill = true;

@@ -32,7 +32,7 @@ namespace AddressableManager.Editor.Inspectors
 
             serializedObject.Update();
 
-            DrawHeader();
+            DrawTitleSection();
             DrawDefaultInspector();
             DrawActions();
             DrawPreview();
@@ -40,7 +40,7 @@ namespace AddressableManager.Editor.Inspectors
             serializedObject.ApplyModifiedProperties();
         }
 
-        private void DrawHeader()
+        private void DrawTitleSection()
         {
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("Composite Layout Rule Data", _headerStyle);

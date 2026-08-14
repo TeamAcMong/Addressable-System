@@ -37,7 +37,7 @@ namespace AddressableManager.Editor.Inspectors
 
             serializedObject.Update();
 
-            DrawHeader();
+            DrawTitleSection();
             DrawQuickActions();
             DrawValidationSection();
 
@@ -91,7 +91,7 @@ namespace AddressableManager.Editor.Inspectors
             }
         }
 
-        private void DrawHeader()
+        private void DrawTitleSection()
         {
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("Layout Rule Data", _headerStyle);
