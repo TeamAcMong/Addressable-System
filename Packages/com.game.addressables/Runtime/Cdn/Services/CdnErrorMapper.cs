@@ -59,6 +59,24 @@ namespace AddressableManager.Cdn
             if (webResult != null)
                 return FromResponse(webResult, remote, fallbackUrl);
 
+            // Some Addressables operations flatten their children into text instead of nesting them.
+            // CheckCatalogsOperation is the one that matters here: it reports
+            // "CheckCatalogsOperation failed with the following errors:" followed by the child
+            // exception rendered as a string, with no InnerException to walk — so the loop above
+            // finds nothing and a real 503 would fall through to Unknown and be marked
+            // non-retryable, which would stop the retry policy running for catalog operations at
+            // all. The fault-injection suite is what surfaced this.
+            //
+            // Parsing "ResponseCode : NNN" out of that text is reading a structured field that
+            // UnityWebRequestResult.ToString emits in a fixed format — not the substring matching
+            // on prose that design doc §8 rules out. The distinction is that this pattern changes
+            // only if Unity changes the formatter, whereas message wording changes freely.
+            int recoveredStatus = TryRecoverResponseCodeFromText(exception.ToString());
+            if (recoveredStatus > 0)
+            {
+                return FromStatusOnly(recoveredStatus, fallbackUrl, exception);
+            }
+
             // No response to classify from. Reachability is the only signal left, and it separates
             // "the network went away" from "something else broke".
             if (!isReachable)
@@ -190,6 +208,69 @@ namespace AddressableManager.Cdn
 
             return new CdnError(
                 CdnErrorCode.Unknown, message, hint: hint,
+                url: url, httpStatusCode: status, exception: exception);
+        }
+
+        /// <summary>
+        /// Pull an HTTP status out of a flattened exception rendering, or 0.
+        /// </summary>
+        /// <remarks>
+        /// Matches "ResponseCode : NNN", the fixed shape UnityWebRequestResult.ToString produces.
+        /// Only reached when no RemoteProviderException object could be found in the chain.
+        /// </remarks>
+        private static int TryRecoverResponseCodeFromText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+
+            var match = System.Text.RegularExpressions.Regex.Match(
+                text, @"ResponseCode\s*:\s*(\d{3})");
+
+            if (!match.Success) return 0;
+
+            return int.TryParse(match.Groups[1].Value, out int status) ? status : 0;
+        }
+
+        /// <summary>
+        /// Classify from a status alone, when the response object itself is unavailable.
+        /// </summary>
+        private static CdnError FromStatusOnly(int status, string url, Exception exception)
+        {
+            bool looksLikeBundle = LooksLikeBundle(url) ||
+                                   (exception != null && LooksLikeBundle(exception.ToString()));
+
+            if (status == 401 || status == 403)
+            {
+                return new CdnError(CdnErrorCode.Unauthorized,
+                    $"The server rejected the request ({status})",
+                    hint: "Refresh the auth token and retry once.",
+                    url: url, httpStatusCode: status, exception: exception);
+            }
+
+            if (status == 404 || status == 410)
+            {
+                return looksLikeBundle
+                    ? new CdnError(CdnErrorCode.BundleNotFound,
+                        $"A bundle the catalog references is not on the CDN ({status})",
+                        hint: "Bundles must be uploaded before the catalog — see infrastructure §5.",
+                        url: url, httpStatusCode: status, exception: exception)
+                    : new CdnError(CdnErrorCode.CatalogNotFound,
+                        $"The catalog is not on the CDN at the expected path ({status})",
+                        hint: "Nothing was published for this app version, or it landed in a folder " +
+                              "named for a different one. Not retryable.",
+                        url: url, httpStatusCode: status, exception: exception);
+            }
+
+            if (status == 408 || status == 429 || (status >= 500 && status <= 599))
+            {
+                return new CdnError(CdnErrorCode.ServerError,
+                    $"The origin or edge returned an error ({status})",
+                    hint: "Transient at the server end. Retry with backoff.",
+                    url: url, httpStatusCode: status, exception: exception);
+            }
+
+            return new CdnError(CdnErrorCode.Unknown,
+                $"The server rejected the request ({status})",
+                hint: "A status with no specific handling. Retrying it unchanged is unlikely to help.",
                 url: url, httpStatusCode: status, exception: exception);
         }
 
