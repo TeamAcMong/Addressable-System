@@ -1,4 +1,4 @@
-# Addressable Manager v4.1.0-pre.1
+# Addressable Manager v4.1.0-pre.2
 
 **Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and a rule-based automation engine. Async surface auto-switches between `Task<T>` and `UniTask<T>` based on whether `com.cysharp.unitask` is installed.
 
@@ -682,10 +682,17 @@ Solution: Use TieredCache with aggressive config or increase MaxCacheSizeBytes
 
 ## 🌐 CDN Content Delivery (preview)
 
-`4.1.0-pre.1` adds the Editor-side pipeline for shipping Addressables content
-from a CDN. **Editor only — there is no runtime CDN API in this release.** Your
-game cannot yet initialise against a CDN or apply a catalog update; that work is
-not written. See CHANGELOG for the full scope and gaps.
+`4.1.0-pre.2` adds the runtime layer on top of the Editor pipeline from
+`pre.1`. A game can now boot against a CDN, check for a newer catalog and apply
+it. Downloads still go through Addressables' own path — orchestration, progress
+in real bytes, retry and cache management are Phase 3. See CHANGELOG for gaps.
+
+```csharp
+var init = await CdnManager.InitializeAsync();   // before any other Addressables call
+var check = await CdnManager.CheckForUpdateAsync();
+if (check.IsSuccess && check.Value.HasUpdate)
+    await CdnManager.ApplyUpdateAsync(check.Value);
+```
 
 Open **Window → Addressable Manager → CDN Manager**:
 
