@@ -637,7 +637,7 @@ Addressables.InternalIdTransformFunc = location =&gt;
 <tr><td>Local Server</td><td>Bật/tắt server test, chọn port, log request kèm mã trạng thái và header cache — để lỗi header lộ ra ở máy local thay vì trên production.</td><td>0</td></tr>
 <tr><td>Update Preview</td><td>Chạy <code>GatherModifiedEntries</code> <strong>trước khi</strong> build và liệt kê asset/group đã đổi, đánh dấu đỏ mọi thay đổi ở group static. Biến cái fail-sau-build của task 1.4 thành câu trả lời tức thì.</td><td>1</td></tr>
 <tr><td>Build</td><td>Trạng thái content-state, chọn platform/profile, Build Full / Build Update, và <strong>dung lượng patch dự kiến</strong> — con số mà hiện tại không ai lấy được trước lúc deploy.</td><td>1</td></tr>
-<tr><td>Catalog Inspector</td><td>Đọc catalog đã build: tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Dựng trên <code>AddressablesTools</code>.</td><td>5</td></tr>
+<tr><td>Catalog Inspector</td><td>Đọc catalog đã build: tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Đọc catalog nhị phân qua hai internal của Addressables bằng reflection (<code>ContentCatalogData.LoadFromFile</code> và <code>CreateCustomLocator</code>); từ đó trở đi toàn là public interface. Đã bỏ phương án <code>AddressablesTools</code>: nó nghĩa là ôm một dependency định dạng nhị phân phải bám theo từng bản Addressables, trong khi hai tên hàm kia là bề mặt nhỏ hơn nhiều. Có test resolve cả hai member trên bản Addressables đang cài, nên khi nâng cấp mà đổi tên thì test đỏ chứ không ra một inspector rỗng. Không dựng trên <code>AddressablesTools</code>.</td><td>5</td></tr>
 <tr><td>Runtime Monitor</td><td>Play mode: môi trường đang chạy, id catalog, cache đã dùng/còn trống, download trực tiếp theo byte thật, nút clear cache / clean obsolete.</td><td>4</td></tr>
 </tbody></table></div>
 <div class="note">
@@ -1207,7 +1207,7 @@ lần 2 → thành công
 <tr><td>2.7</td><td><code>CatalogService.ApplyUpdateAsync</code></td><td><code>UpdateCatalogs(..., autoCleanBundleCache: true)</code>; báo cáo catalog nào đã được thay.</td></tr>
 <tr><td>2.8</td><td><code>NetworkPolicy</code></td><td>Kết nối, phát hiện mạng tính phí, <code>WaitForReachableAsync</code>.</td></tr>
 <tr><td>2.9</td><td>Facade <code>Cdn</code> — phần boot</td><td><code>InitializeAsync</code>, <code>CheckForUpdateAsync</code>, <code>ApplyUpdateAsync</code>, <code>CurrentEnvironmentId</code>, <code>IsInitialized</code>.</td></tr>
-<tr><td>2.10</td><td>Scene boot mẫu</td><td><code>Assets/Examples/CdnBoot/</code> minh họa luồng chuẩn ở <a href="#d-api">thiết kế §6</a>.</td></tr>
+<tr><td>2.10</td><td>Scene boot mẫu</td><td>Ship dưới dạng UPM sample: <code>Samples~/CdnBoot</code>, import từ Package Manager, minh họa luồng chuẩn ở <a href="#d-api">thiết kế §6</a>. Đặt trong <code>Samples~</code> thay vì <code>Assets/</code> để consumer tự chọn cài, và để nó không compile trong mọi project cài package.</td></tr>
 </tbody></table></div>
 
 <h4>Tiêu chí thoát</h4>
@@ -1303,11 +1303,11 @@ lần 2 → thành công
 <tr><td>5.2</td><td>Ma trận thiết bị: Android cấu hình thấp, iOS tầm trung; WiFi, 4G, bật chế độ máy bay giữa lúc tải, máy sắp đầy bộ nhớ</td></tr>
 <tr><td>5.3</td><td>Chạy dài trên staging: ba lần content update liên tiếp trên cùng một bản cài, kiểm dung lượng delta và độ sạch của cache</td></tr>
 <tr><td>5.4</td><td>Kiểm tra tải/chi phí với CDN thật — egress, tỉ lệ cache hit ở edge, độ trễ p95 theo khu vực</td></tr>
-<tr><td>5.5</td><td>Hướng dẫn sử dụng CDN — hướng tới dev game (tài liệu thiết kế là dành cho người viết package)</td></tr>
+<tr><td>5.5</td><td><strong>Xong.</strong> Hướng dẫn sử dụng CDN hướng tới dev game: <code>Packages/com.game.addressables/Documentation/CDN_USAGE_GUIDE.md</code>. Ship kèm package, 12 mục từ “bạn có cần cái này không” tới bảng đầy đủ các kiểu lỗi. Mọi tên API trong đó đều đã đối chiếu với source chứ không viết theo trí nhớ.</td></tr>
 <tr><td>5.6</td><td>Cập nhật <code>README</code> + <code>CHANGELOG</code></td></tr>
 <tr><td>5.7</td><td>Gỡ phần <code>[Obsolete]</code> → 5.0.0</td></tr>
 <tr><td>5.8</td><td>Ghi chú migration cho những nơi đã tích hợp</td></tr>
-<tr><td class="ui">5.9</td><td>Tab Catalog Inspector — đọc catalog đã build, tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Dựng trên <code>AddressablesTools</code> (phải ở phiên bản đọc được catalog nhị phân, vì <code>EnableJsonCatalog</code> đang là false).</td></tr>
+<tr><td class="ui">5.9</td><td><strong>Xong, không cần dependency ngoài.</strong> Tab Catalog Inspector — đọc catalog đã build, tìm entry, xem dependency của bundle, đối chiếu với tập bundle output. Dựng trên <code>AddressablesTools</code> (phải ở phiên bản đọc được catalog nhị phân, vì <code>EnableJsonCatalog</code> đang là false).</td></tr>
 <tr><td class="ui">5.10</td><td>Rà soát UI cả sáu tab: skin Editor sáng/tối, thu nhỏ cửa sổ xuống 560 px, điều hướng bằng bàn phím</td></tr>
 </tbody></table></div>
 

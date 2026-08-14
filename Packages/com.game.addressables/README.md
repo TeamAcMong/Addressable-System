@@ -1,10 +1,41 @@
-# Addressable Manager v4.1.0-pre.3
+# Addressable Manager
 
-**Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and a rule-based automation engine. Async surface auto-switches between `Task<T>` and `UniTask<T>` based on whether `com.cysharp.unitask` is installed.
-
-[![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black.svg)](https://unity.com/)
-[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](CHANGELOG.md)
+[![Unity](https://img.shields.io/badge/Unity-2023.1%2B-black.svg)](https://unity.com/)
+[![Addressables](https://img.shields.io/badge/Addressables-2.9.1-black.svg)](https://docs.unity3d.com/Packages/com.unity.addressables@2.9/manual/index.html)
+[![Version](https://img.shields.io/badge/version-4.1.0--pre.4-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+Unity Addressables, with the parts you would otherwise write yourself: a three-tier
+API so simple cases stay simple, scopes that release assets when the thing that owns
+them goes away, pooling, and a CDN layer that can build, publish, verify and patch
+remote content.
+
+The async surface switches between `Task<T>` and `UniTask<T>` depending on whether
+`com.cysharp.unitask` is installed — same call sites either way.
+
+```csharp
+var sprite = await Simple.Load<Sprite>("UI/Icon");
+```
+
+### Where to start
+
+| If you want to… | Go to |
+|---|---|
+| Load an asset and move on | [Quick Start](#-quick-start-choose-your-level) |
+| Ship content from a CDN | [CDN Content Delivery](#-cdn-content-delivery) · [full guide](Documentation/CDN_USAGE_GUIDE.md) |
+| Automate addressing and grouping | [Automation guide](https://github.com/TeamAcMong/Addressable-System/blob/feat/cdn-system/Documentation/ADDRESSABLE_AUTOMATION_GUIDE.md) |
+| See it working before reading | [Samples](#-samples) |
+| Understand memory and lifetimes | [Memory Management](#-memory-management) · [Lifecycle](#-lifecycle-management) |
+| Fix an error you are looking at | [TROUBLESHOOTING.md](Documentation/TROUBLESHOOTING.md) |
+
+### Status
+
+| Area | State |
+|---|---|
+| Core loading, scopes, pooling, caching | Stable since 3.x |
+| Rule-based automation, Layout Rule Editor | Stable since 3.5 |
+| CDN: Editor pipeline, runtime, downloads, cache, diagnostics | Complete; verified against a local HTTP server |
+| CDN: real devices, staging soak, a real CDN | **Not yet validated** — see [CHANGELOG](CHANGELOG.md) |
 
 ---
 
@@ -680,15 +711,19 @@ Solution: Use TieredCache with aggressive config or increase MaxCacheSizeBytes
 
 ---
 
-## 🌐 CDN Content Delivery (preview)
+## 🌐 CDN Content Delivery
 
-`4.1.0-pre.3` completes the Editor pipeline, the runtime layer and download
-orchestration. A game can boot against a CDN, check for and apply catalog
-updates, download content with byte-accurate progress and cancellation, and keep
-its cache from growing with every patch.
+A game can boot against a CDN, check for and apply catalog updates, download content
+with byte-accurate progress and cancellation, and keep its cache from growing with
+every patch. The Editor side builds, verifies and patches that content, and refuses to
+produce a build that would silently omit a change.
 
-Not yet validated on real devices or against a real CDN — only a local server.
-See CHANGELOG for the full list of gaps.
+**→ [The full guide](Documentation/CDN_USAGE_GUIDE.md)** covers all of it end to end:
+whether you need remote content at all, setup, boot, downloads, patching, environments,
+CI, and one entry per failure mode. What follows is the shape of it.
+
+Verified against a local HTTP server, not yet against real devices or a real CDN —
+see [CHANGELOG](CHANGELOG.md) for the exact gaps.
 
 ```csharp
 // Must run before anything else touches Addressables.
@@ -713,10 +748,12 @@ Open **Window → Addressable Manager → CDN Manager**:
 
 | Tab | What it does |
 |-----|--------------|
-| Settings Validator | 70 rules a CDN setup requires, with Fix All |
-| Local Server | static server with real cache headers, to test without a CDN |
-| Update Preview | which assets block a content update, and the Prepare step that unblocks them |
-| Build | build full or delta content, and what the patch costs a player |
+| Settings Validator | every rule a CDN setup requires, with **Fix All** |
+| Local Server | static server with real cache headers, to test the whole flow without a CDN |
+| Update Preview | which assets would be silently dropped from a content update, and the Prepare step that fixes it |
+| Build | build full or delta content, with the gates in the right order, and what the patch costs a player |
+| Catalog Inspector | what is actually in the built catalog, and whether it matches the bundles on disk |
+| Runtime Monitor | live state in play mode: environment, catalog, network, cache, obsolete bundles |
 
 From batchmode:
 
@@ -727,6 +764,8 @@ UNITY=".../Unity.exe"
 "$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent -cdnProfile Local
 
 "$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput -cdnProfile Local
+
+"$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CatalogInspectCLI.Inspect
 ```
 
 Every entry point exits non-zero on failure and gates on compilation first —
@@ -740,74 +779,77 @@ compile, so never trust its exit code alone.
 
 ## 📦 Installation
 
-1. Add package via Package Manager → ＋ → Add package from git URL:
+Package Manager → **＋** → *Add package from git URL*:
+
 ```
-https://github.com/TeamAcMong/Addressable-System.git#3.5.0
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.4
 ```
 
-2. Or add to `manifest.json`:
+or in `Packages/manifest.json`:
+
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#3.5.0"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.4"
   }
 }
 ```
 
-3. Requirements:
-   - Unity **2022.3+**
-   - `com.unity.addressables` 2.3.1+
-   - TextMeshPro 3.0+ — optional, only `AddressableProgressBar` uses it (gated by `TMP_PRESENT`)
-   - UniTask 2.3.0+ — optional, switches async return type from `Task<T>` to `UniTask<T>` (gated by `UNITASK_PRESENT`)
+### Requirements
+
+| | Version | Notes |
+|---|---|---|
+| Unity | **2023.1+** | |
+| `com.unity.addressables` | **2.9.1** | 2.3.1 will not compile this package. |
+| TextMeshPro | 3.0+ | Optional. Only `AddressableProgressBar` uses it, gated by `TMP_PRESENT`. |
+| UniTask | 2.3.0+ | Optional. Switches the async return type from `Task<T>` to `UniTask<T>`, gated by `UNITASK_PRESENT`. No call sites change. |
 
 ---
 
-## 📝 Version History
+## 🧪 Samples
 
-### v3.0.0 - Major Rewrite
-- **NEW**: 3-Tier API (Simple/Standard/Advanced)
-- **NEW**: Complete thread-safety with lock-free structures
-- **NEW**: Intelligent tiered caching (Hot/Warm/Cold)
-- **NEW**: Hybrid scopes (Singleton + Named instances)
-- **NEW**: Advanced diagnostics and system stats
+Import from Package Manager → **Addressable Manager** → *Samples*. Each is
+self-contained and carries its own README.
 
-### v2.5.0 - Architecture Improvements
-- **NEW**: Tiered cache system
-- **NEW**: Hybrid singleton pattern
-- **NEW**: Runtime validation (9 modes)
-- **NEW**: Auto-create pool functionality
-
-### v2.2.0 - Enhanced Features
-- **NEW**: Thread-safe loading
-- **NEW**: SmartAssetHandle (auto memory management)
-- **NEW**: Result<T> pattern (explicit errors)
-- **NEW**: Dynamic pools (auto grow/shrink)
-
-### v2.1.0 - Automatic Monitoring
-- **NEW**: All loads automatically tracked
-- Simplified API (no more .Monitored suffix)
-
-### v2.0.0 - Editor Tools & Monitoring
-- **NEW**: Real-time Dashboard
-- **NEW**: Custom inspectors
-- **NEW**: Configuration system
+| Sample | What it shows |
+|---|---|
+| **CDN Boot** | The canonical boot sequence, one branch per outcome, each commented with what a real game should do there. Start here if you are shipping remote content. |
+| **API Examples** | Six runnable examples across the three tiers: simple load, session management, progress, pooling, scene scope, hierarchy scope. |
+| **Rule Automation Presets** | A working set of layout rule, filter and provider assets wired to each other, so the automation system can be explored from something that runs. |
 
 ---
 
-## 🤝 Support
+## 📝 Version history
 
-- **Documentation**: [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md), [MONITORING_GUIDE.md](MONITORING_GUIDE.md)
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
-- **Issues**: [GitHub Issues](https://github.com/your-repo/issues)
+Kept in one place, with the reasoning: **[CHANGELOG.md](CHANGELOG.md)**.
+
+### Deprecated, removed in 5.0.0
+
+Still present and still working, each warning names its replacement.
+
+| Deprecated | Use instead |
+|---|---|
+| `AssetLoader.DownloadDependenciesAsync` / `GetDownloadSizeAsync` | `CdnManager.DownloadAsync` / `GetDownloadSizeAsync` |
+| `Assets.Download` / `Assets.GetDownloadSize` | as above |
+| `StandardAPI.DownloadDependencies` / `GetDownloadSize` | as above |
+
+The replacements return `CdnResult<T>`, so "nothing to download" is distinguishable
+from "could not find out" — which the old `long`-returning surface could not express.
+
+---
+
+## 📚 Documentation
+
+| Doc | What is in it |
+|---|---|
+| [CDN_USAGE_GUIDE.md](Documentation/CDN_USAGE_GUIDE.md) | Shipping content from a CDN, end to end |
+| [TROUBLESHOOTING.md](Documentation/TROUBLESHOOTING.md) | One entry per error code |
+| [EDITOR_TOOLS_GUIDE.md](EDITOR_TOOLS_GUIDE.md) | The Editor windows |
+| [MONITORING_GUIDE.md](MONITORING_GUIDE.md) | The dashboard and asset tracking |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ---
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file
-
----
-
-**Made with ❤️ for Unity Developers**
-
-*Addressable Manager v3.0 - From prototyping to production, one API at a time.*
+MIT — see [LICENSE](LICENSE.md).

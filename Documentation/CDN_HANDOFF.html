@@ -74,14 +74,14 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 
 <div class="head">
 <h1>CDN System — Bàn giao trạng thái &amp; chiến lược làm tiếp</h1>
-<p style="color:var(--mut);margin:0">Phase 0–4 đóng. Phase 5 còn phần cần thiết bị thật và CDN thật.</p>
+<p style="color:var(--mut);margin:0">Phase 0–4 đóng. Phase 5 còn phần cần thiết bị thật, CDN thật, và một người nhìn UI.</p>
 <div class="meta">
 <span class="b a">branch: feat/cdn-system</span>
 <span class="b">HEAD: 58ba298</span>
 <span class="b g">Phase 0–2: đóng</span>
 <span class="b g">Phase 3: 11/11</span>
 <span class="b g">Phase 4: 8/8</span>
-<span class="b w">Phase 5: 1/8</span>
+<span class="b w">Phase 5: 5/8</span>
 <span class="b">Unity 6000.5.7f1 · Addressables 2.9.1</span>
 </div>
 </div>
@@ -101,8 +101,9 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 <h2 id="now">1. Đang ở đâu</h2>
 
 <p>Nhánh <code>feat/cdn-system</code>, đã push. Compile 0 lỗi. Settings contract 70/70.
-Đã phát hành hai bản pre-release: <code>4.1.0-pre.1</code> (Editor pipeline) và
-<code>4.1.0-pre.2</code> (runtime layer).</p>
+Đã phát hành: <code>4.1.0-pre.1</code> (Editor pipeline), <code>4.1.0-pre.2</code> (runtime layer),
+<code>4.1.0-pre.3</code> (download, cache, chẩn đoán), <code>4.1.0-pre.4</code> (Catalog Inspector, UPM samples,
+hướng dẫn dev game, dọn dead code).</p>
 
 <div class="tw"><table>
 <thead><tr><th>Phase</th><th>Trạng thái</th><th>Kiểm chứng</th></tr></thead>
@@ -111,8 +112,8 @@ button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75re
 <tr><td>1 — Build &amp; content update</td><td class="ok">13/13</td><td>tiêu chí thoát đo được: 2,076 MB / 2,5 MB</td></tr>
 <tr><td>2 — Runtime bootstrap</td><td class="ok">10/10</td><td>4 test tích hợp, xanh 2 lượt</td></tr>
 <tr><td>3 — Download orchestration</td><td class="ok">11/11</td><td>12 unit test xanh 2 lượt; <strong>3 tiêu chí đo chưa chạy</strong></td></tr>
-<tr><td>4 — Cache, errors, diagnostics</td><td class="ok">8/8</td><td>5 tab dựng + refresh sạch; 14/14 mã lỗi có mục troubleshooting</td></tr>
-<tr><td>5 — Hardening &amp; rollout</td><td class="pend">1/8</td><td>fault injection 5/5 xanh 2 lượt</td></tr>
+<tr><td>4 — Cache, errors, diagnostics</td><td class="ok">8/8</td><td>14/14 mã lỗi có mục troubleshooting</td></tr>
+<tr><td>5 — Hardening &amp; rollout</td><td class="pend">5/8</td><td>fault injection 5/5; Catalog Inspector đọc catalog nhị phân thật (5.9); hướng dẫn dev game (5.5); <strong>6/6 tab</strong> dựng + refresh sạch</td></tr>
 </tbody></table></div>
 
 <h2 id="done">2. Đã xong từng phase</h2>
@@ -153,10 +154,14 @@ và đo alloc cần <code>Recorder</code> API thay Profiler UI. Throttle server 
 <tr><td>5.4 Load/cost với CDN thật</td><td class="no">không làm được</td><td>Không có credential R2.</td></tr>
 <tr><td>5.7 Gỡ <code>[Obsolete]</code></td><td class="pend">không nên làm bây giờ</td>
 <td>Đây là hành động của bản <strong>5.0.0</strong>. Gỡ lúc này vi phạm invariant 6 và phá consumer đang dùng <code>pre.2</code>.</td></tr>
-<tr><td>5.9 Catalog Inspector</td><td class="pend">cần quyết định</td>
-<td>Cần thư viện ngoài <code>AddressablesTools</code> để đọc catalog nhị phân
-(<code>ContentCatalogData.LoadFromFile</code> là <code>internal</code>). Thêm dependency là quyết định của chủ repo.</td></tr>
-<tr><td>5.10 UI pass 5 tab</td><td class="pend">cần người nhìn</td>
+<tr><td>5.9 Catalog Inspector</td><td class="ok">xong</td>
+<td>Không thêm dependency nào. <code>CatalogReader</code> reflect hai internal
+(<code>LoadFromFile</code>, <code>CreateCustomLocator</code>), phần còn lại là public interface;
+<code>CatalogReaderTests</code> ghim cả hai nên nâng Addressables mà đổi tên thì test đỏ.
+Lần chạy đầu trên catalog thật bắt được hai bug của chính nó: <code>BundleName</code> trong catalog là
+hash chứ không phải tên file, và bundle local (<code>RuntimePath</code>) bị tính là thiếu trên CDN —
+8 báo động giả cùng lúc. Có cả bản CLI (<code>CatalogInspectCLI</code>) để CI chặn publish.</td></tr>
+<tr><td>5.10 UI pass 6 tab</td><td class="pend">cần người nhìn</td>
 <td>Probe chứng minh dựng được, refresh được, kết luận đúng. <strong>Không</strong> chứng minh được nó trông thế nào.</td></tr>
 <tr><td>CI chạy lần đầu</td><td class="pend">chưa chạy</td>
 <td>Không có runner Unity self-hosted, không có credential. Đã kiểm cú pháp shell, cấu trúc YAML, 13 đường dẫn JSON.</td></tr>
@@ -224,7 +229,7 @@ UNITY="C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe"
 "$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate -cdnProfile Local
 "$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput       -cdnProfile Local
 
-# Smoke check 5 tab (không cần mở Editor)
+# Smoke check 6 tab (không cần mở Editor)
 "$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnTabProbeCLI.ProbeTabs
 
 # Test
@@ -236,7 +241,7 @@ UNITY="C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe"
 <h2 id="next">7. Làm gì tiếp</h2>
 
 <ol>
-<li><strong>Mở 5 tab ra nhìn.</strong> Rẻ nhất, và gỡ đúng khoảng mù duy nhất mà batchmode không gỡ được. Nhớ kiểm ở bề rộng 560px (tiêu chí §5.10).</li>
+<li><strong>Mở 6 tab ra nhìn.</strong> Rẻ nhất, và gỡ đúng khoảng mù duy nhất mà batchmode không gỡ được. Nhớ kiểm ở bề rộng 560px (tiêu chí §5.10).</li>
 <li><strong>Chạy CI lần đầu</strong> trên bucket Dev vứt đi được. Cần secrets <code>R2_ENDPOINT</code>, <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code>, <code>CF_ZONE_ID</code>, <code>CF_API_TOKEN</code>; vars <code>R2_BUCKET</code>, <code>R2_ARCHIVE_BUCKET</code>, <code>CDN_GAME_PREFIX</code>, <code>CDN_BASE_URL</code>.</li>
 <li><strong>Đóng tiêu chí đo Phase 3</strong> — quyết định corpus lớn sinh lúc chạy (gitignore) hay commit.</li>
 <li><strong>Phase 5 phần cần thiết bị</strong> khi có máy thật và CDN thật.</li>

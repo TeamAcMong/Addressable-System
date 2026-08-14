@@ -642,7 +642,7 @@ Addressables.InternalIdTransformFunc = location =&gt;
 <tr><td>Local Server</td><td>Start/stop the test server, port, and a request log showing status codes and cache headers — so header mistakes surface locally instead of in production.</td><td>0</td></tr>
 <tr><td>Update Preview</td><td>Runs <code>GatherModifiedEntries</code> <strong>before</strong> building and lists changed assets and groups, flagging any static-group change. Turns task 1.4's post-build failure into an immediate answer.</td><td>1</td></tr>
 <tr><td>Build</td><td>Content-state status, platform/profile pickers, Build Full / Build Update, and the resulting <strong>projected patch size</strong> — the number nobody can currently obtain before deploying.</td><td>1</td></tr>
-<tr><td>Catalog Inspector</td><td>Reads a built catalog: search entries, inspect bundle dependencies, cross-check against the bundle output set. Built on <code>AddressablesTools</code>.</td><td>5</td></tr>
+<tr><td>Catalog Inspector</td><td>Reads a built catalog: search entries, inspect bundle dependencies, cross-check against the bundle output set. Reads the binary catalog through two reflected Addressables internals (<code>ContentCatalogData.LoadFromFile</code> and <code>CreateCustomLocator</code>); everything after that is public interface. <code>AddressablesTools</code> was rejected: it means owning a binary-format dependency that has to track every Addressables release, where the two method names are a far smaller surface. A test resolves both members against the installed Addressables, so an upgrade that renames either one fails a test instead of producing an empty inspector. Not built on <code>AddressablesTools</code>.</td><td>5</td></tr>
 <tr><td>Runtime Monitor</td><td>Play mode: active environment, catalog id, cache occupied/free, live download in real bytes, clear cache / clean obsolete.</td><td>4</td></tr>
 </tbody></table></div>
 <div class="note">
@@ -1212,7 +1212,7 @@ attempt 2 → success
 <tr><td>2.7</td><td><code>CatalogService.ApplyUpdateAsync</code></td><td><code>UpdateCatalogs(..., autoCleanBundleCache: true)</code>; report which catalogs were replaced.</td></tr>
 <tr><td>2.8</td><td><code>NetworkPolicy</code></td><td>Reachability, metered detection, <code>WaitForReachableAsync</code>.</td></tr>
 <tr><td>2.9</td><td><code>Cdn</code> facade — boot subset</td><td><code>InitializeAsync</code>, <code>CheckForUpdateAsync</code>, <code>ApplyUpdateAsync</code>, <code>CurrentEnvironmentId</code>, <code>IsInitialized</code>.</td></tr>
-<tr><td>2.10</td><td>Sample boot scene</td><td><code>Assets/Examples/CdnBoot/</code> demonstrating the canonical flow from <a href="#d-api">design §6</a>.</td></tr>
+<tr><td>2.10</td><td>Sample boot scene</td><td>Shipped as a UPM sample: <code>Samples~/CdnBoot</code>, imported from Package Manager, demonstrating the canonical flow from <a href="#d-api">design §6</a>. It lives in <code>Samples~</code> rather than <code>Assets/</code> so it is opt-in for consumers and does not compile in every project that installs the package.</td></tr>
 </tbody></table></div>
 
 <h4>Exit criteria</h4>
@@ -1308,11 +1308,11 @@ attempt 2 → success
 <tr><td>5.2</td><td>Device matrix: low-end Android, mid iOS; WiFi, cellular, airplane-mode toggle mid-download, near-full storage</td></tr>
 <tr><td>5.3</td><td>Staging soak: three consecutive content updates on the same install, verifying delta sizes and cache hygiene</td></tr>
 <tr><td>5.4</td><td>Load/cost sanity check against real CDN — egress, cache hit ratio at the edge, p95 latency by region</td></tr>
-<tr><td>5.5</td><td>CDN usage guide — game-developer-facing (the design doc is for the package author)</td></tr>
+<tr><td>5.5</td><td><strong>Done.</strong> CDN usage guide, game-developer-facing: <code>Packages/com.game.addressables/Documentation/CDN_USAGE_GUIDE.md</code>. Ships inside the package, twelve sections from "do you need this?" to a table of every failure mode. Every API name in it was checked against the source rather than written from memory.</td></tr>
 <tr><td>5.6</td><td><code>README</code> + <code>CHANGELOG</code> updates</td></tr>
 <tr><td>5.7</td><td>Remove the <code>[Obsolete]</code> surface → 5.0.0</td></tr>
 <tr><td>5.8</td><td>Migration note for existing integrators</td></tr>
-<tr><td class="ui">5.9</td><td>Catalog Inspector tab — read a built catalog, search entries, inspect bundle dependencies, cross-check against the bundle output set. Built on <code>AddressablesTools</code> (must be on a version that reads binary catalogs, since <code>EnableJsonCatalog</code> is false).</td></tr>
+<tr><td class="ui">5.9</td><td><strong>Done, without the external dependency.</strong> Catalog Inspector tab — read a built catalog, search entries, inspect bundle dependencies, cross-check against the bundle output set. Built on <code>AddressablesTools</code> (must be on a version that reads binary catalogs, since <code>EnableJsonCatalog</code> is false).</td></tr>
 <tr><td class="ui">5.10</td><td>UI pass on all six tabs: dark/light Editor skin, window resize down to 560 px, keyboard navigation</td></tr>
 </tbody></table></div>
 

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4ab40d086ba38ae4e886a131350a01c5, type: 3}
   m_Name: CompositeLayoutRuleData
   m_EditorClassIdentifier: AddressableManager.Editor::AddressableManager.Editor.Rules.CompositeLayoutRuleData
-  _sourceRuleData: []
+  _sourceRuleData:
+  - {fileID: 11400000, guid: f17a8689cb400704db459878a45ec8ab, type: 2}
   _respectSourceOrder: 1
   _deduplicateByName: 1

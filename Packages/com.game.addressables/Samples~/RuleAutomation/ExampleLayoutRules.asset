@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1fc774d33b88e0749a0836f6d59257e0, type: 3}
-  m_Name: NewLayoutRuleData
+  m_Name: ExampleLayoutRules
   m_EditorClassIdentifier: AddressableManager.Editor::AddressableManager.Editor.Rules.LayoutRuleData
   _ruleDataId: 8599b9ad-4057-48ee-843c-76adccb59e21
   _description: 
