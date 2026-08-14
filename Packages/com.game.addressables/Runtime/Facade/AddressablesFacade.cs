@@ -267,7 +267,13 @@ namespace AddressableManager.Facade
         public async Task<long> GetDownloadSizeAsync(string address)
 #endif
         {
+            // Deliberate forward within the deprecated download surface (task 3.10): this facade
+            // method is itself part of what CdnManager.GetDownloadSizeAsync replaces, and both go
+            // away together in 5.0.0. Suppressed so consumers of the package do not see a warning
+            // pointing at package-internal code they cannot change.
+#pragma warning disable CS0618
             return await _globalScope.Loader.GetDownloadSizeAsync(address);
+#pragma warning restore CS0618
         }
 
         /// <summary>

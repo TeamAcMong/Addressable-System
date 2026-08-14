@@ -94,8 +94,30 @@ namespace AddressableManager.Progress
         }
 
         /// <summary>
-        /// Download dependencies with progress tracking
+        /// Download dependencies with progress tracking — task 3.9.
         /// </summary>
+        /// <remarks>
+        /// Same signature as before; the implementation now runs on
+        /// <see cref="AddressableManager.Cdn.DownloadService"/>.
+        ///
+        /// WHAT WAS WRONG WITH THE OLD MATH
+        /// It computed <c>speed = deltaProgress / deltaTime</c> where deltaProgress is a FRACTION of
+        /// the operation, then multiplied by 100 and labelled the result KB/s. That number had no
+        /// unit at all — it was percent-per-second scaled by an arbitrary constant, and a 10 MB and
+        /// a 10 GB download reported the same "speed". deltaTime was measured from a startTime that
+        /// was never reset, so it grew for the whole download and the reported rate decayed toward
+        /// zero regardless of what the network was doing. ETA inherited both faults.
+        /// <c>BytesDownloaded</c> and <c>TotalBytes</c> existed on ProgressInfo and were never
+        /// populated, so any UI trying to show real sizes had nothing to show.
+        ///
+        /// Now speed is bytes per second smoothed with an EMA, ETA comes from real remaining bytes,
+        /// and both byte fields are filled from Addressables' own DownloadStatus.
+        ///
+        /// ETA WHEN UNKNOWN
+        /// DownloadProgress reports -1 for an unknown ETA. ProgressInfo has no way to say "unknown",
+        /// so this maps -1 to 0 — the pre-existing meaning of the field. A caller that needs the
+        /// distinction should use DownloadService directly.
+        /// </remarks>
 #if UNITASK_PRESENT
         public static async UniTask<bool> DownloadWithProgressAsync(
             string address,
@@ -113,49 +135,47 @@ namespace AddressableManager.Progress
                 tracker.OnProgressChanged += onProgress;
             }
 
-            AsyncOperationHandle operation = default;
-            bool operationStarted = false;
-
             try
             {
                 tracker.UpdateProgress(new ProgressInfo(0f, $"Downloading {address}"));
 
-                operation = Addressables.DownloadDependenciesAsync(address);
-                operationStarted = true;
+                // Falls back to a standalone service when the CDN layer has not been initialised, so
+                // this keeps working in projects that never adopted it.
+                var service = AddressableManager.Cdn.CdnManager.IsInitialized
+                    ? null
+                    : new AddressableManager.Cdn.DownloadService(
+                        new AddressableManager.Cdn.NetworkPolicy(AddressableManager.Cdn.DownloadPolicy.Default));
 
-                float lastProgress = 0f;
-                float startTime = Time.realtimeSinceStartup;
-
-                // Poll progress with download speed calculation
-                while (!operation.IsDone)
+                var request = AddressableManager.Cdn.DownloadRequest.For(address);
+                var progress = new Progress<AddressableManager.Cdn.DownloadProgress>(p =>
                 {
-                    float currentProgress = operation.PercentComplete;
-                    float deltaProgress = currentProgress - lastProgress;
-                    float deltaTime = Time.realtimeSinceStartup - startTime;
-
-                    float speed = deltaTime > 0 ? (deltaProgress / deltaTime) : 0f;
-                    float eta = speed > 0 ? (1f - currentProgress) / speed : 0f;
-
-                    var info = new ProgressInfo
+                    tracker.UpdateProgress(new ProgressInfo
                     {
-                        Progress = currentProgress,
+                        Progress = p.Percent,
                         CurrentOperation = $"Downloading {address}",
-                        DownloadSpeed = speed * 100f, // Approximate KB/s
-                        EstimatedTimeRemaining = eta
-                    };
+                        BytesDownloaded = p.DownloadedBytes,
+                        TotalBytes = p.TotalBytes,
+                        DownloadSpeed = (float)(p.BytesPerSecond / 1024.0),
+                        EstimatedTimeRemaining = p.EtaSeconds >= 0 ? (float)p.EtaSeconds : 0f
+                    });
+                });
 
-                    tracker.UpdateProgress(info);
+                var result = service != null
+                    ? await service.DownloadAsync(request, progress)
+                    : await AddressableManager.Cdn.CdnManager.DownloadAsync(request, progress);
 
-                    lastProgress = currentProgress;
-#if UNITASK_PRESENT
-                    await UniTask.Yield();
-#else
-                    await Task.Yield();
-#endif
+                if (result.IsFailure)
+                {
+                    // ProgressTracker has no failure state — only UpdateProgress, Complete and
+                    // Reset — so the last reported progress is left standing, which is accurate for
+                    // a download that stopped part-way. Complete() is deliberately not called: it
+                    // would tell every subscriber the download succeeded.
+                    Debug.LogError($"[ProgressiveAssetLoader] Download failed for {address}: {result.Error}");
+                    return false;
                 }
 
                 tracker.Complete();
-                return operation.Status == AsyncOperationStatus.Succeeded;
+                return true;
             }
             catch (Exception ex)
             {
@@ -169,12 +189,8 @@ namespace AddressableManager.Progress
                     tracker.OnProgressChanged -= onProgress;
                 }
 
-                // Always release the download dependencies handle — the cache is owned by Addressables itself,
-                // we only needed the handle for progress tracking.
-                if (operationStarted && operation.IsValid())
-                {
-                    Addressables.Release(operation);
-                }
+                // No handle to release any more: DownloadService owns the operation and releases it
+                // on every path, including cancellation.
             }
         }
 
