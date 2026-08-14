@@ -2,6 +2,74 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.2] - 2026-08-14 - CDN runtime layer (Phase 2)
+
+The half that was missing. `4.1.0-pre.1` could produce and verify content; this one
+lets a game boot against a CDN and consume it.
+
+### Added
+
+- **`CdnManager`** — the entry point. `InitializeAsync`, `CheckForUpdateAsync`,
+  `ApplyUpdateAsync`, `SetEnvironment`, `PromoteFailover`.
+- **`CdnResult<T>` / `CdnError` / `CdnErrorCode`** — 15 codes with retry
+  classification, mirroring the existing `LoadResult` / `LoadError` shape.
+- **`CdnSettings`** — ScriptableObject in `Resources`, with environments, failover
+  origins, an env-var host override, and a download policy.
+- **`CatalogService`** — initialise, check, apply, each returning a result rather
+  than throwing.
+- **`CdnRequestDecorator`** — installs the Addressables hooks, and refuses if
+  Addressables already initialised.
+- **`HostRewriter`** — swaps the origin so one build can be pointed at another
+  environment without a rebuild.
+- **`NetworkPolicy`** — reachability and metered detection, with its limits documented.
+- **`CdnBootExample`** — the canonical boot sequence, branching on every outcome.
+
+### Call it first
+
+`CdnManager.InitializeAsync` must run before anything else touches Addressables.
+Addressables initialises implicitly on its first load call, and the CDN hooks only
+apply to content resolved after they are installed. A stray `LoadAssetAsync`, or an
+`AssetReference` on an object in your boot scene, is enough to lose them — so
+initialisation fails loudly in that case instead of half-applying.
+
+```csharp
+var init = await CdnManager.InitializeAsync();
+if (init.IsFailure)
+{
+    if (init.ErrorCode == CdnErrorCode.NoContentAvailableOffline)
+        ShowBlockingSetupScreen();   // first launch, nothing cached
+    return;
+}
+
+var check = await CdnManager.CheckForUpdateAsync();
+if (check.IsSuccess && check.Value.HasUpdate)
+    await CdnManager.ApplyUpdateAsync(check.Value);
+```
+
+Create the settings asset via **Assets > Create > Addressable Manager > CDN Settings**
+and put it in a `Resources` folder. It has to load from Resources, because it is what
+tells Addressables where the catalog is.
+
+### Named CdnManager, not Cdn
+
+The design documentation calls the facade `Cdn`. That name does not compile: the
+runtime types live in namespace `AddressableManager.Cdn`, so `Cdn` at a call site
+binds to the namespace.
+
+### Verified
+
+Four PlayMode integration tests against a real HTTP server, green twice in a row.
+Assertions are made against the server's request log rather than the client's return
+value — Addressables in Fast Mode reports success without a byte crossing HTTP, so a
+passing call proves nothing on its own.
+
+### Still not here
+
+Phase 3 and beyond: download orchestration, progress in real bytes, cancellation,
+resume, retry with backoff, cache management, and the diagnostics window. Content
+downloads currently go through Addressables' own path with no CDN-specific retry or
+progress reporting. Nothing has been tested against a real CDN — only a local server.
+
 ## [4.1.0-pre.1] - 2026-08-11 - CDN build pipeline (Editor only)
 
 Pre-release for integration testing. Adds the Editor-side CDN pipeline: build
