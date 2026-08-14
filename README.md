@@ -2,7 +2,7 @@
 
 [![Unity](https://img.shields.io/badge/Unity-2023.1%2B-black.svg)](https://unity.com/)
 [![Addressables](https://img.shields.io/badge/Addressables-2.9.1-black.svg)](https://docs.unity3d.com/Packages/com.unity.addressables@2.9/manual/index.html)
-[![Version](https://img.shields.io/badge/version-4.1.0--pre.4-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.1.0--pre.5-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Unity Addressables, with the parts you would otherwise write yourself: a three-tier
@@ -782,7 +782,7 @@ compile, so never trust its exit code alone.
 Package Manager → **＋** → *Add package from git URL*:
 
 ```
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.4
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.5
 ```
 
 or in `Packages/manifest.json`:
@@ -790,7 +790,7 @@ or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.4"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.5"
   }
 }
 ```
