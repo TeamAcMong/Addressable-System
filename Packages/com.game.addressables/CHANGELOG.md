@@ -2,6 +2,96 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.1] - 2026-08-11 - CDN build pipeline (Editor only)
+
+Pre-release for integration testing. Adds the Editor-side CDN pipeline: build
+remote content, refuse to build a broken patch, verify the output, and see what
+a patch costs a player.
+
+### Read this before integrating
+
+**There is no runtime CDN layer in this release.** Nothing under `Runtime/`
+knows about a CDN. Your game cannot yet initialise against one, check for a
+catalog update, apply one, or define what happens offline — that is Phase 2 and
+is not written. What you can do today is produce and verify content from the
+Editor or from batchmode. If you are evaluating "can my game download content
+from a CDN", this release does not answer that question yet.
+
+Everything below is also **unverified against a real CDN**. It has been run
+against a local HTTP server only.
+
+### Requirements
+
+- Unity **2023.1+** (raised from 2022.3 — Addressables 2.9.1 sets this floor)
+- `com.unity.addressables` **2.9.1** (raised from 2.3.1; 2.3.1 will not compile,
+  several APIs used here do not exist in it)
+
+### Added
+
+- **`CdnBuildPipeline`** — the gated build sequence, shared by the CLI and the
+  GUI so the order of checks exists in one place. Every gate runs before the
+  build, because the failure the version gate prevents cannot be detected after.
+- **`CdnBuildCLI`** — batchmode entry points `BuildContent`,
+  `BuildContentUpdate`, `VerifyOutput`. Non-zero exit on any failure, and each
+  gates on `EditorUtility.scriptCompilationFailed` first: Unity exits 0 when
+  `-executeMethod` runs against a broken assembly and the method never runs.
+- **`ContentStateManager`** — resolve, validate and archive
+  `addressables_content_state.bin`. `Validate` compares the state file's
+  `playerVersion` against `PlayerSettings.bundleVersion` and refuses a mismatch.
+- **`ContentUpdateRestrictions`** — reports which entries in StaticContent
+  groups changed, and whether each was modified directly or pulled in as a
+  dependency.
+- **`CatalogVerifier`** — checks the settings contract, that the catalog is
+  named for the app version players actually poll for, and that every bundle in
+  the manifest exists on disk with the recorded size and SHA256.
+- **`BuildManifest` / `BuildManifestWriter`** — `build-manifest.json` next to
+  the output: app version, platform, build type, git SHA, catalog metadata, and
+  every bundle with its SHA256. Serialised with `JsonUtility`; no Newtonsoft
+  dependency is added.
+- **`ContentDiff`** — compares two manifests by content hash and reports what a
+  player on the older build must download. The result is embedded in each
+  manifest, so CI can assert on patch size without re-running the comparison.
+- **`CdnProfileManager`** — Local / Dev / Staging / Prod profiles, a catalog
+  path separate from the bundle path, and CDN host injection from an
+  environment variable so URLs are not committed.
+- **`LocalContentServer`** — static file server with real cache headers and
+  range-request support, for testing without a CDN.
+- **CDN Manager window** (`Window → Addressable Manager → CDN Manager`) with
+  four tabs: Settings Validator, Local Server, Update Preview, Build.
+- **`SettingsContract`** — 70 rules covering the Addressables configuration a
+  CDN setup requires, shared by the GUI validator and the CI verifier so the
+  two cannot disagree.
+- **`CdnSetupCLI`** — applies the whole contract from batchmode, idempotent.
+
+### Fixed
+
+Two pre-existing package bugs found while building the above:
+
+- **`AddressRule`** created groups with no schemas attached, so those groups
+  silently produced no content. `Scene.asset` in the sample project had been
+  broken this way.
+- **`HierarchyAssetScope`** used `Object.GetInstanceID()`, which Unity 6000.5
+  marks `Obsolete(error: true)`. Now guarded by `#if UNITY_6000_5_OR_NEWER`, so
+  the package still compiles below that version without raising its floor.
+
+### Known gaps
+
+- No runtime CDN layer (above).
+- The GitHub Actions workflows and `ci/*.sh` shipped in the repository — not in
+  this package — have never been executed.
+- The four Editor tabs have been verified to build, refresh and report correctly
+  from batchmode, but nobody has looked at them yet.
+- The design documentation still states that a changed StaticContent group
+  requires a new player build. It does not; the remedy is the Prepare step in
+  the Update Preview tab. The code is correct, the prose is not.
+
+### Note for projects with TextAssets in remote groups
+
+Git rewrites line endings on checkout when `core.autocrlf` is on, and for a
+TextAsset those bytes are what ends up in the bundle — the same commit then
+produces different bundles on different machines. Mark such assets `-text` in
+`.gitattributes`.
+
 ## [4.0.1] - 2026-05-24 - Fix StandardAPI.InstantiateSession compile error
 
 4.0.0 removed `AddressablesFacade.GetSessionScope()` and replaced it

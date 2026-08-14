@@ -1,4 +1,4 @@
-# Addressable Manager v4.0.0
+# Addressable Manager v4.1.0-pre.1
 
 **Enterprise-grade Unity Addressables management system** with 3-tier API, intelligent caching, complete thread-safety, automatic memory management, and a rule-based automation engine. Async surface auto-switches between `Task<T>` and `UniTask<T>` based on whether `com.cysharp.unitask` is installed.
 
@@ -677,6 +677,42 @@ Solution: Enable auto-create with poolManager.EnableAutoCreatePools()
 Warning: Cache size exceeds maximum (150MB / 100MB)
 Solution: Use TieredCache with aggressive config or increase MaxCacheSizeBytes
 ```
+
+---
+
+## 🌐 CDN Content Delivery (preview)
+
+`4.1.0-pre.1` adds the Editor-side pipeline for shipping Addressables content
+from a CDN. **Editor only — there is no runtime CDN API in this release.** Your
+game cannot yet initialise against a CDN or apply a catalog update; that work is
+not written. See CHANGELOG for the full scope and gaps.
+
+Open **Window → Addressable Manager → CDN Manager**:
+
+| Tab | What it does |
+|-----|--------------|
+| Settings Validator | 70 rules a CDN setup requires, with Fix All |
+| Local Server | static server with real cache headers, to test without a CDN |
+| Update Preview | which assets block a content update, and the Prepare step that unblocks them |
+| Build | build full or delta content, and what the patch costs a player |
+
+From batchmode:
+
+```bash
+UNITY=".../Unity.exe"
+"$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup -profile Local
+
+"$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent -cdnProfile Local
+
+"$UNITY" -batchmode -quit -nographics -projectPath . -logFile -   -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput -cdnProfile Local
+```
+
+Every entry point exits non-zero on failure and gates on compilation first —
+Unity exits 0 when `-executeMethod` runs against an assembly that did not
+compile, so never trust its exit code alone.
+
+**Requires Unity 2023.1+ and `com.unity.addressables` 2.9.1.** Addressables
+2.3.1 will not compile this package.
 
 ---
 
