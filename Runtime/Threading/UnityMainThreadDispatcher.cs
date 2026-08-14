@@ -30,7 +30,7 @@ namespace AddressableManager.Threading
             {
                 if (_instance == null)
                 {
-                    _instance = FindObjectOfType<UnityMainThreadDispatcher>();
+                    _instance = FindAnyObjectByType<UnityMainThreadDispatcher>();
 
                     if (_instance == null)
                     {

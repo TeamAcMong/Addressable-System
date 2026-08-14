@@ -133,7 +133,7 @@ namespace AddressableManager.Scopes
         /// </summary>
         public static SceneAssetScope GetOrCreate(Scene scene)
         {
-            var all = FindObjectsByType<SceneAssetScope>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var all = FindObjectsByType<SceneAssetScope>(FindObjectsInactive.Include);
             foreach (var s in all)
             {
                 if (s._ownerScene == scene) return s;

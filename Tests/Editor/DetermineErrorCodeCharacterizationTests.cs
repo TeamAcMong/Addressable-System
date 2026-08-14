@@ -281,14 +281,39 @@ namespace AddressableManager.Tests
         }
 
         /// <summary>
-        /// Test whitespace variations: Extra spaces around keywords.
-        /// Message: "  not  found  " (multiple spaces)
-        /// Expectation: LoadErrorCode.AssetNotFound (substring match is lenient)
+        /// Whitespace INSIDE a keyword breaks the match. "not  found" is not "not found".
+        /// Expectation: LoadErrorCode.OperationFailed.
         /// </summary>
+        /// <remarks>
+        /// This test asserted AssetNotFound when it was written and has been red ever since — it was
+        /// written from the intent in the doc comment ("substring match is lenient") rather than from
+        /// a run. The classifier does a plain <c>Contains</c> on a lowercased string; it collapses
+        /// case and nothing else.
+        ///
+        /// Recording the real behaviour rather than "fixing" the classifier is deliberate. These are
+        /// characterization tests: their job is to state what the code does today so a later change
+        /// can be seen. Adding whitespace normalisation would also be robustness against a message
+        /// Addressables does not produce — its exception text has no doubled internal spaces — paid
+        /// for in shipped runtime code.
+        ///
+        /// Leading and trailing whitespace is a different question and is fine, because the keyword
+        /// itself is still intact; only whitespace between the words of a keyword breaks it.
+        /// </remarks>
         [Test]
-        public void Message_ExtraWhitespace_StillMatches()
+        public void Message_WhitespaceInsideAKeyword_DoesNotMatch()
         {
             var result = AssetLoader.ClassifyErrorMessage("Error:  not  found  in cache");
+            Assert.AreEqual(LoadErrorCode.OperationFailed, result);
+        }
+
+        /// <summary>
+        /// Padding around an intact keyword still matches — the counterpart to the test above.
+        /// Expectation: LoadErrorCode.AssetNotFound.
+        /// </summary>
+        [Test]
+        public void Message_PaddingAroundAnIntactKeyword_StillMatches()
+        {
+            var result = AssetLoader.ClassifyErrorMessage("   Error: not found   ");
             Assert.AreEqual(LoadErrorCode.AssetNotFound, result);
         }
 
