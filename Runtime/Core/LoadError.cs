@@ -56,6 +56,18 @@ namespace AddressableManager.Core
         NetworkError = 9,
 
         /// <summary>
+        /// The asset is in the catalog but its bundle is not on this device — task 4.5.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from AssetNotFound, which means the catalog does not know the address at all.
+        /// This one means the address is valid and the content simply has not been downloaded yet,
+        /// so the fix is to download it rather than to look for a typo or a broken build. Before
+        /// this code existed the two were indistinguishable, and the wrong one sends you hunting
+        /// through Addressables groups for an entry that was never missing.
+        /// </remarks>
+        ContentNotDownloaded = 10,
+
+        /// <summary>
         /// Unknown error
         /// </summary>
         Unknown = 999

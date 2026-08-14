@@ -54,6 +54,7 @@ namespace AddressableManager.Cdn
         private static IHostRewriter _rewriter;
         private static CatalogService _catalog;
         private static DownloadService _downloads;
+        private static CacheService _cache;
 
         /// <summary>Whether the CDN layer has initialised successfully.</summary>
         public static bool IsInitialized => _catalog != null && _catalog.IsInitialized;
@@ -131,6 +132,7 @@ namespace AddressableManager.Cdn
 
             _catalog = new CatalogService(_settings, _network, _rewriter);
             _downloads = new DownloadService(_network, RetryPolicy.Default, _rewriter);
+            _cache = new CacheService();
 
             return await _catalog.InitializeAsync(cancellationToken);
         }
@@ -164,7 +166,7 @@ namespace AddressableManager.Cdn
             if (_catalog == null)
                 return FromResult(CdnResult<IReadOnlyList<string>>.Failure(NotInitialized()));
 
-            return _catalog.ApplyUpdateAsync(update, cancellationToken);
+            return ApplyUpdateAndCleanAsync(update, cancellationToken);
         }
 
         /// <summary>
@@ -236,6 +238,40 @@ namespace AddressableManager.Cdn
             return _downloads.DownloadAsync(request, progress, cancellationToken);
         }
 
+#if UNITASK_PRESENT
+        private static async UniTask<CdnResult<IReadOnlyList<string>>> ApplyUpdateAndCleanAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#else
+        private static async Task<CdnResult<IReadOnlyList<string>>> ApplyUpdateAndCleanAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#endif
+        {
+            var applied = await _catalog.ApplyUpdateAsync(update, cancellationToken);
+            if (applied.IsFailure || applied.Value == null || applied.Value.Count == 0)
+                return applied;
+
+            // Task 4.2. Superseded bundles are not removed by the update itself, and nothing else
+            // removes them either — after twenty updates a player is carrying twenty generations of
+            // content. That is the usual answer to "why is this game 8 GB". Done here rather than
+            // left to the integrator, because the one place it must never be forgotten is right
+            // after an update succeeds.
+            var cleaned = await _cache.CleanObsoleteAsync(cancellationToken: cancellationToken);
+            if (cleaned.IsFailure)
+            {
+                // Not fatal: the update worked, the disk is just untidier than it should be.
+                Debug.LogWarning($"[Cdn] Catalog updated but obsolete bundles could not be removed: " +
+                                 $"{cleaned.ErrorMessage}");
+            }
+
+            return applied;
+        }
+
+        /// <summary>Cache statistics — task 4.1.</summary>
+        public static CacheStats GetCacheStats() => _cache?.GetStats() ?? CacheStats.Unavailable;
+
+        /// <summary>The cache service, or null before initialisation. For clean and clear operations.</summary>
+        public static CacheService Cache => _cache;
+
         /// <summary>How the device is connected right now.</summary>
         public static NetworkReachabilityState NetworkState =>
             _network?.CurrentState ?? NetworkReachabilityState.Offline;
@@ -251,6 +287,7 @@ namespace AddressableManager.Cdn
             _rewriter = null;
             _catalog = null;
             _downloads = null;
+            _cache = null;
         }
 
         // ========== internals ==========

@@ -151,6 +151,84 @@ namespace AddressableManager.UI
         }
 
         /// <summary>
+        /// Show a CDN download in real bytes — task 3.11.
+        /// </summary>
+        /// <remarks>
+        /// Wire it up as the IProgress target of a download:
+        /// <code>
+        /// var progress = new Progress&lt;DownloadProgress&gt;(bar.SetDownloadProgress);
+        /// await CdnManager.DownloadAsync(request, progress, cancellation.Token);
+        /// </code>
+        ///
+        /// Why this exists next to <see cref="SetProgress(float)"/> rather than replacing it: a
+        /// fraction is all you can show for a load, but for a download a fraction alone is a poor
+        /// UI. "47%" of an unknown total tells a player nothing about whether to wait; "12 of 80 MB
+        /// at 1.4 MB/s, about 50s left" does.
+        ///
+        /// THE TWO CASES THAT LOOK LIKE BUGS AND ARE NOT
+        /// While Addressables is still working out the size, TotalBytes is 0 — reported here as
+        /// "calculating" rather than as 0% or a division by zero. And an ETA of -1 means unknown,
+        /// which is shown as a blank rather than "0s remaining", because a progress bar claiming
+        /// zero seconds for a minute is worse than one admitting it does not know yet.
+        /// </remarks>
+        public void SetDownloadProgress(AddressableManager.Cdn.DownloadProgress progress)
+        {
+            if (!progress.IsSizeKnown)
+            {
+                // No fraction to show yet. The bar is left where it is rather than snapped to 0,
+                // which would make a resumed download appear to restart.
+                SetText(statusText, "Calculating download size...");
+                SetText(percentText, string.Empty);
+                return;
+            }
+
+            SetProgress(progress.Percent);
+
+            string transferred = $"{FormatBytes(progress.DownloadedBytes)} / {FormatBytes(progress.TotalBytes)}";
+            string speed = progress.BytesPerSecond > 0
+                ? $"  {FormatBytes((long)progress.BytesPerSecond)}/s"
+                : string.Empty;
+            string eta = progress.EtaSeconds >= 0
+                ? $"  {FormatDuration(progress.EtaSeconds)} left"
+                : string.Empty;
+
+            SetText(statusText, transferred + speed + eta);
+        }
+
+        /// <summary>
+        /// Bytes as a human-readable size.
+        /// </summary>
+        /// <remarks>
+        /// Binary units, matching what platform storage UIs show, so "80 MB" here and "80 MB" in
+        /// the OS settings screen mean the same thing to a player deciding whether they have room.
+        /// </remarks>
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes < 0) return "?";
+            if (bytes < 1024) return $"{bytes} B";
+
+            double kb = bytes / 1024.0;
+            if (kb < 1024) return $"{kb:F0} KB";
+
+            double mb = kb / 1024.0;
+            if (mb < 1024) return $"{mb:F1} MB";
+
+            return $"{mb / 1024.0:F2} GB";
+        }
+
+        /// <summary>Seconds as a short duration.</summary>
+        private static string FormatDuration(double seconds)
+        {
+            if (seconds < 1) return "moments";
+            if (seconds < 60) return $"{seconds:F0}s";
+
+            double minutes = seconds / 60.0;
+            if (minutes < 60) return $"{minutes:F0}m";
+
+            return $"{minutes / 60.0:F1}h";
+        }
+
+        /// <summary>
         /// Set status text
         /// </summary>
         public void SetStatus(string status) => SetText(statusText, status);
