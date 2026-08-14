@@ -1,0 +1,104 @@
+/*
+ * Catalog Inspector tab (task 5.9). Layout only; colours from --unity-colors-* per repo
+ * Invariant 5. Row styles are reused from the Update Preview stylesheet rather than
+ * redefined, so the two tabs read as one window.
+ *
+ * Everything here has to survive the window being dragged down to 560px (task 5.10), so
+ * the two header rows wrap and the only element allowed to grow is the list.
+ */
+
+.cdn-catalog-picker-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 4px;
+}
+
+.cdn-catalog-picker {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 260px;
+    margin-right: 4px;
+}
+
+.cdn-catalog-filter-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 4px;
+}
+
+.cdn-catalog-view {
+    width: 150px;
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.cdn-catalog-search {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 140px;
+}
+
+.cdn-catalog-list {
+    flex-grow: 1;
+    flex-shrink: 1;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+    min-height: 120px;
+}
+
+/*
+ * One row shape for all three views. The columns mean different things per view — the
+ * list header label says which — but keeping the geometry identical means switching views
+ * does not move everything under the cursor.
+ */
+.cdn-catalog-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 6px;
+    height: 20px;
+}
+
+.cdn-catalog-row-primary {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-catalog-row-primary-bad {
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-catalog-row-primary-warn {
+    color: var(--unity-colors-warning-text);
+}
+
+.cdn-catalog-row-secondary {
+    flex-shrink: 0;
+    margin-left: 8px;
+    width: 130px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-catalog-row-tag {
+    flex-shrink: 0;
+    margin-left: 8px;
+    width: 92px;
+    padding: 0 4px;
+    font-size: 9px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+    overflow: hidden;
+    white-space: nowrap;
+}

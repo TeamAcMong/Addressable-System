@@ -181,10 +181,9 @@ namespace AddressableManager.Editor.Cdn
         /// output; falls back to the file name without extension for bundles carried over from an
         /// earlier build, which are not in this build's results.
         ///
-        /// Task 1.6 (CatalogVerifier) should key off <see cref="fileName"/>, not this: the binary
-        /// catalog cannot be parsed (ContentCatalogData.LoadFromFile is internal with no
-        /// InternalsVisibleTo), so verification works from file names and the CDN URLs built from
-        /// them.
+        /// Task 1.6 (CatalogVerifier) keys off <see cref="fileName"/>, not this: verification works
+        /// from file names and the CDN URLs built from them, which is what a player's request
+        /// actually uses.
         /// </summary>
         public string name = "";
 

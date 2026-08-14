@@ -1,0 +1,27 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="catalog-root" class="cdn-tab-page">
+        <ui:HelpBox name="catalog-summary" text="Looking for built catalogs..." class="cdn-preview-summary" />
+
+        <ui:VisualElement name="catalog-picker-row" class="cdn-catalog-picker-row">
+            <ui:DropdownField name="catalog-picker" label="Catalog" class="cdn-catalog-picker" />
+            <ui:Button name="catalog-browse-btn" text="Browse..." class="cdn-btn" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="catalog-state" class="cdn-preview-state" />
+
+        <ui:VisualElement name="catalog-filter-row" class="cdn-catalog-filter-row">
+            <ui:DropdownField name="catalog-view" class="cdn-catalog-view" />
+            <ui:TextField name="catalog-search" class="cdn-catalog-search" />
+        </ui:VisualElement>
+
+        <ui:ListView name="catalog-rows" fixed-item-height="20" virtualization-method="FixedHeight"
+                     selection-type="Single" show-alternating-row-backgrounds="ContentOnly"
+                     class="cdn-catalog-list" />
+
+        <ui:VisualElement name="catalog-actions" class="cdn-actions-row">
+            <ui:Button name="catalog-rescan-btn" text="Re-scan" class="cdn-btn cdn-btn-wide" />
+            <ui:Button name="catalog-reveal-btn" text="Show bundle folder" class="cdn-btn" />
+            <ui:Button name="catalog-copy-btn" text="Copy report" class="cdn-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
