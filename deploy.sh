@@ -88,10 +88,27 @@ git branch -D $BRANCH
 
 # Confirm the tag is actually on the remote before claiming success. The push above
 # reported it, but this is the independent check that costs one round trip.
+#
+# "Could not check" and "not there" are DIFFERENT and must not be conflated — the first
+# version of this check treated any non-zero exit as a missing tag, and a transient DNS
+# failure then reported a successfully published 4.1.0-pre.3 as missing. That is the same
+# sentinel mistake repo invariant 4 exists to prevent, made in shell.
+#
+# git ls-remote --exit-code returns 2 for "no matching refs" and other non-zero codes for
+# failures to reach the remote at all.
 echo "Verifying the tag on origin..."
-if ! git ls-remote --exit-code --tags origin "refs/tags/$SEMVER" > /dev/null 2>&1; then
+git ls-remote --exit-code --tags origin "refs/tags/$SEMVER" > /dev/null 2>&1
+VERIFY_STATUS=$?
+
+if [ "$VERIFY_STATUS" -eq 2 ]; then
   echo "❌ Tag '$SEMVER' is NOT on origin despite the push reporting success."
   echo "   Do not hand out the install URL. Investigate before retrying."
+  exit 1
+elif [ "$VERIFY_STATUS" -ne 0 ]; then
+  echo "⚠  Could not reach origin to verify the tag (exit $VERIFY_STATUS)."
+  echo "   The push reported success, so the tag is probably published — but this run did"
+  echo "   not confirm it. Check before handing out the install URL:"
+  echo "     git ls-remote origin refs/tags/$SEMVER"
   exit 1
 fi
 
