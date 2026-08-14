@@ -692,7 +692,7 @@ Addressables.InternalIdTransformFunc = location =&gt;
       <div class="u-row"><span class="u-key u-grow">Assets/Prefabs/Boss_04.prefab</span><span class="u-val">Stage_Content</span><span class="u-pill chg">đổi</span></div>
       <div class="u-row"><span class="u-key u-grow">Assets/Config/balance.asset</span><span class="u-val">Core_Static</span><span class="u-pill stat">STATIC</span></div>
     </div>
-    <div class="u-help bad"><strong>Core_Static là group static.</strong> Content update không thể đưa thay đổi này tới người chơi hiện tại — cần một player build mới. Chuyển entry sang group dynamic, hoặc ship binary.</div>
+    <div class="u-help bad"><strong>Core_Static là group static.</strong> Content update sẽ không mang thay đổi này đi như hiện trạng: Addressables chỉ log cảnh báo rồi trả entry về bundle cũ, nên bản patch ship ra mà thiếu thay đổi. KHÔNG cần player build mới — chạy bước Prepare for Content Update (ContentUpdateScript.CreateContentUpdateGroup) để dời entry đã đổi sang group mới không-static. Hoặc chuyển entry sang group dynamic, hoặc ship binary.</div>
     <div class="u-actions"><span class="u-btn">Quét lại</span><span class="u-btn">Chuyển 1 entry sang group dynamic</span><span class="u-btn off">Build Content Update</span></div>
   </div>
 </div></div>
@@ -1155,7 +1155,7 @@ lần 2 → thành công
 <tr><td>1.1</td><td><code>CdnBuildCLI.BuildContent</code></td><td><code>-executeMethod</code>, tham số: <code>-cdnProfile</code>, <code>-cdnEnv</code>, <code>-buildTarget</code>, <code>-outputDir</code>. Bọc <code>AddressableAssetSettings.BuildPlayerContent(out result)</code>. Thoát với mã khác 0 khi lỗi.</td></tr>
 <tr><td>1.2</td><td><code>CdnBuildCLI.BuildContentUpdate</code></td><td>Bọc <code>ContentUpdateScript.BuildContentUpdate(settings, contentStatePath)</code>. <strong>Fail thẳng nếu thiếu file state</strong> thay vì âm thầm tụt về full build.</td></tr>
 <tr><td>1.3</td><td><code>ContentStateManager</code></td><td>Phân giải đường dẫn theo platform + app version; kiểm tra file đọc được và khớp app version hiện tại; sao chép sang thư mục artifact của CI sau mỗi build.</td></tr>
-<tr><td>1.4</td><td>Kiểm tra ràng buộc content update</td><td>Chạy <code>ContentUpdateScript.GatherModifiedEntries</code> và báo cáo entry nào dịch chuyển giữa static và dynamic content. Fail build nếu một group <em>static</em> đổi — nghĩa là bản update không thực sự delta được và cần một player build mới.</td></tr>
+<tr><td>1.4</td><td>Kiểm tra ràng buộc content update</td><td>Chạy <code>ContentUpdateScript.GatherModifiedEntries</code> và báo cáo entry nào dịch chuyển giữa static và dynamic content. Fail build nếu một group <em>static</em> đổi. Bản thân Addressables không fail: nó cảnh báo rồi trả entry về bundle cũ, nên mặc định là một bản patch âm thầm thiếu nội dung. Fail to tiếng chính là mục đích. Cách xử lý là bước Prepare ở tab Update Preview (task 1.9), <strong>không phải</strong> build lại player.</td></tr>
 <tr><td>1.5</td><td><code>CdnProfileManager</code></td><td><code>SetActiveProfile(name)</code>; tiêm <code>Remote.LoadPath</code> từ biến môi trường để URL không bị commit vào repo.</td></tr>
 <tr><td>1.6</td><td><code>CatalogVerifier</code></td><td>Kiểm tra: ràng buộc cấu hình (<a href="#d-config">thiết kế §9</a>) được thỏa; tên file catalog khớp <code>catalog_&lt;appVersion&gt;</code>; mọi bundle mà catalog tham chiếu đều tồn tại trong thư mục output.</td></tr>
 <tr><td>1.7</td><td>Xuất build manifest</td><td>Ghi <code>build-manifest.json</code> cạnh output: app version, tên catalog, số lượng bundle, tổng byte, git SHA, timestamp, loại build (full | update). Phục vụ bước upload và cho team một dấu vết kiểm toán.</td></tr>
@@ -1638,7 +1638,7 @@ jobs:
             -cdnProfile "${{ inputs.environment }}" \
             -buildTarget "${{ inputs.platform }}" \
             -contentState "ServerData/ContentState/${{ inputs.platform }}/addressables_content_state.bin"</code></pre>
-<p><code>BuildContentUpdate</code> đồng thời chạy bước kiểm tra ràng buộc content static (<a href="#p-phase1">kế hoạch §1.4</a>) và fail nếu một group đánh dấu static bị đổi — tình huống đó không patch được và cần một player build mới.</p>
+<p><code>BuildContentUpdate</code> đồng thời chạy bước kiểm tra ràng buộc content static (<a href="#p-phase1">kế hoạch §1.4</a>) và fail nếu một group đánh dấu static bị đổi. Tình huống đó <strong>patch được</strong> — chỉ là phải chạy bước Prepare for Content Update để dời entry đã đổi sang group mới không-static trước. Fail ở đây là để chặn một bản patch âm thầm thiếu nội dung, không phải vì cần build lại player.</p>
 
 <h3 id="i-rollback">8. Rollback</h3>
 
