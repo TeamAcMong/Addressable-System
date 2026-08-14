@@ -22,7 +22,7 @@ namespace AddressableManager.Cdn
     ///
     /// THE CANONICAL BOOT, design doc §6:
     /// <code>
-    /// var init = await Cdn.InitializeAsync();
+    /// var init = await CdnManager.InitializeAsync();
     /// if (init.IsFailure)
     /// {
     ///     if (init.ErrorCode == CdnErrorCode.NoContentAvailableOffline)
@@ -32,15 +32,22 @@ namespace AddressableManager.Cdn
     ///     return;
     /// }
     ///
-    /// var check = await Cdn.CheckForUpdateAsync();
+    /// var check = await CdnManager.CheckForUpdateAsync();
     /// if (check.IsSuccess &amp;&amp; check.Value.HasUpdate)
-    ///     await Cdn.ApplyUpdateAsync(check.Value);
+    ///     await CdnManager.ApplyUpdateAsync(check.Value);
     /// </code>
     ///
     /// Static because there is exactly one Addressables instance in a process and the hooks it
     /// installs are global. A second configured instance could not be honoured.
+    ///
+    /// NAMED CdnManager, NOT Cdn
+    /// The design doc calls this facade "Cdn". That name cannot be used: the runtime CDN types live
+    /// in namespace AddressableManager.Cdn, mirroring AddressableManager.Editor.Cdn on the Editor
+    /// side, so at any call site with `using AddressableManager.Cdn;` the identifier Cdn resolves to
+    /// the namespace and every member access fails to compile (CS0234). Renaming the namespace
+    /// instead would have broken that symmetry across eight files to save four characters.
     /// </remarks>
-    public static class Cdn
+    public static class CdnManager
     {
         private static CdnSettings _settings;
         private static NetworkPolicy _network;
@@ -203,7 +210,7 @@ namespace AddressableManager.Cdn
         private static CdnError NotInitialized() => new CdnError(
             CdnErrorCode.Unknown,
             "The CDN layer is not initialised",
-            hint: "Await Cdn.InitializeAsync first, and check its result — a failed initialisation " +
+            hint: "Await CdnManager.InitializeAsync first, and check its result — a failed initialisation " +
                   "leaves the layer unusable rather than degrading quietly.");
 
         /// <summary>
