@@ -188,6 +188,9 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Get download size
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        [Obsolete("Use CdnManager.GetDownloadSizeAsync(DownloadRequest), which returns CdnResult<long> " +
+                  "so zero-bytes-to-download is distinguishable from could-not-find-out. Removed in 5.0.0.", false)]
 #if UNITASK_PRESENT
         public static async UniTask<long> GetDownloadSize(string address)
 #else
@@ -200,6 +203,9 @@ namespace AddressableManager.Facade
         /// <summary>
         /// Download dependencies
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        [Obsolete("Use CdnManager.DownloadAsync(DownloadRequest, IProgress<DownloadProgress>) — it adds " +
+                  "cancellation, retry with backoff, byte-accurate progress and typed errors. Removed in 5.0.0.", false)]
 #if UNITASK_PRESENT
         public static async UniTask<bool> Download(string address, Action<ProgressInfo> onProgress = null)
 #else

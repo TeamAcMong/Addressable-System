@@ -302,6 +302,9 @@ namespace AddressableManager.API
         /// the old <c>long</c> sentinel in 2.2.0 — pair with
         /// <see cref="GetDownloadSize(string)"/> for byte counts.
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        [Obsolete("Use CdnManager.DownloadAsync(DownloadRequest) for typed errors and cancellation. " +
+                  "Removed in 5.0.0.", false)]
         public static async Task<bool> DownloadDependencies(string address)
         {
             var loader = Facade.GetGlobalScope().Loader;
@@ -311,6 +314,9 @@ namespace AddressableManager.API
         /// <summary>
         /// Get download size
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        [Obsolete("Use CdnManager.GetDownloadSizeAsync(DownloadRequest), which returns CdnResult<long> " +
+                  "so zero-bytes-to-download is distinguishable from could-not-find-out. Removed in 5.0.0.", false)]
         public static async Task<long> GetDownloadSize(string address)
         {
             var loader = Facade.GetGlobalScope().Loader;

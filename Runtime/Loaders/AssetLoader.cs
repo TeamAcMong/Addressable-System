@@ -932,6 +932,13 @@ namespace AddressableManager.Loaders
         /// Preload/Download asset without loading it into memory.
         /// Returns true on success, false otherwise.
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        //
+        // Returns bool, so a caller cannot tell "the CDN was unreachable" from "the download
+        // failed" from "there was nothing to download". CdnManager.DownloadAsync returns a
+        // CdnResult carrying the error code, the HTTP status and whether retrying can help.
+        [Obsolete("Use CdnManager.DownloadAsync(DownloadRequest) — it reports why a download failed " +
+                  "and whether a retry can succeed, which a bool cannot. Removed in 5.0.0.", false)]
 #if UNITASK_PRESENT
         public async UniTask<bool> DownloadDependenciesAsync(string address)
 #else
@@ -973,6 +980,13 @@ namespace AddressableManager.Loaders
         /// <summary>
         /// Get download size for address
         /// </summary>
+        // Task 3.10. Kept until 5.0.0 per repo invariant 6.
+        //
+        // THIS IS THE BUG repo invariant 4 EXISTS FOR: it returns 0 both when everything is
+        // already cached and when the size could not be determined at all. A caller that reads 0
+        // as "nothing to download" will skip a download it needed to do.
+        [Obsolete("Use CdnManager.GetDownloadSizeAsync(DownloadRequest), which returns CdnResult<long> " +
+                  "so zero-bytes-to-download is distinguishable from could-not-find-out. Removed in 5.0.0.", false)]
 #if UNITASK_PRESENT
         public async UniTask<long> GetDownloadSizeAsync(string address)
 #else
