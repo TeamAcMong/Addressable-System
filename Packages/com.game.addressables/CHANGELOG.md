@@ -2,6 +2,51 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.5] - 2026-08-14 - Fixes a compile break in pre.4
+
+**Anyone on 4.1.0-pre.4 should move to this. pre.4 does not compile on Unity 2023.x or
+2022.3.**
+
+### Fixed
+
+- **`SceneAssetScope.GetOrCreate(Scene)` used an API that only exists on Unity 6.**
+
+  ```
+  SceneAssetScope.cs(136,58): error CS1503: cannot convert from
+  'UnityEngine.FindObjectsInactive' to 'UnityEngine.FindObjectsSortMode'
+  ```
+
+  pre.4 replaced a deprecated call with `FindObjectsByType<T>(FindObjectsInactive)`,
+  which is what Unity's own deprecation message tells you to use. That overload was
+  added in Unity 6. On 2022.3 and 2023.x the only generic overloads take a
+  `FindObjectsSortMode`, so the single-argument form binds to the wrong one and fails to
+  compile — and `package.json` declares `unity: 2023.1`.
+
+  Now uses the two-argument form, which exists on every supported version, with the
+  Unity 6 deprecation warning suppressed at the call site and the reason recorded there.
+  Dropping `FindObjectsInactive.Include` instead would have compiled everywhere and
+  silently stopped finding scopes on inactive objects, which is worse.
+
+### Added
+
+- **`Tools/check-min-unity-api.sh`** — compiles the package against a chosen editor's
+  reference assemblies, so "does this compile on the oldest Unity we support" is a
+  question that gets asked before publishing rather than by the first person to install
+  it. Known harness/editor divergences are listed with reasons and reported when hit, so
+  a pass cannot quietly cover less than it claims.
+
+- Two CI steps in `content-update.yml`: the catalog-versus-bundles check, and the
+  minimum-Unity compile. The second warns loudly and continues when
+  `MIN_UNITY_EDITOR` is unset, rather than passing silently.
+
+### Why pre.4 passed every check
+
+Every verification ran against Unity 6000.5.7f1, the newest editor on the build
+machine: 0 error CS, 0 warning CS, six tabs probed, 57/57 tests green, twice. All of it
+true, and none of it about the version the package says it supports. Running the newest
+installed Unity and running the oldest supported one are different tests; only the
+second one answers whether the package compiles for the people installing it.
+
 ## [4.1.0-pre.4] - 2026-08-14 - Catalog Inspector, samples, and a clear-out
 
 Closes the last piece of Editor tooling, moves the examples to where a package is

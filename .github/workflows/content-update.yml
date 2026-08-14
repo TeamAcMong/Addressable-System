@@ -85,6 +85,26 @@ jobs:
             -cdnProfile "${{ inputs.environment }}" \
             -manifest "ServerData/build-manifest.json"
 
+      - name: Check the catalog against the bundles about to be uploaded
+        # Different question from the step above. VerifyOutput checks the build against its own
+        # manifest; this checks the catalog against the files on disk. A catalog referencing a
+        # bundle that is not in the folder produces a 404 on a device and nothing in the log.
+        run: |
+          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile -             -executeMethod AddressableManager.Editor.Cdn.CatalogInspectCLI.Inspect
+
+      - name: Compile against the minimum supported Unity
+        # This runner uses one editor. package.json declares a lower minimum, and code that
+        # compiles on the runner can still fail for everyone installing the package - that is
+        # exactly how 4.1.0-pre.4 shipped a CS1503. Set MIN_UNITY_EDITOR to an installed editor
+        # at the declared minimum; the step is skipped, loudly, when it is not set.
+        run: |
+          if [ -z "$MIN_UNITY_EDITOR" ]; then
+            echo "::warning::MIN_UNITY_EDITOR is not set - the package was NOT checked against its"
+            echo "::warning::declared minimum Unity. This publish is only known to compile on the runner."
+            exit 0
+          fi
+          ./Tools/check-min-unity-api.sh "$MIN_UNITY_EDITOR"
+
       - name: Upload bundles
         # Append-only: the patch adds new bundles, and the ones players already hold keep their
         # names and are skipped by --size-only.

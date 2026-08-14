@@ -133,7 +133,32 @@ namespace AddressableManager.Scopes
         /// </summary>
         public static SceneAssetScope GetOrCreate(Scene scene)
         {
-            var all = FindObjectsByType<SceneAssetScope>(FindObjectsInactive.Include);
+            // DO NOT "fix" this warning by following the message Unity prints with it.
+            //
+            // On Unity 6 this overload is obsolete and the message says to use
+            // "FindObjectsByType<T>() or FindObjectsByType<T>(FindObjectsInactive)". Those exist
+            // on Unity 6 only. This package declares unity 2023.1, and on 2022.3/2023.x the sole
+            // generic overloads are:
+            //
+            //     FindObjectsByType<T>(FindObjectsSortMode)
+            //     FindObjectsByType<T>(FindObjectsInactive, FindObjectsSortMode)
+            //
+            // so the single-argument form binds to the sort-mode overload and fails with
+            // CS1503: cannot convert from 'FindObjectsInactive' to 'FindObjectsSortMode'.
+            //
+            // That is not hypothetical. 4.1.0-pre.4 shipped the single-argument form. It compiled
+            // here, because it was only ever compiled against the newest editor on the machine,
+            // and broke on the first integration into a project on an older one. Verifying against
+            // the newest Unity installed says nothing about the oldest Unity supported —
+            // Tools/check-min-unity-api.sh now compiles against a chosen editor for exactly this.
+            //
+            // The two-argument form works on every supported version, and SortMode.None is what
+            // this call wants anyway. So the warning is suppressed at the call site rather than
+            // designed around; dropping Include would silently stop finding scopes on inactive
+            // objects, which is worse than a suppressed warning.
+#pragma warning disable CS0618 // Unity 6 names a replacement that does not exist on 2023.1; see above
+            var all = FindObjectsByType<SceneAssetScope>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+#pragma warning restore CS0618
             foreach (var s in all)
             {
                 if (s._ownerScene == scene) return s;
