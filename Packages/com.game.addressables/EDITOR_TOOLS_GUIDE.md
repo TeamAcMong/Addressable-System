@@ -261,6 +261,13 @@ Use `ScopeManager` instead of the built-in singletons when:
 
 Use the built-in singletons when one global + one session + per-scene is enough.
 
+> **`"Global"` is a reserved id.** `GlobalAssetScope` registers its own loader under that exact
+> string as a foreign directory entry the first time it's touched (directly, or via any
+> `Simple.*`/`Standard.*` call). `GetOrCreateScope("Global")` refuses it and logs an error rather
+> than aliasing or silently losing to whichever side registered first. Reach the real Global cache
+> via `GlobalAssetScope.Instance.Loader`; pick your own id (e.g. `"AppGlobal"`, used below) for a
+> `ScopeManager`-owned scope that happens to also be app-wide.
+
 ### Multi-session sketch
 
 ```csharp
@@ -277,7 +284,10 @@ public sealed class GameController : MonoBehaviour
         _scopes = ScopeManager.Instance;
 
         // Three named scopes. The name is also the label shown in the Dashboard.
-        var globalLoader = _scopes.GetOrCreateScope("Global");
+        // "Global" itself is reserved — GlobalAssetScope registers it automatically as a
+        // foreign directory entry, so GetOrCreateScope refuses it. Use GlobalAssetScope.Instance
+        // .Loader for the real Global cache, or (as here) pick your own app-level scope id.
+        var globalLoader = _scopes.GetOrCreateScope("AppGlobal");
         var playerLoader = _scopes.GetOrCreateScope("PlayerSession");
         var gameLoader   = _scopes.GetOrCreateScope("GameSession");
 
@@ -294,7 +304,7 @@ Dashboard layout that produces:
 
 ```
 Scopes
-├─ Global         1 asset · 5.2 MB
+├─ AppGlobal      1 asset · 5.2 MB
 │  └─ UI/Atlas
 ├─ PlayerSession  1 asset · 0.5 MB
 │  └─ Data/PlayerProfile
@@ -337,7 +347,7 @@ public sealed class RPGGameManager : MonoBehaviour
 {
     private readonly ScopeManager _scopes = ScopeManager.Instance;
 
-    private AssetLoader _global;   // UI, fonts, shared
+    private AssetLoader _global;   // UI, fonts, shared — NOT the built-in GlobalAssetScope; see below
     private AssetLoader _player;   // inventory, save data
     private AssetLoader _world;    // current zone
     private AssetLoader _quests;   // active quests
@@ -345,7 +355,10 @@ public sealed class RPGGameManager : MonoBehaviour
 
     async void Start()
     {
-        _global = _scopes.GetOrCreateScope("Global");
+        // "Global" is reserved for the built-in GlobalAssetScope (registered automatically as a
+        // foreign directory entry) — GetOrCreateScope refuses it. "AppGlobal" here is this
+        // manager's OWN manager-owned scope, independent of GlobalAssetScope.Instance.Loader.
+        _global = _scopes.GetOrCreateScope("AppGlobal");
         _player = _scopes.GetOrCreateScope("Player");
         _world  = _scopes.GetOrCreateScope("World");
         _quests = _scopes.GetOrCreateScope("Quests");
@@ -365,7 +378,7 @@ public sealed class RPGGameManager : MonoBehaviour
         await _world.LoadAssetsByLabelAsync<GameObject>($"Enemies_{zone}");
     }
 
-    public void ExitToMainMenu() => _scopes.ClearAllExcept("Global", "Player");
+    public void ExitToMainMenu() => _scopes.ClearAllExcept("AppGlobal", "Player");
     void OnApplicationQuit()      => _scopes.ClearAll();
 }
 ```
@@ -377,7 +390,7 @@ public sealed class RPGGameManager : MonoBehaviour
 public sealed class ScopeGroups
 {
     private static readonly string[] Gameplay   = { "World", "Quests", "Combat", "Dialogue" };
-    private static readonly string[] Persistent = { "Global", "Player" };
+    private static readonly string[] Persistent = { "AppGlobal", "Player" };
 
     public void ClearGameplay()
     {

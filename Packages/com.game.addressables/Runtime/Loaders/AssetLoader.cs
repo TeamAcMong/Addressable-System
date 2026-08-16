@@ -29,8 +29,13 @@ namespace AddressableManager.Loaders
     /// anyone else.
     ///
     /// ReleaseAsset() and ClearCache() are eviction: they free the bundle whatever the count says,
-    /// because the return-the-asset APIs built on this loader (Simple.Load and friends) keep no
-    /// handle to release, so a count-respecting eviction could never reclaim anything they loaded.
+    /// on purpose — this is a memory-pressure API, and a caller elsewhere still holding a
+    /// reference (a Standard.* caller sitting on its IAssetHandle, a SmartAssetHandle) is exactly
+    /// the case a plain decrement would leave untouched, defeating the point of calling it under
+    /// memory pressure. (Historically this was also the *only* way to reclaim anything Simple.Load
+    /// and the rest of the return-the-asset API family loaded, because they leaked the reference
+    /// they were born with on every call — see HANDOFF_TO_SESSION_B.md A-4. That leak is fixed now,
+    /// so it is no longer why this is unconditional, only a reason it used to be load-bearing.)
     /// A handle a caller still holds across one of them reports IsValid == false afterwards rather
     /// than pointing at a freed asset. Instantiated GameObjects are untouched by both.
     ///
@@ -1612,11 +1617,18 @@ namespace AddressableManager.Loaders
         /// For teardown use <see cref="Dispose"/>.
         /// </summary>
         /// <remarks>
-        /// The eviction is unconditional rather than a decrement of the cache's own reference.
-        /// Simple.Load and the rest of the return-the-asset API family hand back <c>handle.Asset</c>
-        /// and keep no handle, so the reference they were born with is never given back: a
-        /// count-respecting ClearCache would find every entry still held and free nothing at all,
-        /// which is the one thing every caller of this method wants it to do.
+        /// The eviction is unconditional rather than a decrement of the cache's own reference — on
+        /// purpose: this is a memory-pressure API, and a caller elsewhere still holding its own
+        /// reference (a Standard.* caller sitting on its IAssetHandle, a SmartAssetHandle) is
+        /// exactly the case a plain decrement would leave untouched, which would defeat the point
+        /// of calling this under memory pressure.
+        ///
+        /// (Historical note: Simple.Load and the rest of the return-the-asset API family used to
+        /// hand back <c>handle.Asset</c> without ever giving back the reference they were born
+        /// with, so a count-respecting ClearCache would additionally have found every one of their
+        /// entries still "held" and freed nothing at all — see HANDOFF_TO_SESSION_B.md A-4. That
+        /// leak is fixed now, so it is no longer why this method forces the release, only a reason
+        /// it used to be the *only* way those particular entries could ever come back.)
         ///
         /// A handle a caller is still holding across this reports IsValid == false afterwards
         /// (the counter is what IsValid reads), so the failure mode is a visibly dead handle, not
@@ -1707,9 +1719,11 @@ namespace AddressableManager.Loaders
         /// </summary>
         /// <remarks>
         /// Same key match as <see cref="EvictAddress"/>, different release: <see cref="ReleaseAsset"/>
-        /// needs a hard release because the return-the-asset APIs it backs keep no handle to give
-        /// back theirs. A catalog invalidation is the opposite case — CacheHandle() is the only
-        /// reference this path is entitled to, so Dispose() (a decrement) is all it takes back. A
+        /// needs a hard release because it is an eviction API — a caller elsewhere still holding a
+        /// reference to what it evicts is exactly the case an unconditional release is for (see
+        /// <see cref="ClearCache"/>'s remarks). A catalog invalidation is the opposite case —
+        /// CacheHandle() is the only reference this path is entitled to, so Dispose() (a decrement)
+        /// is all it takes back. A
         /// handle that is still alive after that decrement stays out of _assetCache (so the next
         /// load hits the updated catalog) but stays in _activeHandles (so teardown can still reach
         /// it) — the same displaced-entry bookkeeping CacheHandle() does when it retires a stale one.
@@ -1826,6 +1840,46 @@ namespace AddressableManager.Loaders
             AssertMainThread();
 
             return (_assetCache.Count, _activeHandles.Count);
+        }
+
+        /// <summary>
+        /// Cache probe: whether this loader currently has a live, cached handle for
+        /// (<paramref name="address"/>, <typeparamref name="T"/>) — the exact key
+        /// <see cref="LoadAssetAsync{T}(string)"/> would hit. Read-only: does not retain a
+        /// reference and does not affect the reference count.
+        /// </summary>
+        internal bool IsCached<T>(string address)
+        {
+            AssertMainThread();
+
+            if (string.IsNullOrEmpty(address)) return false;
+
+            return _assetCache.TryGetValue(new AssetCacheKey(address, typeof(T)), out var handle)
+                   && handle != null && handle.IsAlive;
+        }
+
+        /// <summary>
+        /// Cache probe across every type cached under one address. The cache keys by
+        /// (address, Type) (see <see cref="AssetCacheKey"/>), so an address loaded as two
+        /// different types is two independent entries — this is a broader, type-erased check;
+        /// prefer <see cref="IsCached{T}"/> when the type is known.
+        /// </summary>
+        internal bool IsCached(string address)
+        {
+            AssertMainThread();
+
+            if (string.IsNullOrEmpty(address)) return false;
+
+            foreach (var kvp in _assetCache)
+            {
+                if (kvp.Value != null && kvp.Value.IsAlive &&
+                    string.Equals(kvp.Key.Address, address, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         #endregion
