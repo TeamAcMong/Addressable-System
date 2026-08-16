@@ -382,6 +382,69 @@ namespace AddressableManager.Editor.Cdn
                     count++;
             return count;
         }
+
+        /// <summary>
+        /// Entries delivered from the CDN that also need a bundle shipped inside the player.
+        /// </summary>
+        /// <remarks>
+        /// This is the check that decides whether remote content can be built on a different machine
+        /// from the player.
+        ///
+        /// A remote entry whose dependencies are all remote is self-contained: the catalog and every
+        /// bundle it names travel together to the CDN, and the player never has to agree with the
+        /// machine that built them. A remote entry that also needs a LOCAL bundle is not. The catalog
+        /// names that local bundle by the hash the content build produced, and the player carries
+        /// whatever its own build produced. Two machines, two hashes, and the dependency resolves to
+        /// a bundle that is not in the app.
+        ///
+        /// It fails at load time, on a device, with a missing-dependency error that points at the
+        /// asset rather than at the build topology — which is why it is worth reporting here instead
+        /// of discovering later.
+        ///
+        /// Note that this is about ADDRESSABLE entries in local groups. An ordinary asset referenced
+        /// from both sides is an implicit dependency, and Addressables duplicates those into every
+        /// bundle that needs them rather than linking across. Duplication costs install size, not
+        /// correctness, and does not show up here.
+        ///
+        /// Unity's own generated bundles — unitybuiltinassets and monoscripts — are the ones that
+        /// catch people out. They are shared by everything and land wherever the build puts them.
+        /// </remarks>
+        public IReadOnlyList<CrossBoundaryEntry> FindRemoteEntriesNeedingLocalBundles()
+        {
+            var byName = new Dictionary<string, CatalogBundle>(StringComparer.Ordinal);
+            foreach (var bundle in Bundles)
+                byName[bundle.BundleName] = bundle;
+
+            var found = new List<CrossBoundaryEntry>();
+
+            // One asset appears once per key it is reachable by — its address, its GUID, each label.
+            // Counting those separately turns four assets into eight findings, and an inflated count
+            // is how a report stops being trusted.
+            var reported = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var entry in Entries)
+            {
+                if (!reported.Add(entry.Address)) continue;
+
+                List<string> local = null;
+                bool hasRemote = false;
+
+                foreach (string name in entry.BundleNames)
+                {
+                    if (!byName.TryGetValue(name, out var bundle)) continue;
+
+                    if (bundle.Location == BundleLocation.Remote)
+                        hasRemote = true;
+                    else if (bundle.Location == BundleLocation.Local)
+                        (local ??= new List<string>()).Add(name);
+                }
+
+                if (hasRemote && local != null)
+                    found.Add(new CrossBoundaryEntry(entry.Address, local));
+            }
+
+            return found;
+        }
     }
 
     /// <summary>One addressable entry as the catalog records it.</summary>
@@ -412,6 +475,21 @@ namespace AddressableManager.Editor.Cdn
             ProviderId = providerId ?? string.Empty;
             ResourceType = resourceType ?? string.Empty;
             BundleNames = bundleNames ?? Array.Empty<string>();
+        }
+    }
+
+    /// <summary>A remote entry that also depends on a bundle shipped inside the player.</summary>
+    public sealed class CrossBoundaryEntry
+    {
+        public string Address { get; }
+
+        /// <summary>The in-player bundles this remote entry needs.</summary>
+        public IReadOnlyList<string> LocalBundles { get; }
+
+        public CrossBoundaryEntry(string address, IReadOnlyList<string> localBundles)
+        {
+            Address = address ?? string.Empty;
+            LocalBundles = localBundles ?? Array.Empty<string>();
         }
     }
 
