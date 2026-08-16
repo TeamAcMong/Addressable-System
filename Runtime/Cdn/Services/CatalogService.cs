@@ -10,6 +10,9 @@ using UnityEngine.AddressableAssets;
 // decorator) really is under ResourceManagement.ResourceLocations.
 using UnityEngine.AddressableAssets.ResourceLocators;
 using UnityEngine.ResourceManagement.AsyncOperations;
+// The one place Runtime/Cdn reaches into Runtime/Loaders. Agreed as a deliberate one-way,
+// one-site coupling with the owner of that area — see Documentation/PARALLEL_SESSIONS.md §3.
+using AddressableManager.Managers;
 #if UNITASK_PRESENT
 using Cysharp.Threading.Tasks;
 #endif
@@ -291,11 +294,34 @@ namespace AddressableManager.Cdn
             // autoCleanBundleCache is the FIRST parameter of this overload — the package comments it
             // as "must be listed first to avoid breaking API" (Addressables.cs:2145). Passing it by
             // name is not a style choice: positionally it would bind to the catalog list.
+            //
+            // It is FALSE, and that is load-bearing. Passing true makes the bundle clean decide the
+            // status of the catalog update, because UpdateCatalogsOperation completes on the clean's
+            // result:
+            //
+            //   Execute()                      installs every new locator via UpdateContent, then
+            //                                  branches (UpdateCatalogsOperation.cs:83-98)
+            //   OnCleanCacheCompleted()        success = cleanOp.Status == Succeeded
+            //                                  Complete(catalogs, success, "...catalogs updated, but
+            //                                  failed to clean bundle cache.")   (:118-126)
+            //
+            // So a failed clean reports a failed UPDATE while the new catalog is already live. On any
+            // platform built without ENABLE_CACHING — WebGL — that is not an edge case but every call:
+            // CleanBundleCache returns CreateCompletedOperation(false, "Caching not enabled...")
+            // (AddressablesImpl.cs:1456-1458), a non-empty message means Failed
+            // (ResourceManager.cs:557-560), and Complete assigns Result before setting the failed
+            // status (AsyncOperationBase.cs:470-471) — so the catalogs are installed, reachable, and
+            // reported as a failure.
+            //
+            // CdnManager.ApplyUpdateAndCleanAsync already owns the clean, and already has the right
+            // semantics for it: a failed clean logs a warning and the update still counts as applied.
+            // Letting Addressables do it as well was both duplicate work and the thing that made that
+            // warning path unreachable, because the early return on IsFailure fired first.
             AsyncOperationHandle<List<IResourceLocator>> handle;
             try
             {
                 handle = Addressables.UpdateCatalogs(
-                    autoCleanBundleCache: true,
+                    autoCleanBundleCache: false,
                     catalogs: catalogs,
                     autoReleaseHandle: false);
             }
@@ -328,13 +354,117 @@ namespace AddressableManager.Cdn
             var applied = succeeded && handle.Result != null
                 ? handle.Result.Where(l => l != null).Select(l => l.LocatorId).ToList()
                 : new List<string>();
+
+            // Harvested HERE, before SafeRelease, and gated on Result rather than on success.
+            //
+            // Before the release because DecrementReferenceCount sets Result = default(TObject) and
+            // bumps m_Version when the count hits zero (AsyncOperationBase.cs:222, :228) — after the
+            // release the read is dead twice over, silently as null or loudly as a version throw.
+            //
+            // On Result, not on `succeeded`, because Execute() installs every new locator before it
+            // decides status (UpdateCatalogsOperation.cs:96). A run that ends Failed can still have
+            // swapped the catalog underneath us, and that is exactly the run where a stale cache does
+            // the most damage. Result == null is the honest "nothing was installed" signal: an empty
+            // catalog list completes with default(List<IResourceLocator>) (:38), and a faulted
+            // Execute never assigns one.
+            List<string> invalidationKeys = null;
+            if (handle.Result != null)
+            {
+                invalidationKeys = new List<string>(256);
+                foreach (var locator in handle.Result)
+                {
+                    if (locator == null) continue;
+
+                    // Keys is IEnumerable<object>: addresses, GUIDs, labels, bundle names. Take every
+                    // string and filter NONE of them. AssetCacheKey.Address is a misnomer — the
+                    // AssetReference load paths store the GUID in it (AssetLoader.cs:605, :1042), so
+                    // dropping GUIDs would leave anything loaded through an AssetReference being
+                    // served off the pre-update catalog, silently and forever. Labels and bundle
+                    // names match no cache key and cost nothing.
+                    foreach (var key in locator.Keys)
+                    {
+                        if (key is string text) invalidationKeys.Add(text);
+                    }
+                }
+            }
+
             Exception failure = handle.OperationException;
             SafeRelease(handle);
+
+            // AFTER the release: this is the only release of a handle taken with
+            // autoReleaseHandle: false, so anything that throws above it leaks the operation for the
+            // process lifetime. Below it, the worst case is an exception out of a method that has
+            // already given back everything it owned.
+            InvalidateLoaderCaches(invalidationKeys);
 
             if (!succeeded)
                 return CdnResult<IReadOnlyList<string>>.Failure(ClassifyNetworkFailure(failure));
 
             return CdnResult<IReadOnlyList<string>>.Success(applied);
+        }
+
+        /// <summary>
+        /// Drop the loaders' cached handles for every key the new catalog carries — Session A's
+        /// request in Documentation/PARALLEL_SESSIONS.md §3.
+        /// </summary>
+        /// <remarks>
+        /// A cached handle resolved against the previous catalog does not look stale: its operation
+        /// is valid and Succeeded, so the cache keeps serving it for the rest of the session. Nothing
+        /// in Addressables invalidates it, because Addressables does not know this cache exists.
+        ///
+        /// The release is a decrement, not a hard release — AssetLoader.InvalidateAddress uses
+        /// Dispose() (AssetLoader.cs:1711), so a caller still holding a handle keeps its asset alive
+        /// on the old bundle until it releases on its own, while the next load goes to the new
+        /// catalog. That distinction is what makes invalidating the WHOLE key set safe: over-
+        /// invalidating costs a reload, under-invalidating serves stale content. It was NOT safe
+        /// before Session A split InvalidateAddress out of EvictAddress, which hard-released.
+        ///
+        /// REACH IS PARTIAL, AND THAT IS NOT HIDDEN.
+        ///
+        /// InvalidateAddresses is an instance method and there is no registry of live AssetLoaders.
+        /// Only loaders created through ScopeManager.GetOrCreateScope (ScopeManager.cs:51) are
+        /// enumerable. Five other populations are not: BaseAssetScope (Scopes/BaseAssetScope.cs:58 —
+        /// Global, Scene and Hierarchy scopes), HybridScope (:243), Advanced.CreateLoader
+        /// (AdvancedAPI.cs:38), MonitoredAssetLoader (:27) and ThreadSafeAssetLoader (:34). Assets
+        /// cached in those keep being served from the pre-update catalog.
+        ///
+        /// Closing that needs a registry inside Runtime/Loaders, which belongs to Session A — filed
+        /// in §3 rather than worked around from here. Doing the reachable part now is still worth it:
+        /// the session scope this covers is where catalog-updated content is most likely to live.
+        ///
+        /// ThreadSafeAssetLoader is deliberately NOT reached even if it becomes enumerable: it has no
+        /// dispatch wrapper for this method group, so the AssertMainThread inside InvalidateAddresses
+        /// would throw off-thread (Session A, §3).
+        /// </remarks>
+        private static void InvalidateLoaderCaches(List<string> keys)
+        {
+            if (keys == null || keys.Count == 0) return;
+
+            try
+            {
+                var manager = ScopeManager.Instance;
+                if (manager == null) return;
+
+                // Materialised: ActiveScopes is a live view over the dictionary's keys
+                // (ScopeManager.cs:35), and invalidation can end with a scope disposing itself.
+                var scopeIds = manager.ActiveScopes?.ToList();
+                if (scopeIds == null) return;
+
+                foreach (var scopeId in scopeIds)
+                {
+                    manager.GetScope(scopeId)?.InvalidateAddresses(keys);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never fatal. The catalog is already applied and released by this point; a failure
+                // to tidy caches must not turn a successful update into a reported failure. It does
+                // mean stale content until the next load path refreshes, so it is a warning, not
+                // silence.
+                Debug.LogWarning($"[Cdn] Catalog applied, but the loader caches could not be " +
+                                 $"invalidated: {ex.Message}. Assets cached before the update may be " +
+                                 $"served from the previous catalog until their scope is cleared.");
+            }
         }
 
         // ================= shared =================
