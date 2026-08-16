@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Platform-specific labeling rules - Adds platform labels for conditional loading",
-  "autoApplyOnImport": true,
+  "autoApplyOnImport": false,
   "autoApplyOnModified": true,
   "verboseLogging": false,
   "versionExpression": "",

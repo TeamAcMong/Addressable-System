@@ -5,6 +5,9 @@ using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using AddressableManager.Core;
 using AddressableManager.Loaders;
+#if UNITY_EDITOR
+using AddressableManager.Monitoring;
+#endif
 #if UNITASK_PRESENT
 using Cysharp.Threading.Tasks;
 #endif
@@ -43,6 +46,10 @@ namespace AddressableManager.Progress
             bool operationStarted = false;
             bool succeeded = false;
 
+#if UNITY_EDITOR
+            var startTime = Time.realtimeSinceStartup;
+#endif
+
             try
             {
                 tracker.UpdateProgress(new ProgressInfo(0f, $"Loading {address}"));
@@ -66,7 +73,26 @@ namespace AddressableManager.Progress
                 {
                     tracker.Complete();
                     succeeded = true;
+
+                    // This extension bypasses AssetLoader's own cache entirely (a fresh
+                    // Addressables.LoadAssetAsync above, not loader.LoadAssetAsync), so unlike
+                    // that class it was never wired into the monitoring pipeline at all — no
+                    // ReportAssetLoaded, and the handle it returned could never report its
+                    // release either. Report the load and hand back a monitored handle, under
+                    // the same scope `loader` itself uses, so the Dashboard sees assets loaded
+                    // through this path exactly like ones loaded through loader.LoadAssetAsync.
+#if UNITY_EDITOR
+                    var loadDuration = Time.realtimeSinceStartup - startTime;
+                    AssetMonitorBridge.ReportAssetLoaded(
+                        address,
+                        typeof(T).Name,
+                        loader?.ScopeName ?? "Unknown",
+                        loadDuration,
+                        false);
+                    return new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     return new AssetHandle<T>(operation);
+#endif
                 }
 
                 Debug.LogError($"[ProgressiveLoader] Failed to load: {address}");

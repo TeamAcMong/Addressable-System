@@ -30,11 +30,17 @@ namespace AddressableManager.Editor.Rules
         [SerializeField] private List<VersionRule> _versionRules = new List<VersionRule>();
 
         [Header("Settings")]
+        // Default false: a freshly created LayoutRuleData has no rules yet, so leaving these on
+        // by default arms AddressableAutoProcessor's postprocessor hook on every asset
+        // import/save in the project the moment this asset exists - before the user has
+        // configured or reviewed a single rule. Opt-in only, once rules are actually ready
+        // (HANDOFF_TO_SESSION_B.md §4.5 "Also" - same hazard documented live in
+        // Samples~/RuleAutomation/ExampleLayoutRules.asset under E-NEW-1).
         [Tooltip("Auto-apply rules when assets are imported")]
-        [SerializeField] private bool _autoApplyOnImport = true;
+        [SerializeField] private bool _autoApplyOnImport = false;
 
         [Tooltip("Auto-apply rules when this asset is modified")]
-        [SerializeField] private bool _autoApplyOnModified = true;
+        [SerializeField] private bool _autoApplyOnModified = false;
 
         [Tooltip("Show detailed logs when applying rules")]
         [SerializeField] private bool _verboseLogging = false;

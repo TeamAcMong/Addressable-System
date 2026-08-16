@@ -59,6 +59,13 @@ namespace AddressableManager.Scopes
             _loader = new AssetLoader(_scopeId);
             _isActive = false;
 
+            // Must run BEFORE ReportScopeRegistered: EditorAssetMonitor.OnScopeRegistered handles
+            // that call synchronously and immediately looks up the display name to cache on the
+            // new TrackedScope (AssetTrackerService.RegisterScope). Registering the id-to-label
+            // pairing after would mean the very first lookup finds nothing and falls back to the
+            // raw id, so the Dashboard would show "Scene-MainScene#h1234" until something else
+            // happened to refresh it later (HANDOFF_TO_SESSION_B.md E-CHAIN item 4).
+            AssetMonitorBridge.ReportScopeDisplayName(_scopeId, _displayName);
             AssetMonitorBridge.ReportScopeRegistered(_scopeId, false);
 
             // Makes every BaseAssetScope-backed loader (Global / Scene / Hierarchy) visible in

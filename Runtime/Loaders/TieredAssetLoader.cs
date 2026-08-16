@@ -137,7 +137,16 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // Editor-only monitored overload — see AssetLoader.cs for the identical
+                    // pattern. Without it, ReleaseOperation() has no address/type to report and
+                    // AssetMonitorBridge.ReportAssetReleased never fires for handles this loader
+                    // produces, even though ReportAssetLoaded below does fire on the load side
+                    // (HANDOFF_TO_SESSION_B.md E-CHAIN item 2).
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
 
                     // Estimate size for cache management
                     long estimatedSize = EstimateAssetSize(operation.Result);
@@ -266,7 +275,12 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // See LoadAssetAsync(string) above for why this overload is Editor-only.
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
                     long estimatedSize = EstimateAssetSize(operation.Result);
 
                     // See the address overload above: Set() may release this handle as a duplicate if

@@ -1,9 +1,16 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using AddressableManager.Core;
 using AddressableManager.Facade;
 using AddressableManager.Scopes;
 using AddressableManager.Progress;
+
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
+#else
+using System.Threading.Tasks;
+#endif
 
 /// <summary>
 /// Comprehensive examples demonstrating all features of the Game Addressables System
@@ -65,11 +72,21 @@ public class AddressablesExamples : MonoBehaviour
     {
         Debug.Log("\n--- Example 1: Simple Asset Loading ---");
 
-        // Simple one-liner to load asset
+        // Simple one-liner to load asset - returns Task<T> or UniTask<T> depending on configuration
+#if UNITASK_PRESENT
+        // ToCoroutine's resultHandler receives the value from the single `await task` it performs
+        // internally. Awaiting or reading .Result a second time afterward (e.g. via
+        // GetAwaiter().GetResult()) would consume the same pooled UniTask<T> promise twice and
+        // throw ("Token version is not matched, can not await twice or get Status after await.").
+        IAssetHandle<Sprite> handle = null;
+        yield return Assets.Load<Sprite>("UI/Icon").ToCoroutine(result => handle = result);
+#else
         var task = Assets.Load<Sprite>("UI/Icon");
+        // Wait for Task to complete
         yield return new WaitUntil(() => task.IsCompleted);
-
         var handle = task.Result;
+#endif
+
         if (handle != null && handle.IsValid)
         {
             Debug.Log($"✓ Loaded sprite: {handle.Asset.name}");
@@ -103,10 +120,16 @@ public class AddressablesExamples : MonoBehaviour
         Debug.Log("✓ Session started");
 
         // Load session-specific assets (auto-cleanup when session ends)
+        // See Example 1 for why UNITASK_PRESENT uses ToCoroutine's resultHandler instead of
+        // IsCompleted/Result - those are Task<T> members, not UniTask<T> members.
+#if UNITASK_PRESENT
+        IAssetHandle<TextAsset> handle = null;
+        yield return Assets.LoadSession<TextAsset>("Config/LevelConfig").ToCoroutine(result => handle = result);
+#else
         var task = Assets.LoadSession<TextAsset>("Config/LevelConfig");
         yield return new WaitUntil(() => task.IsCompleted);
-
         var handle = task.Result;
+#endif
         if (handle != null && handle.IsValid)
         {
             Debug.Log($"✓ Loaded session config: {handle.Asset.name}");
@@ -128,10 +151,16 @@ public class AddressablesExamples : MonoBehaviour
         Debug.Log("\n--- Example 3: Progress Tracking ---");
 
         // Load with progress callback
+        // See Example 1 for why UNITASK_PRESENT uses ToCoroutine's resultHandler instead of
+        // IsCompleted/Result - those are Task<T> members, not UniTask<T> members.
+#if UNITASK_PRESENT
+        IAssetHandle<Texture2D> handle = null;
+        yield return Assets.Load<Texture2D>("Textures/LargeTexture", OnProgress).ToCoroutine(result => handle = result);
+#else
         var task = Assets.Load<Texture2D>("Textures/LargeTexture", OnProgress);
         yield return new WaitUntil(() => task.IsCompleted);
-
         var handle = task.Result;
+#endif
         if (handle != null && handle.IsValid)
         {
             Debug.Log($"✓ Loaded texture with progress tracking: {handle.Asset.name}");
@@ -172,10 +201,19 @@ public class AddressablesExamples : MonoBehaviour
         Debug.Log("\n--- Example 4: Object Pooling ---");
 
         // Create a pool (in real game, do this during loading screen)
+        // See Example 1 for why UNITASK_PRESENT uses ToCoroutine's resultHandler instead of
+        // IsCompleted/Result - those are Task<T> members, not UniTask<T> members.
+#if UNITASK_PRESENT
+        bool poolCreated = false;
+        yield return Assets.CreatePool("Prefabs/Projectile", preloadCount: 5, maxSize: 20)
+            .ToCoroutine(result => poolCreated = result);
+#else
         var createTask = Assets.CreatePool("Prefabs/Projectile", preloadCount: 5, maxSize: 20);
         yield return new WaitUntil(() => createTask.IsCompleted);
+        bool poolCreated = createTask.Result;
+#endif
 
-        if (!createTask.Result)
+        if (!poolCreated)
         {
             Debug.LogWarning("Pool creation failed (prefab not found). Skipping pool example.");
             yield break;
@@ -222,10 +260,16 @@ public class AddressablesExamples : MonoBehaviour
         Debug.Log($"✓ Scene scope created: {sceneScope.ScopeName}");
 
         // Load scene-specific asset
+        // See Example 1 for why UNITASK_PRESENT uses ToCoroutine's resultHandler instead of
+        // IsCompleted/Result - those are Task<T> members, not UniTask<T> members.
+#if UNITASK_PRESENT
+        IAssetHandle<Material> handle = null;
+        yield return Assets.LoadScene<Material>("Scene/SpecialMaterial").ToCoroutine(result => handle = result);
+#else
         var task = Assets.LoadScene<Material>("Scene/SpecialMaterial");
         yield return new WaitUntil(() => task.IsCompleted);
-
         var handle = task.Result;
+#endif
         if (handle != null && handle.IsValid)
         {
             Debug.Log($"✓ Loaded scene material: {handle.Asset.name}");
@@ -254,10 +298,17 @@ public class AddressablesExamples : MonoBehaviour
         Debug.Log($"✓ Added hierarchy scope: {hierarchyScope.ScopeName}");
 
         // Load character-specific asset
+        // See Example 1 for why UNITASK_PRESENT uses ToCoroutine's resultHandler instead of
+        // IsCompleted/Result - those are Task<T> members, not UniTask<T> members.
+#if UNITASK_PRESENT
+        IAssetHandle<AudioClip> handle = null;
+        yield return hierarchyScope.Loader.LoadAssetAsync<AudioClip>("Sounds/CharacterTheme")
+            .ToCoroutine(result => handle = result);
+#else
         var task = hierarchyScope.Loader.LoadAssetAsync<AudioClip>("Sounds/CharacterTheme");
         yield return new WaitUntil(() => task.IsCompleted);
-
         var handle = task.Result;
+#endif
         if (handle != null && handle.IsValid)
         {
             Debug.Log($"✓ Loaded character audio: {handle.Asset.name}");

@@ -43,8 +43,8 @@ MonoBehaviour:
     _versionProvider: {fileID: 0}
     _priority: 0
     _skipExisting: 0
-  _autoApplyOnImport: 1
-  _autoApplyOnModified: 1
+  _autoApplyOnImport: 0
+  _autoApplyOnModified: 0
   _verboseLogging: 0
   _versionExpression: 
   _excludeUnversioned: 0
