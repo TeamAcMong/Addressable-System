@@ -8,7 +8,8 @@
         "Unity.Addressables.Editor",
         "Unity.ResourceManager",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "UniTask"
     ],
     "includePlatforms": [
         "Editor"
@@ -23,6 +24,17 @@
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "TMP_PRESENT"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.3.0",
+            "define": "UNITASK_PRESENT"
+        }
+    ],
     "noEngineReferences": false
 }

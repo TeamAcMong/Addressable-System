@@ -6,6 +6,12 @@ using AddressableManager.Editor.Cdn;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+#if UNITASK_PRESENT
+// AsTask() is an extension on UniTask<T>, not a member - without this using it is invisible
+// and the dual-signature helper below fails to compile in exactly the configuration it
+// exists to support.
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace AddressableManager.Tests
 {

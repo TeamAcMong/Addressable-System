@@ -130,49 +130,91 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             SetDownloadIdle("No download in progress");
         }
 
-        private void CheckForUpdate()
+        /// <summary>Check for a newer catalog and report the outcome on the label.</summary>
+        /// <remarks>
+        /// `await`, not a boxed task and a type test.
+        ///
+        /// The previous version handed the returned task to `object` and matched it with
+        /// `is Task&lt;CdnResult&lt;CatalogUpdateInfo&gt;&gt;`, on the reasoning that boxing kept the file
+        /// free of the UNITASK_PRESENT conditional. It kept the file free of the conditional by
+        /// being wrong under it: with UniTask installed the method returns UniTask&lt;T&gt;, a struct
+        /// that is not a Task&lt;T&gt;, so the match failed, the body never ran, and the button did
+        /// nothing at all. Silently — no exception, no log, just a label that never changed. That
+        /// is the configuration every project with UniTask ships, which is most of them.
+        ///
+        /// `await` needs no conditional because both are awaitable and both yield the same
+        /// CdnResult. The dual signature lives in CdnManager where repo Invariant 3 puts it; a
+        /// caller does not have to care, which was the point of the invariant.
+        ///
+        /// async void is deliberate: this is a UI event handler, there is no caller to return to,
+        /// and the try/catch is what an unobserved async void would otherwise cost.
+        /// </remarks>
+        private async void CheckForUpdate()
         {
             if (!CdnManager.IsInitialized) return;
 
             _downloadLabel.text = "Checking for updates...";
 
-            // Fire and forget, deliberately: the editor has no await context here and the result is
-            // reported through the label rather than returned to a caller.
-            var task = CdnManager.CheckForUpdateAsync();
-            EditorApplication.delayCall += () => ReportCheck(task);
-        }
-
-        private void ReportCheck(object taskObject)
-        {
-            // Boxed to keep this file free of the Task/UniTask conditional; the concrete type
-            // depends on UNITASK_PRESENT and only the completed value is needed.
-            if (taskObject is System.Threading.Tasks.Task<CdnResult<CatalogUpdateInfo>> task)
+            try
             {
-                if (!task.IsCompleted)
-                {
-                    EditorApplication.delayCall += () => ReportCheck(task);
-                    return;
-                }
+                var result = await CdnManager.CheckForUpdateAsync();
 
-                var result = task.Result;
+                // The view is rebuilt on every tab switch, so the element awaited on may already be
+                // detached. Writing to it would not throw, it would just be invisible — checking is
+                // how a stale write stays out of a live tab.
+                if (_downloadLabel == null || _downloadLabel.panel == null) return;
+
                 _downloadLabel.text = result.IsFailure
                     ? $"Check failed: {result.ErrorMessage}"
                     : result.Value.WasOfflineFallback
+                        // Not the same as "up to date": the check never reached the server. Saying
+                        // "up to date" here is how a player is told their game is current when
+                        // nobody asked the CDN.
                         ? "Offline — could not check"
                         : result.Value.HasUpdate
                             ? $"{result.Value.CatalogsWithUpdates.Count} catalog(s) have updates"
                             : "Content is up to date";
+
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                if (_downloadLabel != null && _downloadLabel.panel != null)
+                    _downloadLabel.text = $"Check threw: {ex.Message}";
             }
         }
 
-        private void CleanObsolete()
+        /// <summary>Remove bundles superseded by a catalog update, and report what happened.</summary>
+        /// <remarks>
+        /// Awaited rather than fired and forgotten. The previous version started the clean, queued a
+        /// Refresh on the next delayCall, and returned — so the panel refreshed before the clean had
+        /// done anything and reported the cache size it had a moment ago. It also discarded the
+        /// result, so a clean that failed looked identical to one that worked.
+        /// </remarks>
+        private async void CleanObsolete()
         {
             var cache = CdnManager.Cache;
             if (cache == null) return;
 
             _downloadLabel.text = "Cleaning obsolete bundles...";
-            cache.CleanObsoleteAsync();
-            EditorApplication.delayCall += Refresh;
+
+            try
+            {
+                var result = await cache.CleanObsoleteAsync();
+
+                if (_downloadLabel == null || _downloadLabel.panel == null) return;
+
+                _downloadLabel.text = result.IsFailure
+                    ? $"Clean failed: {result.ErrorMessage}"
+                    : $"Obsolete bundles removed — {FormatBytes(result.Value.OccupiedBytes)} still in cache";
+
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                if (_downloadLabel != null && _downloadLabel.panel != null)
+                    _downloadLabel.text = $"Clean threw: {ex.Message}";
+            }
         }
 
         private void ClearCache()
