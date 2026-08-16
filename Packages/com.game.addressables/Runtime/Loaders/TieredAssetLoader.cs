@@ -107,32 +107,25 @@ namespace AddressableManager.Loaders
             var cache = GetOrCreateCache<T>();
             string cacheKey = $"{address}_{typeof(T).Name}";
 
-            // Try cache first
+            // Try cache first. TryGet() already retains the reference it hands back (and drops the
+            // entry internally if its handle turned out to be dead), so a successful result here is
+            // always a live, owned handle.
             if (cache.TryGet(cacheKey, out var cachedHandle))
             {
-                if (cachedHandle.IsValid)
-                {
-                    Debug.Log($"[TieredAssetLoader] Cache hit for: {address}");
-                    cachedHandle.Retain();
+                Debug.Log($"[TieredAssetLoader] Cache hit for: {address}");
 
 #if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        true // from cache
-                    );
+                var loadDuration = Time.realtimeSinceStartup - startTime;
+                AssetMonitorBridge.ReportAssetLoaded(
+                    address,
+                    typeof(T).Name,
+                    _scopeName,
+                    loadDuration,
+                    true // from cache
+                );
 #endif
 
-                    return cachedHandle;
-                }
-                else
-                {
-                    // Remove invalid cached handle
-                    cache.Remove(cacheKey);
-                }
+                return cachedHandle;
             }
 
             // Load from Addressables
@@ -149,24 +142,58 @@ namespace AddressableManager.Loaders
                     // Estimate size for cache management
                     long estimatedSize = EstimateAssetSize(operation.Result);
 
-                    // Add to tiered cache
+                    // Add to tiered cache. If a concurrent load for the same key already won and
+                    // populated the cache first, Set() releases our duplicate handle instead of
+                    // storing it (see Set()'s XML doc) — serve the entry it already holds instead of
+                    // handing back a handle we no longer own.
                     cache.Set(cacheKey, handle, estimatedSize);
-                    _activeHandles.Add(handle);
 
-                    Debug.Log($"[TieredAssetLoader] Successfully loaded: {address}");
+                    try
+                    {
+                        // Only track the handle if it actually survived Set() — a handle Set()
+                        // rejected as a duplicate is already dead and must not be treated as one of
+                        // this loader's active references.
+                        if (handle.IsValid)
+                        {
+                            _activeHandles.Add(handle);
+                        }
+
+                        Debug.Log($"[TieredAssetLoader] Successfully loaded: {address}");
 
 #if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        false // not from cache
-                    );
+                        var loadDuration = Time.realtimeSinceStartup - startTime;
+                        AssetMonitorBridge.ReportAssetLoaded(
+                            address,
+                            typeof(T).Name,
+                            _scopeName,
+                            loadDuration,
+                            false // not from cache
+                        );
 #endif
 
-                    return handle;
+                        if (!handle.IsValid && cache.TryGet(cacheKey, out var canonical))
+                        {
+                            return canonical;
+                        }
+
+                        return handle;
+                    }
+                    catch
+                    {
+                        // Anything thrown here means the outer catch below swallows it and returns
+                        // null — this method's own caller never receives `handle` and therefore can
+                        // never Release() it. If Set() above stored `handle` (the common case), the
+                        // object now carries two references: the cache's own (from TryRetain) and
+                        // this call's original one that was meant to be handed to our caller. Release
+                        // exactly that second one here so the entry is left exactly as if this call
+                        // had never happened beyond caching it — refcount 1, owned solely by the
+                        // cache, nothing orphaned. (If Set() instead rejected `handle` as a duplicate,
+                        // it is already dead and this Release() is a documented no-op at count 0 —
+                        // see AssetReferenceCounter.Release — so this is safe either way without
+                        // needing to know which case happened.)
+                        handle.Release();
+                        throw;
+                    }
                 }
                 else
                 {
@@ -212,30 +239,23 @@ namespace AddressableManager.Loaders
             var address = assetReference.AssetGUID;
             string cacheKey = $"{address}_{typeof(T).Name}";
 
-            // Check cache
+            // Check cache. TryGet() already retains the reference it hands back (and drops the entry
+            // internally if its handle turned out to be dead), so a successful result here is always
+            // a live, owned handle.
             if (cache.TryGet(cacheKey, out var cachedHandle))
             {
-                if (cachedHandle.IsValid)
-                {
-                    cachedHandle.Retain();
-
 #if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        true
-                    );
+                var loadDuration = Time.realtimeSinceStartup - startTime;
+                AssetMonitorBridge.ReportAssetLoaded(
+                    address,
+                    typeof(T).Name,
+                    _scopeName,
+                    loadDuration,
+                    true
+                );
 #endif
 
-                    return cachedHandle;
-                }
-                else
-                {
-                    cache.Remove(cacheKey);
-                }
+                return cachedHandle;
             }
 
             // Load from Addressables
@@ -249,21 +269,45 @@ namespace AddressableManager.Loaders
                     var handle = new AssetHandle<T>(operation);
                     long estimatedSize = EstimateAssetSize(operation.Result);
 
+                    // See the address overload above: Set() may release this handle as a duplicate if
+                    // a concurrent load for the same key already populated the cache.
                     cache.Set(cacheKey, handle, estimatedSize);
-                    _activeHandles.Add(handle);
+
+                    try
+                    {
+                        // Only track the handle if it actually survived Set() — a handle Set()
+                        // rejected as a duplicate is already dead and must not be treated as one of
+                        // this loader's active references.
+                        if (handle.IsValid)
+                        {
+                            _activeHandles.Add(handle);
+                        }
 
 #if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        false
-                    );
+                        var loadDuration = Time.realtimeSinceStartup - startTime;
+                        AssetMonitorBridge.ReportAssetLoaded(
+                            address,
+                            typeof(T).Name,
+                            _scopeName,
+                            loadDuration,
+                            false
+                        );
 #endif
 
-                    return handle;
+                        if (!handle.IsValid && cache.TryGet(cacheKey, out var canonical))
+                        {
+                            return canonical;
+                        }
+
+                        return handle;
+                    }
+                    catch
+                    {
+                        // See the address overload above for why this Release() is correct and safe
+                        // regardless of whether Set() stored or rejected `handle`.
+                        handle.Release();
+                        throw;
+                    }
                 }
                 else
                 {
