@@ -6,8 +6,16 @@ using UnityEngine;
 namespace AddressableManager.Core
 {
     /// <summary>
-    /// Tiered cache system with Hot/Warm/Cold tiers
-    /// Automatically manages cache based on access patterns and memory constraints
+    /// Tiered cache system with Hot/Warm/Cold tiers.
+    /// Automatically manages cache based on access patterns and memory constraints.
+    /// Not thread-safe — intended for single (main) thread use; see <see cref="ThreadSafeCacheManager{T}"/>
+    /// for a multi-thread-safe equivalent.
+    ///
+    /// <para><b>IMPORTANT — Set() can silently release your own handle:</b> calling <see cref="Set"/>
+    /// for a key that already has a live entry releases the <c>handle</c> argument passed in as a
+    /// rejected duplicate (see that method's doc). <c>Set()</c> stays <c>void</c>, so the only
+    /// signal is <c>IsValid</c> flipping to <c>false</c> — always check it before reading or handing
+    /// off a handle you just passed to <c>Set()</c>.</para>
     /// </summary>
     public class TieredCache<T> : IDisposable where T : class
     {
@@ -37,7 +45,30 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Add or update entry in cache
+        /// Add or update entry in cache. On success the cache holds its own reference to
+        /// <paramref name="handle"/> (taken via <c>TryRetain()</c>), independent of the caller's own
+        /// reference — the caller must still <c>Release()</c>/<c>Dispose()</c> its copy as usual.
+        ///
+        /// If <paramref name="handle"/> is already dead, it is refused rather than stored: a dead
+        /// entry could never be served back out by <see cref="TryGet"/> anyway.
+        ///
+        /// If <paramref name="key"/> already has a <em>live</em> entry, this call does not replace
+        /// it — only the access time is bumped. The handle passed in this call is not stored, so
+        /// unless it is the exact object already cached, this call releases the reference it was
+        /// given back to the caller (i.e. it does not adopt it and does not leak it); the caller
+        /// must not use that handle as if the cache had taken ownership of it.
+        ///
+        /// <para><b>IMPORTANT:</b> because this call can release the caller's own
+        /// <paramref name="handle"/> reference as that "losing" duplicate (e.g. two concurrent loads
+        /// for the same key), <paramref name="handle"/> may already be invalid by the time this call
+        /// returns — check <c>IsValid</c> before reading or handing off <paramref name="handle"/>
+        /// afterwards. When <c>_config.LogTierOperations</c> is enabled, every such rejection is
+        /// logged so the loss is observable even without checking <c>IsValid</c>.</para>
+        ///
+        /// If the existing entry's handle has died without going through this cache (e.g.
+        /// force-released by its owning loader), it is treated the same way <see cref="TryGet"/>
+        /// treats it — as a stale/missing entry — so the incoming handle replaces it instead of being
+        /// rejected into a zombie slot.
         /// </summary>
         public void Set(string key, IAssetHandle<T> handle, long estimatedSize = 0)
         {
@@ -50,12 +81,36 @@ namespace AddressableManager.Core
             if (handle == null)
                 throw new ArgumentNullException(nameof(handle));
 
-            // If entry exists, just update access
+            // If entry exists and is still alive, just update access. The handle passed in is not
+            // stored — release the reference we were given back unless it is the very object already
+            // cached.
             if (_cache.TryGetValue(key, out var existingEntry))
             {
-                existingEntry.RecordAccess();
-                return;
+                if (existingEntry.Handle.IsValid)
+                {
+                    existingEntry.RecordAccess();
+                    if (!ReferenceEquals(existingEntry.Handle, handle))
+                    {
+                        if (_config.LogTierOperations)
+                        {
+                            Debug.LogWarning($"[TieredCache] Set() rejected a duplicate handle for already-cached key '{key}'; the caller's handle was released and is no longer valid.");
+                        }
+                        handle.Release();
+                    }
+                    return;
+                }
+
+                // Stale entry whose handle died outside this cache — mirror TryGet()'s handling:
+                // drop the zombie slot instead of rejecting the caller's freshly loaded handle into
+                // it (which would silently unload the very asset that was just loaded).
+                _currentCacheSize -= existingEntry.EstimatedSize;
+                _cache.Remove(key);
             }
+
+            // The cache takes its own reference; a handle that is already dead is refused instead of
+            // stored.
+            if (!handle.TryRetain())
+                return;
 
             // Create new entry
             var entry = new CacheEntry<T>(key, handle, estimatedSize);
@@ -74,7 +129,10 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Try to get entry from cache
+        /// Try to get entry from cache. On success, the returned handle carries a reference the
+        /// caller now owns and must <c>Release()</c>/<c>Dispose()</c> — <c>TryRetain()</c> is the
+        /// validity test, so a handle that died without going through this cache (e.g. force-released
+        /// by its owning loader) is treated as a miss and its entry is dropped.
         /// </summary>
         public bool TryGet(string key, out IAssetHandle<T> handle)
         {
@@ -88,22 +146,30 @@ namespace AddressableManager.Core
 
             if (_cache.TryGetValue(key, out var entry))
             {
-                entry.RecordAccess();
-                handle = entry.Handle;
-                _cacheHits++;
-
-                // Periodic tier evaluation
-                if (_config.EnableAutoTiering)
+                if (entry.Handle.TryRetain())
                 {
-                    float timeSinceEvaluation = Time.realtimeSinceStartup - _lastEvaluationTime;
-                    if (timeSinceEvaluation >= _config.TierEvaluationInterval)
+                    entry.RecordAccess();
+                    handle = entry.Handle;
+                    _cacheHits++;
+
+                    // Periodic tier evaluation
+                    if (_config.EnableAutoTiering)
                     {
-                        EvaluateAndAdjustTiers();
-                        _lastEvaluationTime = Time.realtimeSinceStartup;
+                        float timeSinceEvaluation = Time.realtimeSinceStartup - _lastEvaluationTime;
+                        if (timeSinceEvaluation >= _config.TierEvaluationInterval)
+                        {
+                            EvaluateAndAdjustTiers();
+                            _lastEvaluationTime = Time.realtimeSinceStartup;
+                        }
                     }
+
+                    return true;
                 }
 
-                return true;
+                // Entry's handle is already dead (its last reference went away outside this cache).
+                // Nothing left to release here — drop the stale entry and report a miss.
+                _currentCacheSize -= entry.EstimatedSize;
+                _cache.Remove(key);
             }
 
             handle = null;
@@ -119,12 +185,13 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Remove entry from cache
+        /// Remove entry from cache, releasing the cache's own reference to its handle.
         /// </summary>
         public bool Remove(string key)
         {
             if (_cache.TryGetValue(key, out var entry))
             {
+                entry.Handle?.Release();
                 _currentCacheSize -= entry.EstimatedSize;
                 _cache.Remove(key);
                 return true;
@@ -156,10 +223,15 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Clear all cache entries
+        /// Clear all cache entries, releasing the cache's own reference to every handle it holds.
         /// </summary>
         public void Clear()
         {
+            foreach (var entry in _cache.Values)
+            {
+                entry.Handle?.Release();
+            }
+
             _cache.Clear();
             _currentCacheSize = 0;
             ResetStatistics();
@@ -266,11 +338,11 @@ namespace AddressableManager.Core
                 }
             }
 
-            // Remove evicted entries
+            // Remove evicted entries, releasing the cache's own reference to each handle
             foreach (var key in keysToRemove)
             {
                 var entry = _cache[key];
-                entry.Handle?.Release(); // Release the handle
+                entry.Handle?.Release();
                 _cache.Remove(key);
             }
 
