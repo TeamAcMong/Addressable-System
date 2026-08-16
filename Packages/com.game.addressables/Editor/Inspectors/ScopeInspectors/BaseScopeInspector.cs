@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using AddressableManager.Scopes;
 using AddressableManager.Editor.Data;
+using AddressableManager.Monitoring;
 using System.Linq;
 
 namespace AddressableManager.Editor.Inspectors
@@ -15,10 +16,32 @@ namespace AddressableManager.Editor.Inspectors
     {
         protected IAssetScope _targetScope;
         protected AssetTrackerService _tracker;
+
+        /// <summary>
+        /// Category label for header/color only ("Scene", "Hierarchy", "Global" — from the
+        /// abstract <see cref="GetScopeName"/>). NOT a valid key into the tracker: since v4.0.0,
+        /// scope ids are instance-qualified and unbounded (e.g. "Scene-{sceneName}#h{handle}",
+        /// "Hierarchy-{goName}#{instanceTag}"), so no fixed literal can ever match one. Use
+        /// <see cref="_liveScopeId"/> for every tracker lookup instead
+        /// (HANDOFF_TO_SESSION_B.md E-CHAIN item 3).
+        /// </summary>
         protected string _scopeName;
+
+        /// <summary>
+        /// The actual tracker key for the scope currently being inspected — <c>_targetScope</c>'s
+        /// real <see cref="IAssetScope.ScopeName"/> (== <c>BaseAssetScope.ScopeId</c>), re-read on
+        /// every <see cref="RefreshData"/> rather than cached once. It must be re-read each time
+        /// because a Global/Hybrid scope can rebuild its underlying loader after a Dispose (see
+        /// Documentation/LIFETIME_DESIGN.md §2.2) and, for Scene/Hierarchy, the id is only valid
+        /// once <c>Awake</c> has run — reading it once in <c>CreateInspectorGUI</c> could observe
+        /// a stale or not-yet-assigned value.
+        /// </summary>
+        protected string _liveScopeId;
+
         protected Color _scopeColor;
 
         private VisualElement _root;
+        private Label _titleLabel;
         private Label _statusLabel;
         private Label _assetCountLabel;
         private Label _memoryLabel;
@@ -102,10 +125,12 @@ namespace AddressableManager.Editor.Inspectors
             colorBox.style.borderBottomLeftRadius = 4;
             colorBox.style.borderBottomRightRadius = 4;
 
-            var titleLabel = new Label($"{_scopeName} Scope");
-            titleLabel.style.fontSize = 14;
-            titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            titleLabel.style.flexGrow = 1;
+            // Placeholder text only — RefreshData() fills in the real DisplayName once
+            // _liveScopeId is known (HANDOFF_TO_SESSION_B.md E-CHAIN item 4).
+            _titleLabel = new Label($"{_scopeName} Scope");
+            _titleLabel.style.fontSize = 14;
+            _titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _titleLabel.style.flexGrow = 1;
 
             _statusLabel = new Label();
             _statusLabel.style.fontSize = 11;
@@ -119,7 +144,7 @@ namespace AddressableManager.Editor.Inspectors
             _statusLabel.style.borderBottomRightRadius = 4;
 
             header.Add(colorBox);
-            header.Add(titleLabel);
+            header.Add(_titleLabel);
             header.Add(_statusLabel);
 
             _root.Add(header);
@@ -250,6 +275,20 @@ namespace AddressableManager.Editor.Inspectors
         {
             if (_targetScope == null || _tracker == null) return;
 
+            // Re-read every refresh, not just once — see _liveScopeId's docs for why a cached
+            // value is wrong here (HANDOFF_TO_SESSION_B.md E-CHAIN item 3).
+            _liveScopeId = _targetScope.ScopeName;
+
+            // Friendly label ("MainScene") next to the fixed category ("Scene") rather than the
+            // raw instance-qualified id ("Scene-MainScene#h1234") a user has no reason to parse
+            // (HANDOFF_TO_SESSION_B.md E-CHAIN item 4). Falls back to the category alone when no
+            // distinct display name was ever reported (GetDisplayName then returns the id itself,
+            // which for Global always equals "Global" == _scopeName anyway).
+            var displayName = AssetMonitorBridge.GetDisplayName(_liveScopeId);
+            _titleLabel.text = displayName == _liveScopeId
+                ? $"{_scopeName} Scope"
+                : $"{displayName} ({_scopeName} Scope)";
+
             // Update status
             bool isActive = _targetScope.IsActive;
             _statusLabel.text = isActive ? "ACTIVE" : "INACTIVE";
@@ -257,8 +296,10 @@ namespace AddressableManager.Editor.Inspectors
                 new Color(0.2f, 0.7f, 0.3f) :
                 new Color(0.5f, 0.5f, 0.5f);
 
-            // Get assets for this scope
-            var assets = _tracker.GetAssetsByScope(_scopeName);
+            // Get assets for this scope — keyed by the live, instance-qualified id, not the
+            // static category label (_scopeName). AssetTrackerService stores assets under
+            // whatever AssetLoader reported as its scope name, which is this id.
+            var assets = _tracker.GetAssetsByScope(_liveScopeId);
             var totalMemory = assets.Sum(a => a.MemorySize);
 
             // Update counts
@@ -361,7 +402,7 @@ namespace AddressableManager.Editor.Inspectors
             if (EditorApplication.isPlaying)
             {
                 _targetScope?.Activate();
-                _tracker.UpdateScopeState(_scopeName, true);
+                _tracker.UpdateScopeState(_liveScopeId, true);
                 RefreshData();
             }
         }
@@ -371,13 +412,15 @@ namespace AddressableManager.Editor.Inspectors
             if (EditorApplication.isPlaying)
             {
                 _targetScope?.Deactivate();
-                _tracker.UpdateScopeState(_scopeName, false);
+                _tracker.UpdateScopeState(_liveScopeId, false);
                 RefreshData();
             }
         }
 
         private void CleanupScope()
         {
+            // Dialog text keeps the friendly category label (_scopeName) — the live id
+            // ("Scene-MainScene#h1234") is what the tracker needs, not what a user wants to read.
             if (EditorUtility.DisplayDialog($"Cleanup {_scopeName} Scope",
                 $"Are you sure you want to cleanup all assets in the {_scopeName} scope?\n" +
                 "This will release all loaded assets and clear the cache.",
@@ -385,7 +428,7 @@ namespace AddressableManager.Editor.Inspectors
             {
                 if (EditorApplication.isPlaying)
                 {
-                    _tracker.ClearScope(_scopeName);
+                    _tracker.ClearScope(_liveScopeId);
                     _targetScope?.Deactivate();
                     _targetScope?.Activate(); // Reactivate empty scope
                     RefreshData();

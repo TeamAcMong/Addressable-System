@@ -810,18 +810,25 @@ namespace AddressableManager.Editor.Windows
             _totalMatchCount = matchCount;
         }
 
+        // Bound the preview scan to "Assets" and exclude Assets/AddressableAssetsData so the
+        // preview panel can never suggest rewriting addresses across package boundaries or onto
+        // Addressables' own settings/group assets (HANDOFF_TO_SESSION_B.md E-PAIR-1 - same
+        // unbounded-FindAssets("") defect as LayoutRuleProcessor.GetAllAssetPaths).
         private List<string> GetAllAssetPaths()
         {
             var paths = new List<string>();
-            var allGuids = AssetDatabase.FindAssets("");
+            var allGuids = AssetDatabase.FindAssets("", new[] { "Assets" });
 
             foreach (var guid in allGuids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
-                {
-                    paths.Add(path);
-                }
+                if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path))
+                    continue;
+
+                if (path.StartsWith("Assets/AddressableAssetsData/"))
+                    continue;
+
+                paths.Add(path);
             }
 
             return paths;

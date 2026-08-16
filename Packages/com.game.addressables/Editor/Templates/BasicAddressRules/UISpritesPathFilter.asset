@@ -9,11 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ac7b5fe25c707ac45be8ee10e38ef559, type: 3}
-  m_Name: TypeFilter
-  m_EditorClassIdentifier: AddressableManager.Editor::AddressableManager.Editor.Filters.TypeFilter
+  m_Script: {fileID: 11500000, guid: 4bff87e411d38a241b4b5afa643bb62d, type: 3}
+  m_Name: UISpritesPathFilter
+  m_EditorClassIdentifier: AddressableManager.Editor::AddressableManager.Editor.Filters.PathFilter
   _enabled: 1
   _invert: 0
-  _description: 
-  _typeName: SceneAsset
-  _includeSubclasses: 1
+  _description:
+  _pattern: Assets/UI/
+  _matchMode: 1
+  _caseSensitive: 0

@@ -16,7 +16,13 @@ namespace AddressableManager.Editor.Filters
             StartsWith,     // Path starts with the pattern
             EndsWith,       // Path ends with the pattern
             Exact,          // Path exactly matches the pattern
-            Regex           // Path matches regex pattern
+            Regex,          // Path matches regex pattern
+
+            // Added after Contains/StartsWith/EndsWith/Exact/Regex existed and serialized asset
+            // data already stored those as enum indices 0-4 - MUST stay last so old assets don't
+            // silently reinterpret their saved _matchMode as a different mode
+            // (HANDOFF_TO_SESSION_B.md E-PAIR-2).
+            Glob            // Path matches a glob pattern (* / ** / ?), e.g. "Assets/UI/**/*.png"
         }
 
         [Header("Path Filter Settings")]
@@ -75,8 +81,14 @@ namespace AddressableManager.Editor.Filters
         {
             base.Setup();
 
-            // Pre-compile regex if needed
-            if (_matchMode == PathMatchMode.Regex && !string.IsNullOrEmpty(_pattern))
+            // Pre-compile regex if needed. Regex mode compiles the pattern AS-IS (it is already
+            // a regex). Glob mode translates the "*" / "**" / "?" pattern into an equivalent
+            // regex first, then compiles that - this is what lets 32 documented examples that
+            // use "**" (e.g. "Assets/UI/**/*.png") work, and stops "**" from throwing on every
+            // asset scanned when someone follows the docs but leaves match mode on Regex
+            // (HANDOFF_TO_SESSION_B.md E-PAIR-2). Regex mode itself is unchanged - it already
+            // compiles once and caches correctly for valid patterns, that path is not the bug.
+            if ((_matchMode == PathMatchMode.Regex || _matchMode == PathMatchMode.Glob) && !string.IsNullOrEmpty(_pattern))
             {
                 try
                 {
@@ -84,15 +96,73 @@ namespace AddressableManager.Editor.Filters
                     if (!_caseSensitive)
                         options |= RegexOptions.IgnoreCase;
 
-                    _cachedRegex = new Regex(_pattern, options);
+                    string regexPattern = _matchMode == PathMatchMode.Glob
+                        ? GlobToRegexPattern(_pattern)
+                        : _pattern;
+
+                    _cachedRegex = new Regex(regexPattern, options);
                     _cachedPattern = _pattern;
                 }
                 catch (ArgumentException ex)
                 {
-                    Debug.LogError($"[PathFilter] Invalid regex pattern '{_pattern}': {ex.Message}");
+                    Debug.LogError($"[PathFilter] Invalid {_matchMode} pattern '{_pattern}': {ex.Message}");
                     _cachedRegex = null;
                 }
             }
+        }
+
+        /// <summary>
+        /// Translate a "*" / "**" / "?" glob pattern into an equivalent anchored regex pattern.
+        /// "**" (optionally followed by "/") matches zero or more path segments, including none -
+        /// so "Assets/UI/**/*.png" matches both "Assets/UI/icon.png" and
+        /// "Assets/UI/Nested/icon.png". A trailing "**" with no following "/" matches the rest of
+        /// the path outright (e.g. "Assets/Mobile/**"). "*" matches within a single path segment
+        /// (never crosses "/"), "?" matches exactly one such character.
+        /// </summary>
+        private static string GlobToRegexPattern(string glob)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('^');
+
+            int i = 0;
+            int len = glob.Length;
+            while (i < len)
+            {
+                // "**/" -> zero or more whole path segments (the "/" is absorbed so a zero-segment
+                // match doesn't leave a stray "//").
+                if (i + 3 <= len && glob[i] == '*' && glob[i + 1] == '*' && glob[i + 2] == '/')
+                {
+                    sb.Append("(?:.*/)?");
+                    i += 3;
+                    continue;
+                }
+
+                // Trailing "**" (end of pattern, no following "/") -> match anything, slashes included.
+                if (i + 2 <= len && glob[i] == '*' && glob[i + 1] == '*' && (i + 2 == len || glob[i + 2] != '/'))
+                {
+                    sb.Append(".*");
+                    i += 2;
+                    continue;
+                }
+
+                char c = glob[i];
+                switch (c)
+                {
+                    case '*':
+                        sb.Append("[^/]*");
+                        break;
+                    case '?':
+                        sb.Append("[^/]");
+                        break;
+                    default:
+                        sb.Append(Regex.Escape(c.ToString()));
+                        break;
+                }
+                i++;
+            }
+
+            sb.Append('$');
+            return sb.ToString();
         }
 
         protected override bool IsMatchInternal(string assetPath)
@@ -117,7 +187,8 @@ namespace AddressableManager.Editor.Filters
                     return assetPath.Equals(_pattern, comparison);
 
                 case PathMatchMode.Regex:
-                    // Recompile regex if pattern changed
+                case PathMatchMode.Glob:
+                    // Recompile (regex, or glob-translated-to-regex) if pattern changed
                     if (_cachedRegex == null || _cachedPattern != _pattern)
                     {
                         Setup();

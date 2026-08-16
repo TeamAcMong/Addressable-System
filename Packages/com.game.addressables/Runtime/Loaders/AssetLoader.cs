@@ -74,6 +74,16 @@ namespace AddressableManager.Loaders
         // Scope name for monitoring (Editor-only, zero overhead in builds)
         private readonly string _scopeName;
 
+        /// <summary>
+        /// The scope name this loader was constructed with — read-only mirror of the
+        /// constructor's <c>scopeName</c> parameter. Exists so extension-method call sites
+        /// outside this class (e.g. <see cref="AddressableManager.Progress.ProgressiveAssetLoader"/>)
+        /// can report to <see cref="AddressableManager.Monitoring.AssetMonitorBridge"/> under the
+        /// same scope this loader itself uses, instead of a hardcoded literal. Additive public
+        /// member — no existing signature changes (invariant 1).
+        /// </summary>
+        public string ScopeName => _scopeName;
+
         // Unity's main thread. 0 until latched; ManagedThreadId is never 0, so it doubles as the
         // "not latched yet" marker without the torn reads a static int? invites.
         private static int _mainThreadId;
@@ -543,7 +553,16 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // Editor-only overload carries address/typeName so a later Release() can
+                    // report AssetMonitorBridge.ReportAssetReleased — the producer this loader is
+                    // the only place that has both the context and the refcount-zero hook
+                    // (HANDOFF_TO_SESSION_B.md E-CHAIN item 2). Kept out of shipping builds to
+                    // match MONITORING_GUIDE.md's zero-overhead guarantee.
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
 
                     // Cache the handle
                     CacheHandle(cacheKey, handle);
@@ -674,7 +693,12 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // See LoadAssetAsync(string) above for why this overload is Editor-only.
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
 
                     CacheHandle(cacheKey, handle);
                     loaded = handle;
@@ -940,7 +964,12 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // See LoadAssetAsync(string) above for why this overload is Editor-only.
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
 
                     // Cache the handle
                     CacheHandle(cacheKey, handle);
@@ -1110,7 +1139,12 @@ namespace AddressableManager.Loaders
 
                 if (operation.Status == AsyncOperationStatus.Succeeded)
                 {
+                    // See LoadAssetAsync(string) above for why this overload is Editor-only.
+#if UNITY_EDITOR
+                    var handle = new AssetHandle<T>(operation, address, typeof(T).Name);
+#else
                     var handle = new AssetHandle<T>(operation);
+#endif
 
                     CacheHandle(cacheKey, handle);
                     loaded = handle;

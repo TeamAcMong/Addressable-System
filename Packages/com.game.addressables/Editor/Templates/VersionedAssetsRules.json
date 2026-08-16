@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Versioned assets rules - Automatically version assets for content updates",
-  "autoApplyOnImport": true,
+  "autoApplyOnImport": false,
   "autoApplyOnModified": true,
   "verboseLogging": true,
   "versionExpression": "[1.0.0,2.0.0)",

@@ -98,12 +98,17 @@ RuleSerializer.ImportFromJson(ruleData, "path/to/template.json", mergeMode: true
 ### Method 3: Import via CLI (CI/CD)
 
 ```bash
-# During build process
+# During build process - import rules from a JSON template
 Unity -batchmode -quit -executeMethod AddressableManager.Editor.CLI.AddressableCLI.ImportRules \
   -layoutRuleAssetPath "Assets/Rules/Main.asset" \
   -importFilePath "Packages/com.game.addressables/Editor/Templates/VersionedAssetsRules.json" \
   -mergeMode true
 ```
+
+The ImportRules method accepts the following parameters:
+- `-layoutRuleAssetPath`: Path to the LayoutRuleData asset to import into (required)
+- `-importFilePath`: Path to the JSON template file to import from (required)
+- `-mergeMode`: If true, merges imported rules with existing rules; if false, replaces all rules (optional, defaults to false)
 
 ---
 

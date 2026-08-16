@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Comprehensive rule set - Demonstrates all rule types and features",
-  "autoApplyOnImport": true,
+  "autoApplyOnImport": false,
   "autoApplyOnModified": true,
   "verboseLogging": false,
   "versionExpression": "[1.0.0,)",

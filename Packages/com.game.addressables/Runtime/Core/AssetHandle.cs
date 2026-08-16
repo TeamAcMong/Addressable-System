@@ -1,6 +1,7 @@
 using System;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using AddressableManager.Monitoring;
 
 namespace AddressableManager.Core
 {
@@ -21,6 +22,16 @@ namespace AddressableManager.Core
         // copied, and never made readonly.
         private AssetReferenceCounter _references;
 
+        // Monitoring context only — null for handles built through the public constructor.
+        // See the internal constructor overload below and MONITORING_GUIDE.md's "Asset release"
+        // row ("IAssetHandle.Release going to refcount 0" -> "OnAssetReleased(address, type)"):
+        // this is that exact point, and address/typeName is the payload it needs that the public
+        // constructor never had (AsyncOperationHandle<T> alone doesn't carry them). Only
+        // AssetLoader currently supplies them (HANDOFF_TO_SESSION_B.md E-CHAIN item 2 — this was
+        // the missing producer for AssetMonitorBridge.ReportAssetReleased).
+        private readonly string _monitoredAddress;
+        private readonly string _monitoredTypeName;
+
         public T Asset => IsValid ? _handle.Result : default;
 
         // The count is part of validity. Once the last reference goes, or an owner force-releases
@@ -39,9 +50,21 @@ namespace AddressableManager.Core
         bool IOwnedHandle.IsAlive => _references.IsAlive;
 
         public AssetHandle(AsyncOperationHandle<T> handle)
+            : this(handle, null, null)
+        {
+        }
+
+        // Additive overload — the public single-argument constructor above is untouched and
+        // remains every external caller's only option (invariant: no public signature changes).
+        // AssetLoader is the sole caller with address/typeName in scope at construction time; it
+        // uses this overload so a release can be reported without adding fields to the public
+        // constructor's contract.
+        internal AssetHandle(AsyncOperationHandle<T> handle, string monitoredAddress, string monitoredTypeName)
         {
             _handle = handle;
             _references = new AssetReferenceCounter(1); // The reference its receiver owns
+            _monitoredAddress = monitoredAddress;
+            _monitoredTypeName = monitoredTypeName;
         }
 
         public void Retain()
@@ -96,6 +119,17 @@ namespace AddressableManager.Core
             {
                 Addressables.Release(_handle);
             }
+
+#if UNITY_EDITOR
+            // Monitoring is Editor-only and reports nothing when this handle was built through
+            // the public constructor (MONITORING_GUIDE.md's documented zero-overhead guarantee
+            // for callers outside AssetLoader). _monitoredAddress is only non-null for handles
+            // AssetLoader built with the internal overload above.
+            if (_monitoredAddress != null)
+            {
+                AssetMonitorBridge.ReportAssetReleased(_monitoredAddress, _monitoredTypeName);
+            }
+#endif
         }
     }
 }

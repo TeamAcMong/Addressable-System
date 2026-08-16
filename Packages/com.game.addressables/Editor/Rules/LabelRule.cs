@@ -108,14 +108,28 @@ namespace AddressableManager.Editor.Rules
             if (_filters == null || _filters.Count == 0)
                 return false;
 
-            // AND logic - all filters must match
+            // AND logic over ENABLED filters. AssetFilterBase.IsMatch() returning true for a
+            // disabled filter is correct in isolation - a disabled filter must not veto the
+            // filters that ARE active. But ANDing only those "always true" disabled results
+            // together silently turns a rule into match-all the moment every one of its
+            // filters gets unchecked, and this rule runs against the (bounded but still
+            // project-wide) Assets/ scan in LayoutRuleProcessor.ProcessLabelRules. Require at
+            // least one ENABLED filter to actually constrain the match; a rule with every
+            // filter disabled has no active constraint left and must not match anything
+            // (HANDOFF_TO_SESSION_B.md E-PAIR-1 — same defect as AddressRule.IsMatch). Do not
+            // "fix" this by flipping AssetFilterBase.IsMatch's disabled-return-value instead -
+            // that would silently invert every already-configured filter across the project.
+            bool hasEnabledFilter = false;
             foreach (var filter in _filters)
             {
                 if (filter == null || !filter.IsMatch(assetPath))
                     return false;
+
+                if (filter.Enabled)
+                    hasEnabledFilter = true;
             }
 
-            return true;
+            return hasEnabledFilter;
         }
 
         /// <summary>
