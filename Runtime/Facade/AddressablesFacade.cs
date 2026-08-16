@@ -35,14 +35,30 @@ namespace AddressableManager.Facade
         // Last scene scope the Facade was asked to resolve, cached for reuse.
         private SceneAssetScope _sceneScope;
 
-        // Pooling
+        // Pooling. _poolLoader is a dedicated loader owned and disposed by this Facade — NOT
+        // GlobalAssetScope's loader. Sharing GlobalAssetScope's loader here used to mean every
+        // template handle CreatePoolAsync/CreateDynamicPoolAsync cached (_templateHandles) lived
+        // in the exact same AssetLoader that Simple.ClearAll/Standard.ClearGlobalCache/
+        // ScopeManager.ClearAll(Except)'s new "Global" foreign entry (A-7) can ClearCache() —
+        // which force-releases unconditionally. Any of those bulk-clears would silently yank the
+        // prefab reference out from under a live pool's create closures with the pool manager
+        // never notified (HANDOFF_TO_SESSION_B.md §4.3 review finding). A dedicated loader that
+        // nothing else ever registers or clears removes the collision entirely.
+        private AssetLoader _poolLoader;
         private AddressablePoolManager _poolManager;
 
         public static AddressablesFacade Instance
         {
             get
             {
-                if (_instance == null)
+                // Do not build a new DontDestroyOnLoad GameObject once the process is shutting
+                // down — mirrors GlobalAssetScope.Instance's guard (LIFETIME_DESIGN.md §3.6). This
+                // is the single most-used entry point in the package: nearly every Simple.*/
+                // Standard.* call funnels through it, so any of them called from another object's
+                // OnDestroy during quit (a pooled object's own teardown, chief among them) would
+                // otherwise resurrect the Facade mid-teardown, which Unity reports as a leaked
+                // GameObject. Callers that may run during quit should check HasInstance first.
+                if (_instance == null && !AddressableRuntime.IsShuttingDown)
                 {
                     var go = new GameObject("[AddressablesFacade]");
                     _instance = go.AddComponent<AddressablesFacade>();
@@ -51,6 +67,14 @@ namespace AddressableManager.Facade
                 return _instance;
             }
         }
+
+        /// <summary>
+        /// True when an instance already exists and may be used right now — the non-sentinel way
+        /// to ask "would Instance hand me something real" without risking the side effect of
+        /// building one. Mirrors <see cref="GlobalAssetScope.HasInstance"/> (LIFETIME_DESIGN.md
+        /// §3.6).
+        /// </summary>
+        public static bool HasInstance => _instance != null && !AddressableRuntime.IsShuttingDown;
 
         private void Awake()
         {
@@ -70,9 +94,22 @@ namespace AddressableManager.Facade
         {
             // Initialize global scope
             _globalScope = GlobalAssetScope.Instance;
+            if (_globalScope == null)
+            {
+                // Only reachable if the process starts shutting down in the narrow window between
+                // this Facade's own Instance getter guard passing and this call — GlobalAssetScope
+                // .Instance is guarded the very same way. Tolerate it rather than NullReferencing:
+                // there is nothing useful to finish initializing this late anyway
+                // (HANDOFF_TO_SESSION_B.md §4.3 review finding).
+                Debug.LogWarning("[AddressablesFacade] GlobalAssetScope unavailable (process is " +
+                                  "shutting down) — skipping pool manager setup.");
+                return;
+            }
 
-            // Initialize pool manager with global scope loader
-            _poolManager = new AddressablePoolManager(_globalScope.Loader, new UnityPoolFactory());
+            // Pool manager gets its own dedicated loader — see the field comment on _poolLoader
+            // for why it must not share GlobalAssetScope's.
+            _poolLoader = new AssetLoader("Pool");
+            _poolManager = new AddressablePoolManager(_poolLoader, new UnityPoolFactory());
 
             Debug.Log("[AddressablesFacade] Initialized");
         }
@@ -313,7 +350,11 @@ namespace AddressableManager.Facade
         }
 
         /// <summary>
-        /// Get global scope
+        /// Get global scope — storage "A" in the package's storage map (see
+        /// <see cref="GlobalAssetScope"/>'s class docs and Documentation/LIFETIME_DESIGN.md §5
+        /// step 6 / Documentation/HANDOFF_TO_SESSION_B.md A-12). NOT the same cache as
+        /// <c>HybridScope.Global</c> (storage "D", reached through <c>Advanced.GetHybridGlobalScope()</c>)
+        /// despite the similar name.
         /// </summary>
         public GlobalAssetScope GetGlobalScope()
         {
@@ -322,7 +363,10 @@ namespace AddressableManager.Facade
 
         /// <summary>
         /// Get the session's <see cref="AssetLoader"/> (the ScopeManager entry
-        /// keyed by <c>"Session"</c>). Returns null when no session is active.
+        /// keyed by <c>"Session"</c> — storage "B" in the package's storage map; see
+        /// <see cref="GlobalAssetScope"/>'s class docs). Returns null when no session is active.
+        /// NOT the same cache as <c>HybridScope.Session</c> (storage "D", reached through
+        /// <c>Advanced.GetHybridSessionScope()</c>) despite the similar name.
         /// Replaces the pre-4.0 <c>GetSessionScope()</c> method that returned
         /// the now-removed <c>SessionAssetScope</c>.
         /// </summary>
@@ -352,19 +396,39 @@ namespace AddressableManager.Facade
 
         private void OnDestroy()
         {
-            // Tear down in dependency order: pools own template handles loaded via the
-            // global scope's loader, so dispose the pool manager first, then the scopes.
-            _poolManager?.Dispose();
-            _poolManager = null;
-
-            // Session is a ScopeManager entry — clear it explicitly so its loader disposes.
-            EndSession();
-
-            // Note: GlobalAssetScope is a process-wide singleton — only dispose it if
-            // this Facade is the owning instance being destroyed.
+            // A duplicate Facade rejected in Awake (`_instance != this`) never ran
+            // Initialize(): _poolManager is null (the Dispose() calls below would be
+            // no-ops for it regardless), and it must not touch process-wide singleton
+            // state (ScopeManager's "Session" entry, GlobalAssetScope) that the real,
+            // live Facade still owns. So EVERYTHING that follows is gated on being the
+            // owning instance — nothing outside this guard may touch static/singleton
+            // state (HANDOFF_TO_SESSION_B.md A-1).
             if (_instance == this)
             {
-                _globalScope?.Dispose();
+                // Tear down in dependency order: pools own template handles loaded via
+                // the pool loader, so dispose the pool manager (which releases its own
+                // handles) before disposing the loader itself, then the session.
+                _poolManager?.Dispose();
+                _poolManager = null;
+                _poolLoader?.Dispose();
+                _poolLoader = null;
+
+                // Session is a ScopeManager entry — clear it explicitly so its loader disposes.
+                EndSession();
+
+                // GlobalAssetScope is a separate, process-wide singleton with its own
+                // GameObject and DontDestroyOnLoad lifetime — it is consumed directly
+                // by other systems too (SimpleAPI.cs, GlobalAssetScopeInspector.cs),
+                // not only through this Facade. The Facade is a *consumer* of it, not
+                // its owner: calling _globalScope.Dispose() here nulls GlobalAssetScope's
+                // internal _scope without destroying its GameObject, and nothing ever
+                // rebuilds it (GlobalAssetScope.Instance only rebuilds when its own
+                // static _instance is null, which only happens from GlobalAssetScope's
+                // own OnDestroy) — so every Simple.* call and every
+                // Facade.GetGlobalScope().Loader NullReferences for the rest of the
+                // process after the first Facade teardown. Only GlobalAssetScope's own
+                // OnDestroy may dispose it; we just drop our reference
+                // (see HANDOFF_TO_SESSION_B.md A-2, option (b)).
                 _globalScope = null;
                 _instance = null;
             }

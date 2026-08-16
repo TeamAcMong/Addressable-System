@@ -375,6 +375,26 @@ namespace AddressableManager.Pooling
         }
 
         /// <summary>
+        /// Sum of <see cref="GetPoolStats"/> across every pool this manager currently knows about.
+        /// Consumers that only need a total (e.g. a dashboard tile) don't have to enumerate
+        /// addresses themselves — there is no public way to do that today.
+        /// </summary>
+        public (int totalActive, int totalPooled) GetTotalStats()
+        {
+            int totalActive = 0;
+            int totalPooled = 0;
+
+            foreach (var pool in _pools.Values)
+            {
+                var (active, pooled) = pool.GetStats();
+                totalActive += active;
+                totalPooled += pooled;
+            }
+
+            return (totalActive, totalPooled);
+        }
+
+        /// <summary>
         /// Get dynamic pool statistics (if pool is dynamic)
         /// Returns null if pool doesn't exist or is not a dynamic pool
         /// </summary>

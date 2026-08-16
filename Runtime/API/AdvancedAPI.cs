@@ -58,17 +58,57 @@ namespace AddressableManager.API
 
         #region Hybrid Scopes
 
+        // Storage map (see HybridScope's class docs and Documentation/LIFETIME_DESIGN.md §5 step
+        // 6 / Documentation/HANDOFF_TO_SESSION_B.md A-12 for the full picture): HybridScope is an
+        // independent cache (storage "D") from the Facade's GlobalAssetScope (storage "A", reached
+        // via AddressablesFacade.GetGlobalScope() / Simple.*/Standard.* global calls) and from
+        // ScopeManager's own "Session" entry (storage "B", reached via
+        // AddressablesFacade.GetSessionLoader() / Assets.LoadSession / Standard.LoadSession).
+        // GetHybridGlobalScope()/GetHybridSessionScope() below are named to make that explicit at
+        // the call site — GetGlobalScope()/GetSessionScope() used to share a name with
+        // AddressablesFacade's own methods while returning a completely different cache.
+
         /// <summary>
-        /// Get Global hybrid scope (singleton)
+        /// Get Global hybrid scope (singleton) — storage "D". Distinct from
+        /// <see cref="AddressableManager.Facade.AddressablesFacade.GetGlobalScope"/> (storage "A");
+        /// see this region's storage-map note.
         /// </summary>
+        public static HybridScope GetHybridGlobalScope()
+        {
+            return HybridScope.Global;
+        }
+
+        /// <summary>
+        /// Get Session hybrid scope (singleton) — storage "D". Distinct from the
+        /// <c>AddressablesFacade</c>-owned <c>"Session"</c> entry (storage "B") returned by
+        /// <see cref="AddressableManager.Facade.AddressablesFacade.GetSessionLoader"/>; see this
+        /// region's storage-map note.
+        /// </summary>
+        public static HybridScope GetHybridSessionScope()
+        {
+            return HybridScope.Session;
+        }
+
+        /// <summary>
+        /// Superseded by <see cref="GetHybridGlobalScope"/> — identical behavior, renamed so the
+        /// call site doesn't read as <see cref="AddressableManager.Facade.AddressablesFacade.GetGlobalScope"/>'s
+        /// storage. The two used to share this name while returning independent caches that both
+        /// self-reported to monitoring as "Global" (HANDOFF_TO_SESSION_B.md A-12).
+        /// </summary>
+        [Obsolete("Use GetHybridGlobalScope() instead — identical behavior, renamed so the call site " +
+                  "can't be misread as AddressablesFacade.GetGlobalScope()'s storage. Removed in 5.0.0.", false)]
         public static HybridScope GetGlobalScope()
         {
             return HybridScope.Global;
         }
 
         /// <summary>
-        /// Get Session hybrid scope (singleton)
+        /// Superseded by <see cref="GetHybridSessionScope"/> — identical behavior, renamed so the
+        /// call site doesn't read as ScopeManager's <c>"Session"</c> entry
+        /// (HANDOFF_TO_SESSION_B.md A-12).
         /// </summary>
+        [Obsolete("Use GetHybridSessionScope() instead — identical behavior, renamed so the call " +
+                  "site can't be misread as ScopeManager's \"Session\" entry. Removed in 5.0.0.", false)]
         public static HybridScope GetSessionScope()
         {
             return HybridScope.Session;

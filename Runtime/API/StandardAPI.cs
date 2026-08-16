@@ -292,7 +292,14 @@ namespace AddressableManager.API
 
             foreach (var address in addresses)
             {
-                await loader.LoadAssetAsync<object>(address);
+                var handle = await loader.LoadAssetAsync<object>(address);
+
+                // This method keeps no handle for the caller, so the reference it was born with
+                // has nowhere else to go — give it back. The loader's cache holds its own
+                // reference (CacheHandle()), so the asset stays warm in cache after this Dispose()
+                // decrements. Without this every call orphaned one reference, same defect as
+                // Simple.Load (HANDOFF_TO_SESSION_B.md A-4, A-5).
+                handle?.Dispose();
             }
         }
 
