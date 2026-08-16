@@ -102,6 +102,24 @@ namespace AddressableManager.Editor.Cdn
                           $"({bundle.SizeBytes} B, {bundle.DependentEntryCount} entries) -> {bundle.InternalId}");
             }
 
+            var crossing = catalog.FindRemoteEntriesNeedingLocalBundles();
+            if (crossing.Count == 0)
+            {
+                Debug.Log("[CatalogInspect] no remote entry depends on an in-player bundle — remote " +
+                          "content is self-contained and can be built separately from the player");
+            }
+            else
+            {
+                Debug.LogWarning(
+                    $"[CatalogInspect] {crossing.Count} remote entr(ies) depend on bundles shipped " +
+                    "inside the player. Remote content and the player must then come from the SAME " +
+                    "content build; building them on different machines resolves these to bundles " +
+                    "the app does not have.");
+
+                foreach (var entry in crossing)
+                    Debug.LogWarning($"[CatalogInspect] CROSSES  {entry.Address} -> {string.Join(", ", entry.LocalBundles)}");
+            }
+
             var compared = CatalogInspection.Compare(catalog, bundleDirectory);
             if (compared.IsFailure)
             {
