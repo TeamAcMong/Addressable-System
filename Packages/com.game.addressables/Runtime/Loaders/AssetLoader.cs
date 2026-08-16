@@ -99,6 +99,12 @@ namespace AddressableManager.Loaders
 
             System.Threading.Interlocked.CompareExchange(
                 ref _mainThreadId, System.Threading.Thread.CurrentThread.ManagedThreadId, 0);
+
+            // Registered here rather than at each of the six construction sites, because that is the
+            // one place none of them can skip. A catalog update has to reach every live loader; five
+            // of the six populations are otherwise unreachable. The registry holds a weak reference,
+            // so this does not keep an abandoned loader alive.
+            AssetLoaderRegistry.Register(this);
         }
 
         /// <summary>
@@ -1857,6 +1863,14 @@ namespace AddressableManager.Loaders
             _inFlightLoads.Clear();
 
             TearDownAll();
+
+            // Last, and below the main-thread guard above on purpose. A Dispose that refused to run
+            // left this loader alive, so it must stay registered — a catalog update still needs to
+            // reach it. Only a loader that actually tore down is forgotten here. Dropping it early
+            // would also be harmless to correctness but wrong in the other direction: the registry
+            // holds weak references, so the cost of a late unregister is one pruned slot, while an
+            // early one is a live cache nothing can invalidate.
+            AssetLoaderRegistry.Unregister(this);
         }
 
         #endregion

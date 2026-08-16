@@ -11,8 +11,8 @@ using UnityEngine.AddressableAssets;
 using UnityEngine.AddressableAssets.ResourceLocators;
 using UnityEngine.ResourceManagement.AsyncOperations;
 // The one place Runtime/Cdn reaches into Runtime/Loaders. Agreed as a deliberate one-way,
-// one-site coupling with the owner of that area — see Documentation/PARALLEL_SESSIONS.md §3.
-using AddressableManager.Managers;
+// one-site coupling — see Documentation/PARALLEL_SESSIONS.md §3.
+using AddressableManager.Loaders;
 #if UNITASK_PRESENT
 using Cysharp.Threading.Tasks;
 #endif
@@ -404,8 +404,7 @@ namespace AddressableManager.Cdn
         }
 
         /// <summary>
-        /// Drop the loaders' cached handles for every key the new catalog carries — Session A's
-        /// request in Documentation/PARALLEL_SESSIONS.md §3.
+        /// Drop every loader's cached handles for the keys the new catalog carries.
         /// </summary>
         /// <remarks>
         /// A cached handle resolved against the previous catalog does not look stale: its operation
@@ -413,28 +412,15 @@ namespace AddressableManager.Cdn
         /// in Addressables invalidates it, because Addressables does not know this cache exists.
         ///
         /// The release is a decrement, not a hard release — AssetLoader.InvalidateAddress uses
-        /// Dispose() (AssetLoader.cs:1711), so a caller still holding a handle keeps its asset alive
-        /// on the old bundle until it releases on its own, while the next load goes to the new
-        /// catalog. That distinction is what makes invalidating the WHOLE key set safe: over-
-        /// invalidating costs a reload, under-invalidating serves stale content. It was NOT safe
-        /// before Session A split InvalidateAddress out of EvictAddress, which hard-released.
+        /// Dispose(), so a caller still holding a handle keeps its asset alive on the old bundle
+        /// until it releases on its own, while the next load resolves against the new catalog. That
+        /// is what makes invalidating the WHOLE key set safe: over-invalidating costs a reload,
+        /// under-invalidating serves stale content.
         ///
-        /// REACH IS PARTIAL, AND THAT IS NOT HIDDEN.
-        ///
-        /// InvalidateAddresses is an instance method and there is no registry of live AssetLoaders.
-        /// Only loaders created through ScopeManager.GetOrCreateScope (ScopeManager.cs:51) are
-        /// enumerable. Five other populations are not: BaseAssetScope (Scopes/BaseAssetScope.cs:58 —
-        /// Global, Scene and Hierarchy scopes), HybridScope (:243), Advanced.CreateLoader
-        /// (AdvancedAPI.cs:38), MonitoredAssetLoader (:27) and ThreadSafeAssetLoader (:34). Assets
-        /// cached in those keep being served from the pre-update catalog.
-        ///
-        /// Closing that needs a registry inside Runtime/Loaders, which belongs to Session A — filed
-        /// in §3 rather than worked around from here. Doing the reachable part now is still worth it:
-        /// the session scope this covers is where catalog-updated content is most likely to live.
-        ///
-        /// ThreadSafeAssetLoader is deliberately NOT reached even if it becomes enumerable: it has no
-        /// dispatch wrapper for this method group, so the AssertMainThread inside InvalidateAddresses
-        /// would throw off-thread (Session A, §3).
+        /// This went through AssetLoaderRegistry rather than ScopeManager because ScopeManager only
+        /// tracks one of the six populations that construct loaders — the other five, starting with
+        /// the default BaseAssetScope path, were unreachable and kept serving pre-update content.
+        /// The registry hooks the constructor, which is the one place none of them can skip.
         /// </remarks>
         private static void InvalidateLoaderCaches(List<string> keys)
         {
@@ -442,28 +428,21 @@ namespace AddressableManager.Cdn
 
             try
             {
-                var manager = ScopeManager.Instance;
-                if (manager == null) return;
-
-                // Materialised: ActiveScopes is a live view over the dictionary's keys
-                // (ScopeManager.cs:35), and invalidation can end with a scope disposing itself.
-                var scopeIds = manager.ActiveScopes?.ToList();
-                if (scopeIds == null) return;
-
-                foreach (var scopeId in scopeIds)
-                {
-                    manager.GetScope(scopeId)?.InvalidateAddresses(keys);
-                }
+                // The count is returned and dropped deliberately. There is no correct number to
+                // assert against — zero live loaders is the normal state for a game that applies an
+                // update before its first load — so logging it every update would be noise, and
+                // warning on zero would be a false alarm. It exists for tests and for a caller that
+                // wants to report it.
+                AssetLoaderRegistry.InvalidateAll(keys);
             }
             catch (Exception ex)
             {
-                // Never fatal. The catalog is already applied and released by this point; a failure
+                // Never fatal. The catalog is applied and the handle released by this point; failing
                 // to tidy caches must not turn a successful update into a reported failure. It does
-                // mean stale content until the next load path refreshes, so it is a warning, not
-                // silence.
+                // mean stale content until something else refreshes, so it is said out loud.
                 Debug.LogWarning($"[Cdn] Catalog applied, but the loader caches could not be " +
                                  $"invalidated: {ex.Message}. Assets cached before the update may be " +
-                                 $"served from the previous catalog until their scope is cleared.");
+                                 $"served from the previous catalog.");
             }
         }
 
