@@ -2,6 +2,137 @@
 
 All notable changes to this package will be documented in this file.
 
+## [4.1.0-pre.6] - 2026-08-17 - Reference counting, one ownership rule, and pools that keep their own books
+
+The largest correctness release in the 4.1 line. An external review verified 66 defects across the
+caches, loaders, API surface, scopes and pooling; this ships the fixes for most of them. Nearly
+every one is a lifetime bug — a reference taken and never given back, or given back twice, or a
+cache serving an asset it did not own.
+
+**Read this before upgrading if you use `TieredCache<T>`, `ThreadSafeCacheManager<T>` or
+`AddressablePoolManager` directly.** Some methods now do what their names always claimed, which is
+a behaviour change even though no signature changed.
+
+### Fixed — reference counting
+
+- **A cache stored handles it did not own a reference to.** `Set()` kept the caller's handle without
+  retaining it, and eviction later released it — so eviction destroyed an asset the caller was still
+  holding, and the caller's own `Release()` then decremented a count that no longer belonged to it.
+  Caches now take their own reference via `TryRetain()`, independent of the caller's, and `TryGet()`
+  hands back a retained copy. **You must still release what `TryGet()` gives you.**
+
+- `Clear()`, `Dispose()` and `Remove()` dropped entries without releasing anything — the bundles
+  stayed loaded for the rest of the session with nothing left that could free them.
+
+- `Set()` on a key that already held a live entry silently discarded the incoming handle, orphaning
+  one reference per call. It now releases the losing duplicate and documents that the handle you
+  passed may be invalid when the call returns.
+
+- Two `if (IsValid) Retain()` pairs on the cache-hit path. `Retain()` throws on a dead handle;
+  checking `IsValid` first is not the same as it not racing. Both use `TryRetain()` now.
+
+### Fixed — one ownership rule for loaders
+
+A loader belongs to exactly one owner: the object whose lifetime it copies. The owner creates it,
+the owner disposes it, and only from its own teardown. Everyone else borrows. The full reasoning is
+in `Documentation/LIFETIME_DESIGN.md`.
+
+- **`Simple.Load`, `TryLoad`, `Preload`, `PreloadBatch` and `Standard.PreloadAsync` orphaned one
+  reference per call.** The most common entry points in the package leaked on every use.
+- **`Simple.Destroy` called `Object.Destroy`**, leaking the Addressables instance refcount that
+  only `ReleaseInstance` can return.
+- **`GlobalAssetScope.Dispose()` left its field non-null**, so `Loader` returned null for the rest
+  of the process. The scope is now owned by the Facade.
+- `AddressablesFacade.OnDestroy` ran `EndSession()` and disposed the pool manager outside the
+  `_instance` guard, so a duplicate Facade tore down the live one's state.
+- `HybridScope` held statics across domain reload and disposed without clearing them. Retired.
+
+### Fixed — catalog updates now reach every cache
+
+After a catalog update, a cached handle still wrapped an operation resolved against the *previous*
+catalog. It looked healthy — valid, succeeded — so it was served for the rest of the session.
+
+Loaders are constructed in six places and only one was enumerable, so invalidation reached one
+population out of six, and the one it reached was not the default path. `AssetLoaderRegistry` (weak
+references, pruned as it walks) now reaches all of them, and `CatalogService` invalidates through it
+after `UpdateCatalogs`.
+
+Also: a failed bundle-cache clean no longer reports the whole update as failed. On WebGL, where that
+clean always fails, every successful update was being reported as a failure.
+
+### Fixed — pooling
+
+- **`Spawn()` blocked the main thread on an Addressables load** when auto-create hit a missing pool.
+  It now starts (or joins) a background create and returns `null` immediately; `SpawnAsync()` is the
+  path that waits. The two `null`s never mean the same thing and each is logged where it happens.
+- **`preloadCount` created exactly one instance regardless of the number asked for**, then logged the
+  number requested as though it had succeeded.
+- **`DynamicPool` corrupted the inner pool's accounting in both directions**, driving `activeCount`
+  negative and exposing it through the public API.
+- Pools now live under a `DontDestroyOnLoad` root, and both adapters walk past instances a scene load
+  destroyed underneath them. (`obj == null` on a generic `T` binds to `object.Equals`, not Unity's
+  overridden equality, so a destroyed `GameObject` in a free list reads as alive.)
+- `Despawn` verifies which pool actually owns an instance. Wrong-pool and double-despawn used to
+  produce three different behaviours depending on the adapter.
+- `ClearPool` refuses while instances are still borrowed; real teardown destroys them first, then
+  clears the pools, then releases templates.
+
+### Fixed — tiered cache and progress
+
+- **Teardown released nothing.** `Dispose()` now hard-releases, matching `AssetLoader.ClearCache`'s
+  documented memory-pressure semantics; eviction still uses a plain decrement.
+- **The memory budget was applied per `Type`**, so the real ceiling was `MaxCacheSizeBytes` times the
+  number of distinct types cached. One shared budget now.
+- **Nothing ever ran eviction or tier evaluation.** The Facade pumps every live tiered loader on a
+  5-second interval, plus an `Application.lowMemory` sweep.
+- **`EstimateAssetSize` returned invented numbers.** A `GameObject` is now measured by walking its
+  meshes, materials and the textures those materials reference — the memory a prefab actually pulls
+  in, not the size of the native shell.
+- Cache dispatch no longer goes through reflection (which IL2CPP can strip, turning the pump into a
+  silent no-op), and the per-type key is a struct rather than `$"{address}_{typeof(T).Name}"`.
+- **`ProgressiveAssetLoader` opened its own Addressables operations and threw the handles away.**
+  It now delegates to `AssetLoader`, so those handles are cached, single-flighted, and reachable by
+  `ClearCache` / `Dispose` / catalog invalidation. `LoadMultipleWithProgressAsync` keeps its `bool`
+  signature; the honest result lives on an additive `*Safe` overload returning `LoadResult<T>`.
+
+### Fixed — Editor
+
+- A layout rule with every filter disabled matched **every asset in the project**, and the scan it
+  ran had no upper bound.
+- `PathFilter` had no glob mode while the documentation taught `**` patterns in 32 places.
+- A shipped rule template failed its own validation, which was masking an unconditional `SaveAssets`.
+- **`AddressableCLI` reported success on a broken build.** All four entry points now gate on
+  `EditorUtility.scriptCompilationFailed`. Unity exits 0 from `-executeMethod` even when the
+  assembly never compiled.
+- The `Samples~/RuleAutomation` sample shipped a live hazard rather than an example.
+
+### Known limitations
+
+- **`unity` stays at `2023.1`.** The runtime assembly is now verified clean against 2022.3.62f3 in
+  both the `Task` and `UniTask` configurations — but the *editor* assembly cannot be verified by
+  `Tools/check-min-unity-api.sh`, which cannot reproduce Unity's editor reference set. The floor
+  will drop to 2022.3 once the editor half has been compiled inside a real 2022.3 project rather
+  than asserted. `pre.4` shipped broken because a version claim ran ahead of its evidence.
+- `TieredAssetLoader` is still a fork of `AssetLoader` missing single-flight joins, `ReleaseAsset`,
+  `LoadResult` variants and dual UniTask signatures — and it is invisible to catalog invalidation,
+  so caches it holds keep serving pre-update content. It is being retired in the next pre-release;
+  prefer `AssetLoader`. Evidence is recorded in `Documentation/LIFETIME_DESIGN.md`.
+- `Standard.ClearCache(scopeName)`, `Simple.Release<T>` and `Standard.LoadScene<T>` are still the
+  stubs the review found. Do not rely on them.
+- `TieredCache.Pin()` on a key that is not cached is still a silent no-op, despite documentation
+  teaching pin-before-load.
+- `ThreadSafeCacheManager` still advertises "safe from any thread" while its operations reach Unity
+  API. Treat it as main-thread.
+
+### Verification
+
+Both assemblies compile. Runtime verified against Unity 2022.3.62f3 in both the `Task` and `UniTask`
+configurations — the second is the one that shipped broken as `pre.4`. 64/64 EditMode tests pass.
+
+Not verified: `Profiler.GetRuntimeMemorySizeLong` in a non-development build (it can return 0 on some
+platforms, which would leave eviction permanently idle), and the two pooling paths that need a real
+`LoadSceneMode.Single` transition to reproduce.
+
 ## [4.1.0-pre.5] - 2026-08-14 - Fixes a compile break in pre.4
 
 **Anyone on 4.1.0-pre.4 should move to this. pre.4 does not compile on Unity 2023.x or
