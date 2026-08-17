@@ -40,7 +40,14 @@ namespace AddressableManager.Core
         public long EstimatedSize { get; }
 
         /// <summary>
-        /// Cache key for this entry
+        /// Cache key for this entry, as supplied to <c>Set()</c> — display/log use only. This stays
+        /// <c>string</c> (not <c>AssetCacheKey</c>) because <see cref="CacheEntry{T}"/> is shared by
+        /// both <see cref="TieredCache{T}"/> and <see cref="ThreadSafeCacheManager{T}"/>, and the
+        /// latter's dictionary is still keyed by the plain string it was given
+        /// (HANDOFF_TO_SESSION_B.md L-9 is scoped to <see cref="TieredCache{T}"/>/
+        /// <see cref="AddressableManager.Loaders.TieredAssetLoader"/> — the real
+        /// <c>(address, Type)</c> dictionary key lives internally in <see cref="TieredCache{T}"/>
+        /// now; this field no longer needs to carry it).
         /// </summary>
         public string Key { get; }
 

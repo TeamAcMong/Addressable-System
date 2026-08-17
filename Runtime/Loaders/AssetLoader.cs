@@ -40,9 +40,11 @@ namespace AddressableManager.Loaders
     /// than pointing at a freed asset. Instantiated GameObjects are untouched by both.
     ///
     /// Dispose() is teardown: it hard-releases everything this loader tracks — including label
-    /// loads, which never enter the cache at all — plus every GameObject it instantiated. Handles
-    /// built outside the loader from a raw operation (ProgressiveAssetLoader does this) are not
-    /// tracked and are not reached by it.
+    /// loads, which never enter the cache at all — plus every GameObject it instantiated.
+    /// <see cref="AddressableManager.Progress.ProgressiveAssetLoader.LoadAssetWithProgressAsync{T}"/>
+    /// delegates to <see cref="LoadAssetAsync{T}(string)"/> rather than opening its own raw
+    /// operation (HANDOFF_TO_SESSION_B.md L-2), so a handle obtained that way is tracked and
+    /// reached by teardown exactly like any other handle this loader produced.
     /// </summary>
     public class AssetLoader : IDisposable
     {
@@ -57,6 +59,12 @@ namespace AddressableManager.Loaders
         // Loads registered before their first await, so concurrent callers for one (address, Type)
         // join a single operation instead of each building a wrapper nobody will ever release.
         private readonly Dictionary<AssetCacheKey, TaskCompletionSource<IOwnedHandle>> _inFlightLoads = new();
+
+        // Best-effort progress source for a load currently in flight — see GetLoadProgress<T>.
+        // Populated only while Addressables.LoadAssetAsync is actually running for a key, so a
+        // caller can poll real percent-complete without opening a second Addressables operation
+        // purely to read it (HANDOFF_TO_SESSION_B.md L-2; ProgressiveAssetLoader is the consumer).
+        private readonly Dictionary<AssetCacheKey, Func<float>> _inFlightProgress = new();
 
         // GameObjects instantiated through this loader. Addressables tracks instances separately
         // from asset handles, so teardown has to release them explicitly.
@@ -542,6 +550,13 @@ namespace AddressableManager.Loaders
             {
                 LogVerbose($"[AssetLoader] Loading asset: {address}");
                 var operation = Addressables.LoadAssetAsync<T>(address);
+
+                // See _inFlightProgress's field comment. operation is a struct that wraps a
+                // reference to the shared, mutable Addressables operation state, so reading
+                // .PercentComplete through this closure after progress advances reflects the same
+                // live value Addressables itself would report — this does not snapshot anything.
+                _inFlightProgress[cacheKey] = () => operation.PercentComplete;
+
                 await operation.Task;
 
                 var guard = AfterAwait(operation);
@@ -596,8 +611,32 @@ namespace AddressableManager.Loaders
             }
             finally
             {
+                _inFlightProgress.Remove(cacheKey);
                 CompleteInFlight(cacheKey, inFlight, loaded);
             }
+        }
+
+        /// <summary>
+        /// Best-effort progress (0-1) for a load of (<paramref name="address"/>,
+        /// <typeparamref name="T"/>) currently in flight through this loader's single-flight map.
+        /// </summary>
+        /// <remarks>
+        /// The seam <see cref="AddressableManager.Progress.ProgressiveAssetLoader.LoadAssetWithProgressAsync{T}"/>
+        /// polls instead of opening a second <c>Addressables.LoadAssetAsync</c> call purely to read
+        /// <c>PercentComplete</c> — this loader owns single-flight now, so a second call for the
+        /// same key either duplicates the load or, worse, silently joins this one with no operation
+        /// of its own left to poll (HANDOFF_TO_SESSION_B.md L-2). Returns 1 when nothing is in
+        /// flight for this key: a cache hit, a load that never started, or one that already
+        /// finished — there is nothing left to wait for in any of those three cases, and a caller
+        /// polling in a <c>while (progress &lt; 1)</c> loop should not spin on a key that will never
+        /// change again.
+        /// </remarks>
+        internal float GetLoadProgress<T>(string address)
+        {
+            if (string.IsNullOrEmpty(address)) return 1f;
+
+            var key = new AssetCacheKey(address, typeof(T));
+            return _inFlightProgress.TryGetValue(key, out var read) ? read() : 1f;
         }
 
         #endregion

@@ -8,7 +8,7 @@ namespace AddressableManager.Pooling
     /// Dynamic object pool that automatically grows and shrinks based on usage patterns
     /// Wraps an IObjectPool implementation and adds auto-sizing behavior
     /// </summary>
-    public class DynamicPool<T> : IObjectPool<T>, IDisposable where T : class
+    public class DynamicPool<T> : IObjectPool<T>, IResizablePool<T>, IDisposable where T : class
     {
         private readonly IObjectPool<T> _innerPool;
         private readonly DynamicPoolConfig _config;
@@ -242,53 +242,110 @@ namespace AddressableManager.Pooling
         }
 
         /// <summary>
-        /// Grow pool by creating and pre-populating instances
+        /// Grow pool by creating and pre-populating instances (HANDOFF_TO_SESSION_B.md P-4).
         /// </summary>
+        /// <remarks>
+        /// Prefers <see cref="IResizablePool{T}.Prewarm"/> on the inner pool, which each shipped
+        /// adapter implements to keep its own active/pooled accounting correct. Falls back to a
+        /// Get-then-Release-N loop (never <c>_innerPool.Release(_createFunc())</c> on an instance
+        /// that never went through <c>Get()</c> — that was the old bug, and it corrupts
+        /// <see cref="CustomPoolAdapter{T}"/> outright) for a third-party <see cref="IObjectPool{T}"/>
+        /// that predates <see cref="IResizablePool{T}"/> — this is the same pattern P-3 uses for the
+        /// non-dynamic preload path, and it is safe for any conforming <see cref="IObjectPool{T}"/>
+        /// because it only ever calls the base Get/Release contract.
+        /// </remarks>
         private void GrowPool(int amount)
         {
-            for (int i = 0; i < amount; i++)
+            if (amount <= 0) return;
+
+            if (_innerPool is IResizablePool<T> resizable)
             {
-                try
+                resizable.Prewarm(amount);
+                return;
+            }
+
+            // Real Get()-then-Release() pairs through the inner pool's own contract: Get() lets the
+            // inner pool run its own createFunc/onGet bookkeeping, and the matching Release() below
+            // is never called on an instance that pool didn't hand out itself. Calling
+            // _createFunc() directly here and pushing the result straight into _innerPool.Release()
+            // (the old bug) releases an object the inner pool never Get()'d — CustomPoolAdapter's
+            // Release() rejects that outright (it isn't in _activeObjects) and just leaks the
+            // instance forever, and any other third-party IObjectPool<T> with equivalent bookkeeping
+            // would do the same.
+            var created = new List<T>(amount);
+            try
+            {
+                for (int i = 0; i < amount; i++)
                 {
-                    var item = _createFunc();
-                    if (item != null)
-                    {
-                        _innerPool.Release(item);
-                    }
+                    var item = _innerPool.Get();
+                    if (item != null) created.Add(item);
                 }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[DynamicPool:{_poolName}] Error creating instance during growth: {ex.Message}");
-                    break;
-                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DynamicPool:{_poolName}] Error creating instance during growth: {ex.Message}");
+            }
+
+            foreach (var item in created)
+            {
+                _innerPool.Release(item);
             }
         }
 
         /// <summary>
-        /// Shrink pool by removing excess pooled instances
+        /// Shrink pool by removing excess pooled instances (HANDOFF_TO_SESSION_B.md P-4).
         /// </summary>
+        /// <remarks>
+        /// Prefers <see cref="IResizablePool{T}.TrimExcess"/> for the same reason as
+        /// <see cref="GrowPool"/>. Unlike growth, there is no safe generic fallback here: the old
+        /// "Get() then destroy without Release()" loop is exactly the bug that drove
+        /// <c>activeCount</c> negative, and there is no way to evict a specific pooled instance
+        /// through the base <see cref="IObjectPool{T}"/> contract alone without either activating it
+        /// (Get) or destroying real capacity accounting. A third-party pool that doesn't implement
+        /// <see cref="IResizablePool{T}"/> simply doesn't shrink — reported stats staying slightly
+        /// too large is strictly better than <c>activeCount</c> going negative.
+        /// </remarks>
         private void ShrinkPool(int amount)
         {
-            var stats = _innerPool.GetStats();
-            int availableToRemove = Mathf.Min(amount, stats.pooledCount);
+            if (amount <= 0) return;
 
-            for (int i = 0; i < availableToRemove; i++)
+            if (_innerPool is IResizablePool<T> resizable)
             {
-                try
-                {
-                    // Get from pool and destroy instead of releasing back
-                    var item = _innerPool.Get();
-                    if (item != null)
-                    {
-                        _onDestroy?.Invoke(item);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[DynamicPool:{_poolName}] Error destroying instance during shrink: {ex.Message}");
-                    break;
-                }
+                var stats = _innerPool.GetStats();
+                int availableToRemove = Mathf.Min(amount, stats.pooledCount);
+                if (availableToRemove > 0) resizable.TrimExcess(availableToRemove);
+                return;
             }
+
+            Debug.LogWarning($"[DynamicPool:{_poolName}] Inner pool does not implement " +
+                $"{nameof(IResizablePool<T>)}; skipping shrink rather than corrupting its " +
+                "active/pooled accounting (see HANDOFF_TO_SESSION_B.md P-4).");
+        }
+
+        /// <summary>
+        /// P-3/P-4: pre-populate <paramref name="count"/> instances without disturbing
+        /// <see cref="_peakActiveCount"/> or <see cref="_currentCapacity"/> — routes through the same
+        /// primitive <see cref="GrowPool"/> uses instead of a Get/Release loop, so a preload call
+        /// can never be mistaken for real usage by the auto-resize heuristics.
+        /// </summary>
+        public void Prewarm(int count)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(DynamicPool<T>));
+
+            GrowPool(count);
+        }
+
+        /// <summary>
+        /// P-4: evict up to <paramref name="count"/> pooled instances via the same primitive
+        /// <see cref="ShrinkPool"/> uses.
+        /// </summary>
+        public void TrimExcess(int count)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(DynamicPool<T>));
+
+            ShrinkPool(count);
         }
 
         /// <summary>

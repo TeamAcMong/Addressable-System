@@ -8,7 +8,7 @@ namespace AddressableManager.Pooling.Adapters
     /// Custom pool implementation without Unity dependencies
     /// Can be used with any pooling library or custom implementation
     /// </summary>
-    public class CustomPoolAdapter<T> : IObjectPool<T> where T : class
+    public class CustomPoolAdapter<T> : IObjectPool<T>, IResizablePool<T> where T : class
     {
         private readonly Stack<T> _pool;
         private readonly Func<T> _createFunc;
@@ -45,13 +45,25 @@ namespace AddressableManager.Pooling.Adapters
                 return null;
             }
 
-            T obj;
+            T obj = null;
 
-            if (_pool.Count > 0)
+            // P-2: walk past any pooled entries that were destroyed out from under us (e.g. by a
+            // scene unload) instead of handing one to the caller. Discarded entries are simply never
+            // added to _activeObjects — there is nothing to "untrack" for an instance that was never
+            // tracked as active in the first place.
+            while (obj == null && _pool.Count > 0)
             {
-                obj = _pool.Pop();
+                var candidate = _pool.Pop();
+                if (PoolInstanceGuard.IsDestroyed(candidate))
+                {
+                    Debug.LogWarning("[CustomPoolAdapter] Discarding a pooled instance that was " +
+                        "destroyed externally (e.g. by a scene unload); a replacement will be created.");
+                    continue;
+                }
+                obj = candidate;
             }
-            else
+
+            if (obj == null)
             {
                 obj = _createFunc();
             }
@@ -125,6 +137,52 @@ namespace AddressableManager.Pooling.Adapters
             Clear();
             _activeObjects.Clear();
             _disposed = true;
+        }
+
+        /// <summary>
+        /// P-3/P-4: seed <paramref name="count"/> instances directly into the free stack. Never
+        /// touches <see cref="_activeObjects"/> — these instances were never "gotten", so they must
+        /// not count as active, unlike the old GrowPool, which called <see cref="Release"/> on an
+        /// instance that had never been through <see cref="Get"/> and tripped the exact
+        /// not-from-this-pool guard above.
+        /// </summary>
+        public void Prewarm(int count)
+        {
+            if (_disposed || count <= 0) return;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (_maxSize > 0 && _pool.Count >= _maxSize)
+                {
+                    Debug.LogWarning($"[CustomPoolAdapter] Prewarm stopped at max size ({_maxSize}); " +
+                        $"requested {count}.");
+                    break;
+                }
+
+                var obj = _createFunc();
+                if (obj == null) continue;
+
+                _onRelease?.Invoke(obj);
+                _pool.Push(obj);
+            }
+        }
+
+        /// <summary>
+        /// P-3/P-4: evict and destroy up to <paramref name="count"/> pooled (inactive) instances.
+        /// Pops directly from the free stack and never touches <see cref="_activeObjects"/> — the
+        /// old ShrinkPool got confused between "pooled" and "active" precisely because it routed
+        /// through <see cref="Get"/>/<see cref="Release"/> instead of the stack directly.
+        /// </summary>
+        public void TrimExcess(int count)
+        {
+            if (_disposed || count <= 0) return;
+
+            int toRemove = Math.Min(count, _pool.Count);
+            for (int i = 0; i < toRemove; i++)
+            {
+                var obj = _pool.Pop();
+                _onDestroy?.Invoke(obj);
+            }
         }
     }
 
