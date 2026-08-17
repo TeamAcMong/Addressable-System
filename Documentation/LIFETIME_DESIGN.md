@@ -883,3 +883,47 @@ Per CLAUDE.md's three tiers — reading this document proves nothing.
    intent were instead "the Facade is the app's addressables lifetime", the whole ownership rule
    inverts and `GlobalAssetScope` should become a child of the Facade rather than a peer singleton.
    That is the one decision in this document that a different product answer would genuinely change.
+
+---
+
+## L-7: evidence for the TieredAssetLoader decision
+
+Not a recommendation — HANDOFF_TO_SESSION_B.md §2.1 reserves L-7 (whether to deprecate
+`TieredAssetLoader` as a fork of `AssetLoader`) for a human, and this pass did not touch that
+decision: no `[Obsolete]`, no restructuring, no deletion. This section only records what fixing
+L-1/L-3/L-4/L-8/L-9/L-10 *in* `TieredAssetLoader` surfaced, because the surfacing happened as a
+side effect of work already in scope and the instruction that reserved L-7 also asked for exactly
+this: write the evidence down, act on nothing.
+
+**Every one of the six items fixed re-solved a problem `AssetLoader` had already solved, inside a
+second, independent implementation:**
+
+| Item | What `TieredAssetLoader` needed | What `AssetLoader` already had |
+|---|---|---|
+| L-1 (teardown) | A `Release()` vs `ForceRelease()` distinction between eviction and teardown, and a `_disposed = true`-before-teardown ordering | Both already present and already correct (`AssetLoader.cs` `ClearCache`/`TearDownAll`/`Dispose`) — this pass copied the shape rather than inventing one |
+| L-9 (cache key) | A collision-safe, allocation-free `(address, Type)` key | `AssetCacheKey` (`AssetLoader.cs:1982`), reused as-is — no new type needed once the loader in question could see it |
+| L-10 (main thread) | A latch that cannot be wrong about which thread is main | `AddressableRuntime.IsMainThread` (built for `AssetLoader`, `UnityMainThreadDispatcher`; `TieredAssetLoader` was the third, separate, buggy latch the design already planned to retire — LIFETIME_DESIGN.md §5 step 2) |
+| L-2 (progress) | A way to observe an in-flight load's percent-complete without opening a second Addressables operation | Had to be *added* to `AssetLoader` (`GetLoadProgress<T>`, this pass) precisely because `TieredAssetLoader` has no single-flight map of its own for `ProgressiveAssetLoader` to have joined instead — the seam belongs on the loader that owns single-flight, and only one of the two loader classes does |
+| L-3 (eviction pump) | A registry so a facade-owned pump can reach every live instance | `AssetLoaderRegistry` already existed for `AssetLoader`; this pass had to write `TieredAssetLoaderRegistry` as a near-line-for-line duplicate, because the two loader types share no common reachability mechanism |
+| L-4 (shared budget) | Byte accounting shared across per-type caches instead of siloed per type | Not applicable to `AssetLoader` at all — it has one cache dictionary keyed by `(address, Type)`, not one dictionary *per* `Type`. The whole class of bug L-4 fixes exists only because `TieredAssetLoader` is shaped differently from `AssetLoader` for no reason connected to tiering itself |
+
+**What this pass did *not* have to duplicate, and why that is the sharper data point:**
+`TieredAssetLoader` still has none of `AssetLoader`'s single-flight join (`TryJoinInFlight`/
+`NewInFlight`/`CompleteInFlight`), none of its `StillAliveAfterAwait`/thread re-check-after-await
+guard, no `ReleaseAsset`/`ReleaseInstance`/`InstantiateAsync`, no `*Safe`/`LoadResult` variants, no
+`InvalidateAddresses` reachability for catalog updates (`AssetLoaderRegistry.InvalidateAll` walks
+`AssetLoader` instances only — a `TieredAssetLoader` is invisible to it, so a cache it holds keeps
+serving pre-catalog-update content indefinitely, permanently, with no code path that could ever
+reach it to fix that). None of *those* gaps were in scope for this pass (L-7 says don't restructure
+the class), so they are still open, undocumented-as-fixed, and — per the fork framing — each one is
+a feature `AssetLoader` has that a `TieredAssetLoader` user silently does not, with no signal at the
+call site that anything is missing.
+
+**Net observation, stated once and left for the human to weigh:** six independent defects in
+`TieredAssetLoader`, fixed this pass, cost real engineering effort (a new `CacheBudget` type, a new
+`TieredAssetLoaderRegistry` type, a reasoned-through `ForceReleaseAll` vs `Clear` split) to bring it
+up to roughly where `AssetLoader` already stood before any of this pass began — and the fixes still
+leave it missing capabilities `AssetLoader` has had all along. This is consistent with, but does not
+by itself decide, W4-05's framing ("tiering thành config của loader duy nhất"): the cost observed
+here is the cost of *maintaining* the fork at parity, not the cost of *migrating* it, and this pass
+did not attempt the latter or estimate it.

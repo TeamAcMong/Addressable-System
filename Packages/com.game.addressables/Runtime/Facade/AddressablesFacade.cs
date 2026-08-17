@@ -47,6 +47,15 @@ namespace AddressableManager.Facade
         private AssetLoader _poolLoader;
         private AddressablePoolManager _poolManager;
 
+        // Periodic drain for every live TieredAssetLoader (HANDOFF_TO_SESSION_B.md L-3) — nothing
+        // else in the package ever called EvaluateTiers()/ForceEviction() outside of TieredCache<T>
+        // .Set()'s own inline trigger, which only fires while a cache is still actively growing.
+        // This Facade already has Unity lifetime (DontDestroyOnLoad), so it is the owner the design
+        // names rather than TieredCache<T> itself (no Unity lifetime, no unsubscribe path) or a
+        // MonoBehaviour per loader.
+        private const float TieredCachePumpInterval = 5f; // seconds
+        private float _tieredCachePumpElapsed;
+
         public static AddressablesFacade Instance
         {
             get
@@ -111,7 +120,28 @@ namespace AddressableManager.Facade
             _poolLoader = new AssetLoader("Pool");
             _poolManager = new AddressablePoolManager(_poolLoader, new UnityPoolFactory());
 
+            // See the field comment on TieredCachePumpInterval — the other half of L-3, a low-memory
+            // sweep across every live TieredAssetLoader. This is the case the periodic pump above is
+            // too slow for: iOS gives the process one warning before killing it.
+            Application.lowMemory -= OnTieredCacheLowMemory;
+            Application.lowMemory += OnTieredCacheLowMemory;
+
             Debug.Log("[AddressablesFacade] Initialized");
+        }
+
+        private void Update()
+        {
+            _tieredCachePumpElapsed += Time.unscaledDeltaTime;
+            if (_tieredCachePumpElapsed < TieredCachePumpInterval) return;
+
+            _tieredCachePumpElapsed = 0f;
+            TieredAssetLoaderRegistry.PumpAll();
+        }
+
+        private void OnTieredCacheLowMemory()
+        {
+            Debug.LogWarning("[AddressablesFacade] Application.lowMemory — forcing eviction on every live TieredAssetLoader.");
+            TieredAssetLoaderRegistry.ForceEvictionAll();
         }
 
         #region Global Scope Operations
@@ -405,6 +435,10 @@ namespace AddressableManager.Facade
             // state (HANDOFF_TO_SESSION_B.md A-1).
             if (_instance == this)
             {
+                // Unconditional: a no-op if Initialize() never subscribed (the early-return path
+                // above), and paired with the += in Initialize() either way.
+                Application.lowMemory -= OnTieredCacheLowMemory;
+
                 // Tear down in dependency order: pools own template handles loaded via
                 // the pool loader, so dispose the pool manager (which releases its own
                 // handles) before disposing the loader itself, then the session.

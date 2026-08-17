@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using AddressableManager.Loaders;
 
 namespace AddressableManager.Core
 {
@@ -17,11 +18,24 @@ namespace AddressableManager.Core
     /// signal is <c>IsValid</c> flipping to <c>false</c> — always check it before reading or handing
     /// off a handle you just passed to <c>Set()</c>.</para>
     /// </summary>
-    public class TieredCache<T> : IDisposable where T : class
+    public class TieredCache<T> : IDisposable, ITieredCache where T : class
     {
-        private readonly Dictionary<string, CacheEntry<T>> _cache = new Dictionary<string, CacheEntry<T>>();
+        private readonly Dictionary<AssetCacheKey, CacheEntry<T>> _cache = new Dictionary<AssetCacheKey, CacheEntry<T>>();
         private readonly TieredCacheConfig _config;
+
+        // Shared across every TieredCache<T> a single TieredAssetLoader owns (HANDOFF_TO_SESSION_B.md
+        // L-4) — the eviction gate and eviction target below read THIS, not a per-type total, so a
+        // loader juggling several types is capped at one real ceiling instead of one per type.
+        // Standalone callers (AdvancedAPI.CreateTieredCache<T>) get a private budget of their own —
+        // see the public constructor below — so this is never null.
+        private readonly CacheBudget _budget;
+
         private float _lastEvaluationTime;
+
+        // This cache's own contribution to _budget, tracked in lockstep with every _budget.TryAdmit/
+        // Give call below so GetStatistics() can still report a meaningful per-type figure for
+        // TieredAssetLoader.GetCombinedStats() to sum (L-4's "reporting half" — see CacheBudget's
+        // remarks for the "enforcement half").
         private long _currentCacheSize;
         private bool _disposed;
 
@@ -32,7 +46,25 @@ namespace AddressableManager.Core
         private int _totalPromotions;
         private int _totalDemotions;
 
+        /// <summary>
+        /// Create a standalone tiered cache with its own private byte budget — the public,
+        /// unshared constructor used directly by <c>AdvancedAPI.CreateTieredCache&lt;T&gt;</c> and
+        /// any other external caller. A <see cref="AddressableManager.Loaders.TieredAssetLoader"/>
+        /// uses the internal overload below instead, so every per-type cache it owns shares one
+        /// budget rather than each getting its own (HANDOFF_TO_SESSION_B.md L-4).
+        /// </summary>
         public TieredCache(TieredCacheConfig config = null)
+            : this(config, null)
+        {
+        }
+
+        /// <summary>
+        /// Create a tiered cache that accounts against <paramref name="sharedBudget"/> instead of a
+        /// private one. Internal — same-assembly callers only
+        /// (<see cref="AddressableManager.Loaders.TieredAssetLoader"/>) — so this adds a new
+        /// constructor overload rather than changing the public one's signature (repo invariant 6).
+        /// </summary>
+        internal TieredCache(TieredCacheConfig config, CacheBudget sharedBudget)
         {
             _config = config ?? TieredCacheConfig.Default;
 
@@ -41,6 +73,7 @@ namespace AddressableManager.Core
                 throw new ArgumentException($"Invalid TieredCacheConfig: {error}");
             }
 
+            _budget = sharedBudget ?? new CacheBudget(_config);
             _lastEvaluationTime = Time.realtimeSinceStartup;
         }
 
@@ -81,10 +114,17 @@ namespace AddressableManager.Core
             if (handle == null)
                 throw new ArgumentNullException(nameof(handle));
 
+            // The dictionary below is keyed by (address, Type) instead of a caller-built formatted
+            // string (HANDOFF_TO_SESSION_B.md L-9). Type is always typeof(T) here, so within this
+            // one instance it adds nothing over the plain address — but it costs nothing either (a
+            // stack struct, not an allocation), and CacheEntry<T>.Key (still the plain string, for
+            // logging — see that field's doc) is unaffected.
+            var cacheKey = new AssetCacheKey(key, typeof(T));
+
             // If entry exists and is still alive, just update access. The handle passed in is not
             // stored — release the reference we were given back unless it is the very object already
             // cached.
-            if (_cache.TryGetValue(key, out var existingEntry))
+            if (_cache.TryGetValue(cacheKey, out var existingEntry))
             {
                 if (existingEntry.Handle.IsValid)
                 {
@@ -104,7 +144,8 @@ namespace AddressableManager.Core
                 // drop the zombie slot instead of rejecting the caller's freshly loaded handle into
                 // it (which would silently unload the very asset that was just loaded).
                 _currentCacheSize -= existingEntry.EstimatedSize;
-                _cache.Remove(key);
+                _budget.Give(existingEntry.EstimatedSize);
+                _cache.Remove(cacheKey);
             }
 
             // The cache takes its own reference; a handle that is already dead is refused instead of
@@ -112,16 +153,19 @@ namespace AddressableManager.Core
             if (!handle.TryRetain())
                 return;
 
-            // Create new entry
+            // Create new entry. CacheEntry<T>.Key stays the plain string (display/log use, and
+            // shared with ThreadSafeCacheManager<T> — see that field's doc) — cacheKey (the real
+            // AssetCacheKey) is only ever used as this dictionary's key, not stored on the entry.
             var entry = new CacheEntry<T>(key, handle, estimatedSize);
-            _cache[key] = entry;
+            _cache[cacheKey] = entry;
             _currentCacheSize += estimatedSize;
+            _budget.TryAdmit(estimatedSize);
 
-            // Check if we need to evict
-            if (_config.EnableAutoEviction && _config.MaxCacheSizeBytes > 0)
+            // Check if we need to evict — against the SHARED budget (L-4), not this cache's own
+            // slice of it, so a loader juggling several types is capped at one real ceiling.
+            if (_config.EnableAutoEviction && _budget.Max > 0)
             {
-                float currentRatio = (float)_currentCacheSize / _config.MaxCacheSizeBytes;
-                if (currentRatio >= _config.EvictionTriggerRatio)
+                if (_budget.UsageRatio >= _config.EvictionTriggerRatio)
                 {
                     PerformEviction();
                 }
@@ -143,8 +187,9 @@ namespace AddressableManager.Core
             }
 
             _totalAccesses++;
+            var cacheKey = new AssetCacheKey(key, typeof(T));
 
-            if (_cache.TryGetValue(key, out var entry))
+            if (_cache.TryGetValue(cacheKey, out var entry))
             {
                 if (entry.Handle.TryRetain())
                 {
@@ -169,7 +214,8 @@ namespace AddressableManager.Core
                 // Entry's handle is already dead (its last reference went away outside this cache).
                 // Nothing left to release here — drop the stale entry and report a miss.
                 _currentCacheSize -= entry.EstimatedSize;
-                _cache.Remove(key);
+                _budget.Give(entry.EstimatedSize);
+                _cache.Remove(cacheKey);
             }
 
             handle = null;
@@ -181,7 +227,7 @@ namespace AddressableManager.Core
         /// </summary>
         public bool ContainsKey(string key)
         {
-            return _cache.ContainsKey(key);
+            return _cache.ContainsKey(new AssetCacheKey(key, typeof(T)));
         }
 
         /// <summary>
@@ -189,11 +235,13 @@ namespace AddressableManager.Core
         /// </summary>
         public bool Remove(string key)
         {
-            if (_cache.TryGetValue(key, out var entry))
+            var cacheKey = new AssetCacheKey(key, typeof(T));
+            if (_cache.TryGetValue(cacheKey, out var entry))
             {
                 entry.Handle?.Release();
                 _currentCacheSize -= entry.EstimatedSize;
-                _cache.Remove(key);
+                _budget.Give(entry.EstimatedSize);
+                _cache.Remove(cacheKey);
                 return true;
             }
             return false;
@@ -204,7 +252,7 @@ namespace AddressableManager.Core
         /// </summary>
         public void Pin(string key)
         {
-            if (_cache.TryGetValue(key, out var entry))
+            if (_cache.TryGetValue(new AssetCacheKey(key, typeof(T)), out var entry))
             {
                 entry.IsPinned = true;
                 entry.Tier = CacheTier.Hot;
@@ -216,22 +264,58 @@ namespace AddressableManager.Core
         /// </summary>
         public void Unpin(string key)
         {
-            if (_cache.TryGetValue(key, out var entry))
+            if (_cache.TryGetValue(new AssetCacheKey(key, typeof(T)), out var entry))
             {
                 entry.IsPinned = false;
             }
         }
 
         /// <summary>
-        /// Clear all cache entries, releasing the cache's own reference to every handle it holds.
+        /// Clear all cache entries. Teardown semantics, same as <see cref="ForceReleaseAll"/> (which
+        /// this delegates to) and matching <see cref="TieredAssetLoader.ClearCache"/>'s documented
+        /// memory-pressure contract (HANDOFF_TO_SESSION_B.md L-1: "TieredCache&lt;T&gt;.Clear/Dispose
+        /// và TieredAssetLoader.ClearCache/Dispose: ForceRelease()").
         /// </summary>
+        /// <remarks>
+        /// This used to give back only the cache's own reference (a plain decrement), which reads as
+        /// the milder, eviction-style release <see cref="Remove"/> and the eviction loop use — but
+        /// nothing in the package ever called this method that way (grep confirms zero in-package
+        /// callers), and a caller reaching it expecting "clear the cache" to actually reclaim memory
+        /// would instead find a handle any other holder retained left untouched. Kept as a separate
+        /// method from <see cref="ForceReleaseAll"/> rather than removed, since it is public API
+        /// (invariant 1) — a caller may already depend on the name.
+        /// </remarks>
         public void Clear()
+        {
+            ForceReleaseAll();
+        }
+
+        /// <summary>
+        /// Hard-release every handle this cache holds, regardless of who else still holds a
+        /// reference, and drop every entry. This is <see cref="ITieredCache.ForceReleaseAll"/> — the
+        /// teardown counterpart to <see cref="Remove"/>, which only gives back the cache's own
+        /// reference and leaves a handle any other holder retained untouched.
+        /// </summary>
+        public void ForceReleaseAll()
         {
             foreach (var entry in _cache.Values)
             {
-                entry.Handle?.Release();
+                // Every handle this cache ever stores comes from AssetHandle{T} (see Set()'s
+                // TryRetain() call), which also implements the internal owner-side IOwnedHandle
+                // contract — but IAssetHandle{T} itself does not expose ForceRelease(), so a foreign
+                // IAssetHandle{T} implementation (test double, decorator) falls back to a plain
+                // decrement rather than throwing.
+                if (entry.Handle is IOwnedHandle owned)
+                {
+                    owned.ForceRelease();
+                }
+                else
+                {
+                    entry.Handle?.Release();
+                }
             }
 
+            _budget.Give(_currentCacheSize);
             _cache.Clear();
             _currentCacheSize = 0;
             ResetStatistics();
@@ -295,15 +379,27 @@ namespace AddressableManager.Core
         }
 
         /// <summary>
-        /// Perform eviction to reduce cache size
+        /// Perform eviction to reduce cache size.
         /// </summary>
+        /// <remarks>
+        /// Targets the SHARED budget's overage (HANDOFF_TO_SESSION_B.md L-4), not this cache's own
+        /// slice of it — <paramref name="amountToEvict"/>-equivalent below is
+        /// <c>_budget.Current - target</c>, the loader-wide amount over budget, even though the
+        /// candidates evicted still only ever come from this type's own entries (a per-type cache
+        /// has no visibility into siblings). This is what makes eviction reach across types in
+        /// practice: <see cref="AddressableManager.Loaders.TieredAssetLoader.ForceEviction"/> and
+        /// <see cref="AddressableManager.Loaders.TieredAssetLoader.EvaluateTiers"/> call every
+        /// per-type cache in turn, each one re-reading the (now smaller) shared overage left by
+        /// whichever cache evicted before it, so a run across all types converges on the real
+        /// ceiling even though no single call touches more than one type's dictionary.
+        /// </remarks>
         private void PerformEviction()
         {
-            if (_config.MaxCacheSizeBytes <= 0)
+            if (_budget.Max <= 0)
                 return;
 
-            long targetSize = (long)(_config.MaxCacheSizeBytes * _config.EvictionTargetRatio);
-            long amountToEvict = _currentCacheSize - targetSize;
+            long targetSize = (long)(_budget.Max * _config.EvictionTargetRatio);
+            long amountToEvict = _budget.Current - targetSize;
 
             if (amountToEvict <= 0)
                 return;
@@ -317,7 +413,7 @@ namespace AddressableManager.Core
 
             long evictedSize = 0;
             int evictedCount = 0;
-            var keysToRemove = new List<string>();
+            var keysToRemove = new List<AssetCacheKey>();
 
             foreach (var entry in candidates)
             {
@@ -327,7 +423,9 @@ namespace AddressableManager.Core
                 // Only evict if score is below threshold or in Cold tier
                 if (entry.Tier == CacheTier.Cold || entry.CalculateTierScore() < _config.EvictionScoreThreshold)
                 {
-                    keysToRemove.Add(entry.Key);
+                    // entry.Key is the plain string (CacheEntry<T> doesn't carry the AssetCacheKey —
+                    // see that field's doc); rebuild it to match _cache's actual key type.
+                    keysToRemove.Add(new AssetCacheKey(entry.Key, typeof(T)));
                     evictedSize += entry.EstimatedSize;
                     evictedCount++;
 
@@ -347,6 +445,7 @@ namespace AddressableManager.Core
             }
 
             _currentCacheSize -= evictedSize;
+            _budget.Give(evictedSize);
             _totalEvictions += evictedCount;
 
             if (_config.LogTierOperations)
@@ -373,7 +472,7 @@ namespace AddressableManager.Core
                 ColdEntries = coldCount,
                 PinnedEntries = pinnedCount,
                 TotalSizeBytes = _currentCacheSize,
-                MaxSizeBytes = _config.MaxCacheSizeBytes,
+                MaxSizeBytes = _budget.Max,
                 TotalAccesses = _totalAccesses,
                 CacheHits = _cacheHits,
                 HitRate = _totalAccesses > 0 ? (float)_cacheHits / _totalAccesses : 0f,
@@ -426,11 +525,20 @@ namespace AddressableManager.Core
             }
         }
 
+        /// <summary>
+        /// Teardown: hard-releases every handle this cache holds, regardless of who else still
+        /// holds a reference (HANDOFF_TO_SESSION_B.md L-1). Deliberately <see cref="ForceReleaseAll"/>
+        /// rather than <see cref="Clear"/> — <c>Clear()</c> only gives back this cache's own
+        /// reference (a decrement any other holder survives), which is correct for a caller asking
+        /// this cache to empty itself while the loader stays alive, but wrong for teardown: an
+        /// owner that is going away entirely must not leave a caller holding a handle this cache no
+        /// longer tracks and can never invalidate again.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed) return;
 
-            Clear();
+            ForceReleaseAll();
             _disposed = true;
         }
     }
