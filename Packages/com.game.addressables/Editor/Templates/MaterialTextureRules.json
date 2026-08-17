@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Material and Texture rules - Organize materials and textures by type and quality",
-  "autoApplyOnImport": true,
+  "autoApplyOnImport": false,
   "autoApplyOnModified": false,
   "verboseLogging": false,
   "versionExpression": "",

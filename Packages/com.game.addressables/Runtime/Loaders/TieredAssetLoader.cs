@@ -1,433 +1,233 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using UnityEngine;
 using UnityEngine.AddressableAssets;
-using UnityEngine.ResourceManagement.AsyncOperations;
 using AddressableManager.Core;
-#if UNITY_EDITOR
-using AddressableManager.Monitoring;
+#if UNITASK_PRESENT
+using Cysharp.Threading.Tasks;
 #endif
 
 namespace AddressableManager.Loaders
 {
     /// <summary>
-    /// Asset loader with tiered caching (Hot/Warm/Cold)
-    /// Automatically manages cache based on access patterns and memory constraints
-    ///
-    /// Extends AssetLoader with intelligent cache management that:
-    /// - Keeps frequently accessed assets in Hot tier
-    /// - Demotes rarely used assets to Cold tier
-    /// - Automatically evicts assets when memory limit is reached
+    /// Asset loader with tiered caching (Hot/Warm/Cold) — now a thin forwarder onto an
+    /// <see cref="AssetLoader"/> constructed with the same <see cref="TieredCacheConfig"/>.
     /// </summary>
+    /// <remarks>
+    /// WHAT HAPPENED TO THIS CLASS (LIFETIME_DESIGN.md "L-7: evidence")
+    ///
+    /// This was a second, independent loader implementation that existed only to add tiering. Every
+    /// defect fixed in it during the L-1/L-3/L-4/L-8/L-9/L-10 pass re-solved a problem
+    /// <see cref="AssetLoader"/> had already solved, and the fixes still left it missing everything
+    /// <see cref="AssetLoader"/> had all along. Tiering is a configuration of
+    /// <see cref="AssetLoader"/> now — <c>new AssetLoader(scopeName, config)</c> — and this class
+    /// forwards to one.
+    ///
+    /// <para><b>Forwarding is not just a compatibility courtesy; it fixes the worst bug this class
+    /// had.</b> A <c>TieredAssetLoader</c> was not an <see cref="AssetLoader"/> and registered with a
+    /// different registry, so <see cref="AssetLoaderRegistry.InvalidateAll"/> — the thing
+    /// <c>CatalogService</c> calls after a CDN catalog update — could never reach it. Its cache went
+    /// on serving handles resolved against the *previous* catalog for the rest of the session, with
+    /// no code path anywhere that could have invalidated them. Because the inner loader is a plain
+    /// <see cref="AssetLoader"/>, it registers in the one registry the invalidation walk uses, and
+    /// every existing <c>new TieredAssetLoader(...)</c> call site is now reached after a catalog
+    /// update without its author changing a line.</para>
+    ///
+    /// <para>What moving off this class additionally buys: single-flight join for concurrent loads
+    /// of one key, the post-await disposed/thread guard, <c>LoadAssetsByLabelAsync</c>, the
+    /// <c>*Safe</c>/<c>LoadResult</c> variants, <c>InstantiateAsync</c>/<c>ReleaseInstance</c>, and
+    /// <c>ReleaseAsset</c> — the per-address release this class never had at all. None of those are
+    /// reachable through this wrapper; they are only on <see cref="AssetLoader"/> itself.</para>
+    /// </remarks>
+    [Obsolete("Tiering is a configuration of AssetLoader now. Migrate:\n" +
+              "\n" +
+              "  BEFORE:\n" +
+              "    var loader = new TieredAssetLoader(\"Battle\", TieredCacheConfig.Aggressive);\n" +
+              "    var tex    = await loader.LoadAssetAsync<Texture2D>(\"Boss/Diffuse\");\n" +
+              "    loader.PinAsset<Texture2D>(\"Boss/Diffuse\");\n" +
+              "    var stats  = loader.GetCombinedStats();\n" +
+              "    loader.Dispose();\n" +
+              "\n" +
+              "  AFTER:\n" +
+              "    var loader = new AssetLoader(\"Battle\", TieredCacheConfig.Aggressive);\n" +
+              "    var tex    = await loader.LoadAssetAsync<Texture2D>(\"Boss/Diffuse\");\n" +
+              "    loader.PinAsset<Texture2D>(\"Boss/Diffuse\");\n" +
+              "    var stats  = loader.GetTieredCacheStats();\n" +
+              "    loader.Dispose();\n" +
+              "\n" +
+              "Factory form: Advanced.CreateTieredLoader(name, cfg) -> Advanced.CreateLoader(name, cfg). " +
+              "The only renames are GetCombinedStats() -> GetTieredCacheStats() and " +
+              "GetCacheStats<T>() -> GetTieredCacheStats<T>(); everything else is a type-name " +
+              "substitution. This class forwards to an AssetLoader and keeps working, but only the " +
+              "AssetLoader form gets single-flight join, the post-await thread guard, label/Safe/" +
+              "Instantiate loads, ReleaseAsset, and catalog invalidation after a CDN update. " +
+              "Removed in 5.0.0.", false)]
     public class TieredAssetLoader : IDisposable
     {
-        private readonly Dictionary<Type, object> _tieredCaches = new Dictionary<Type, object>();
-        private readonly TieredCacheConfig _config;
-        private readonly string _scopeName;
-        private readonly List<IDisposable> _activeHandles = new List<IDisposable>();
-        private bool _disposed;
-
-        // Main thread ID for thread safety checks
-        private static int? _mainThreadId;
+        /// <summary>
+        /// The real loader. Registered in <see cref="AssetLoaderRegistry"/> by its constructor,
+        /// which is what makes this wrapper reachable from a catalog update — see the class remarks.
+        /// </summary>
+        private readonly AssetLoader _inner;
 
         /// <summary>
         /// Create TieredAssetLoader with optional configuration
         /// </summary>
         /// <param name="scopeName">Scope name for monitoring</param>
         /// <param name="config">Tiered cache configuration (uses Default if null)</param>
+        /// <remarks>
+        /// The <c>null</c> → <see cref="TieredCacheConfig.Default"/> fallback is preserved from the
+        /// original: this class has always meant "a loader with tiering", so it never constructs an
+        /// untiered inner loader. One consequence worth knowing:
+        /// <see cref="GetCacheStats{T}"/> can therefore never return <c>null</c> through this
+        /// wrapper, because the inner loader's tiering is never off.
+        /// </remarks>
         public TieredAssetLoader(string scopeName = "Unknown", TieredCacheConfig config = null)
         {
-            _scopeName = scopeName;
-            _config = config ?? TieredCacheConfig.Default;
-
-            // Capture main thread ID on first creation
-            if (_mainThreadId == null)
-            {
-                _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
-            }
+            _inner = new AssetLoader(scopeName, config ?? TieredCacheConfig.Default);
         }
+
+        #region Load
 
         /// <summary>
-        /// Get or create tiered cache for specific type
+        /// Load asset asynchronously by address with tiered caching. Returns
+        /// <c>Task&lt;IAssetHandle&lt;T&gt;&gt;</c> in every project, UniTask installed or not.
         /// </summary>
-        private TieredCache<T> GetOrCreateCache<T>() where T : class
-        {
-            var type = typeof(T);
-            if (!_tieredCaches.TryGetValue(type, out var cache))
-            {
-                cache = new TieredCache<T>(_config);
-                _tieredCaches[type] = cache;
-            }
-            return (TieredCache<T>)cache;
-        }
+        /// <remarks>
+        /// <b>Deliberately NOT dual-signature, and this is the one place in the package where that
+        /// is correct.</b> Repo invariant 3 asks every new or changed public async API to return
+        /// <c>UniTask</c> under <c>UNITASK_PRESENT</c>; invariant 6 says a shipped public member
+        /// does not change before 5.0.0. Where the two collide, on an <c>[Obsolete]</c> member,
+        /// invariant 6 wins — the entire promise of a warning-level deprecation is "your code keeps
+        /// compiling until 5.0.0", and a return type that changes with an unrelated package's
+        /// presence breaks exactly the callers the deprecation exists to carry. <c>Task</c> is what
+        /// 4.1.0-pre.5 and 4.1.0-pre.6 both shipped here.
+        ///
+        /// <para>The identical question was already answered the same way on
+        /// <c>Standard.LoadScene&lt;T&gt;</c> ("a deprecated method changing its return type would
+        /// break the very callers the deprecation exists to keep compiling until 5.0.0"), whose
+        /// replacements are dual while it stays <c>Task</c>. This member follows that precedent.</para>
+        ///
+        /// <para>Under UniTask the forwarder pays one <c>AsTask()</c> conversion. That cost is real
+        /// and it is the reason to migrate, not a reason to break the signature: the replacement,
+        /// <c>Advanced.CreateLoader(name, cfg)</c>, returns <c>AssetLoader</c>, whose
+        /// <c>LoadAssetAsync&lt;T&gt;</c> <em>is</em> dual and hands back a <c>UniTask</c> with no
+        /// conversion at all. Expression-bodied and not <c>async</c> on purpose — the forwarder adds
+        /// no state machine of its own, matching <see cref="MonitoredAssetLoader"/>.</para>
+        /// </remarks>
+#if UNITASK_PRESENT
+        public Task<IAssetHandle<T>> LoadAssetAsync<T>(string address) where T : class
+            => _inner.LoadAssetAsync<T>(address).AsTask();
+#else
+        public Task<IAssetHandle<T>> LoadAssetAsync<T>(string address) where T : class
+            => _inner.LoadAssetAsync<T>(address);
+#endif
 
         /// <summary>
-        /// Check if current thread is Unity's main thread
+        /// Load asset by AssetReference with tiered caching. Returns
+        /// <c>Task&lt;IAssetHandle&lt;T&gt;&gt;</c> in every project, UniTask installed or not.
         /// </summary>
-        private void AssertMainThread()
-        {
-            if (_mainThreadId.HasValue && System.Threading.Thread.CurrentThread.ManagedThreadId != _mainThreadId.Value)
-            {
-                throw new InvalidOperationException(
-                    $"[TieredAssetLoader] Thread safety violation detected!\n\n" +
-                    $"TieredAssetLoader must be called from Unity's main thread only.\n" +
-                    $"Current thread ID: {System.Threading.Thread.CurrentThread.ManagedThreadId}\n" +
-                    $"Expected thread ID: {_mainThreadId.Value}\n\n" +
-                    $"SOLUTION: Use ThreadSafeAssetLoader wrapper for background thread loading.\n"
-                );
-            }
-        }
-
-        #region Load by Address
-
-        /// <summary>
-        /// Load asset asynchronously by address with tiered caching
-        /// </summary>
-        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(string address) where T : class
-        {
-            if (_disposed)
-            {
-                Debug.LogError("[TieredAssetLoader] Cannot load from disposed loader");
-                return null;
-            }
-
-            if (string.IsNullOrEmpty(address))
-            {
-                Debug.LogError("[TieredAssetLoader] Address cannot be null or empty");
-                return null;
-            }
-
-            AssertMainThread();
-
-#if UNITY_EDITOR
-            var startTime = Time.realtimeSinceStartup;
+        /// <remarks>See the address overload for why this stays <c>Task</c> under UniTask.</remarks>
+#if UNITASK_PRESENT
+        public Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference) where T : class
+            => _inner.LoadAssetAsync<T>(assetReference).AsTask();
+#else
+        public Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference) where T : class
+            => _inner.LoadAssetAsync<T>(assetReference);
 #endif
-
-            var cache = GetOrCreateCache<T>();
-            string cacheKey = $"{address}_{typeof(T).Name}";
-
-            // Try cache first
-            if (cache.TryGet(cacheKey, out var cachedHandle))
-            {
-                if (cachedHandle.IsValid)
-                {
-                    Debug.Log($"[TieredAssetLoader] Cache hit for: {address}");
-                    cachedHandle.Retain();
-
-#if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        true // from cache
-                    );
-#endif
-
-                    return cachedHandle;
-                }
-                else
-                {
-                    // Remove invalid cached handle
-                    cache.Remove(cacheKey);
-                }
-            }
-
-            // Load from Addressables
-            try
-            {
-                Debug.Log($"[TieredAssetLoader] Loading asset: {address}");
-                var operation = Addressables.LoadAssetAsync<T>(address);
-                await operation.Task;
-
-                if (operation.Status == AsyncOperationStatus.Succeeded)
-                {
-                    var handle = new AssetHandle<T>(operation);
-
-                    // Estimate size for cache management
-                    long estimatedSize = EstimateAssetSize(operation.Result);
-
-                    // Add to tiered cache
-                    cache.Set(cacheKey, handle, estimatedSize);
-                    _activeHandles.Add(handle);
-
-                    Debug.Log($"[TieredAssetLoader] Successfully loaded: {address}");
-
-#if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        false // not from cache
-                    );
-#endif
-
-                    return handle;
-                }
-                else
-                {
-                    Debug.LogError($"[TieredAssetLoader] Failed to load asset: {address}. Error: {operation.OperationException}");
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[TieredAssetLoader] Exception loading asset: {address}. Error: {ex.Message}");
-                return null;
-            }
-        }
-
-        #endregion
-
-        #region Load by AssetReference
-
-        /// <summary>
-        /// Load asset by AssetReference with tiered caching
-        /// </summary>
-        public async Task<IAssetHandle<T>> LoadAssetAsync<T>(AssetReference assetReference) where T : class
-        {
-            if (_disposed)
-            {
-                Debug.LogError("[TieredAssetLoader] Cannot load from disposed loader");
-                return null;
-            }
-
-            if (assetReference == null || !assetReference.RuntimeKeyIsValid())
-            {
-                Debug.LogError("[TieredAssetLoader] Invalid AssetReference");
-                return null;
-            }
-
-            AssertMainThread();
-
-#if UNITY_EDITOR
-            var startTime = Time.realtimeSinceStartup;
-#endif
-
-            var cache = GetOrCreateCache<T>();
-            var address = assetReference.AssetGUID;
-            string cacheKey = $"{address}_{typeof(T).Name}";
-
-            // Check cache
-            if (cache.TryGet(cacheKey, out var cachedHandle))
-            {
-                if (cachedHandle.IsValid)
-                {
-                    cachedHandle.Retain();
-
-#if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        true
-                    );
-#endif
-
-                    return cachedHandle;
-                }
-                else
-                {
-                    cache.Remove(cacheKey);
-                }
-            }
-
-            // Load from Addressables
-            try
-            {
-                var operation = assetReference.LoadAssetAsync<T>();
-                await operation.Task;
-
-                if (operation.Status == AsyncOperationStatus.Succeeded)
-                {
-                    var handle = new AssetHandle<T>(operation);
-                    long estimatedSize = EstimateAssetSize(operation.Result);
-
-                    cache.Set(cacheKey, handle, estimatedSize);
-                    _activeHandles.Add(handle);
-
-#if UNITY_EDITOR
-                    var loadDuration = Time.realtimeSinceStartup - startTime;
-                    AssetMonitorBridge.ReportAssetLoaded(
-                        address,
-                        typeof(T).Name,
-                        _scopeName,
-                        loadDuration,
-                        false
-                    );
-#endif
-
-                    return handle;
-                }
-                else
-                {
-                    Debug.LogError($"[TieredAssetLoader] Failed to load AssetReference. Error: {operation.OperationException}");
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[TieredAssetLoader] Exception loading AssetReference: {ex.Message}");
-                return null;
-            }
-        }
 
         #endregion
 
         #region Cache Management
 
         /// <summary>
-        /// Pin an asset to prevent it from being evicted
+        /// Pin an asset to prevent it from being evicted. Pinning before the asset is loaded now
+        /// works: the request is remembered and applied when the key arrives.
         /// </summary>
-        public void PinAsset<T>(string address) where T : class
-        {
-            var cache = GetOrCreateCache<T>();
-            string cacheKey = $"{address}_{typeof(T).Name}";
-            cache.Pin(cacheKey);
-        }
+        public void PinAsset<T>(string address) where T : class => _inner.PinAsset<T>(address);
 
         /// <summary>
-        /// Unpin an asset to allow eviction
+        /// Unpin an asset to allow eviction. Also cancels a pin that is still waiting for its key.
         /// </summary>
-        public void UnpinAsset<T>(string address) where T : class
-        {
-            var cache = GetOrCreateCache<T>();
-            string cacheKey = $"{address}_{typeof(T).Name}";
-            cache.Unpin(cacheKey);
-        }
+        public void UnpinAsset<T>(string address) where T : class => _inner.UnpinAsset<T>(address);
 
         /// <summary>
-        /// Get tiered cache statistics for a specific type
+        /// Get tiered cache statistics for a specific type.
         /// </summary>
-        public TieredCacheStats? GetCacheStats<T>() where T : class
-        {
-            var type = typeof(T);
-            if (_tieredCaches.TryGetValue(type, out var cache))
-            {
-                return ((TieredCache<T>)cache).GetStatistics();
-            }
-            return null;
-        }
+        /// <remarks>
+        /// <b>Two semantic shifts, both deliberate.</b>
+        ///
+        /// <para><i>Nullability.</i> This used to return <c>null</c> until the first load of
+        /// <typeparamref name="T"/> created a per-type cache, then a zeroed struct forever after.
+        /// There is no per-type cache object to test for existence any more. The rule now is the
+        /// inner loader's: <c>null</c> iff tiering is off — which, through this wrapper, never
+        /// happens, because the constructor always supplies a config. So this returns a struct
+        /// always, all-zero when nothing of <typeparamref name="T"/> is cached. Code that treated
+        /// <c>null</c> as "nothing loaded yet" should test <c>TotalEntries == 0</c> instead.</para>
+        ///
+        /// <para><i>Which counters are per-type.</i> <c>TotalEntries</c>/<c>HotEntries</c>/
+        /// <c>WarmEntries</c>/<c>ColdEntries</c>/<c>PinnedEntries</c>/<c>PendingPins</c>/
+        /// <c>TotalSizeBytes</c> remain exact per-<typeparamref name="T"/> figures — cache entries
+        /// carry their Type. <c>TotalAccesses</c>/<c>CacheHits</c>/<c>HitRate</c>/
+        /// <c>TotalEvictions</c>/<c>TotalPromotions</c>/<c>TotalDemotions</c> are now loader-wide:
+        /// there is one counter set per loader rather than one per Type, and keeping them per-Type
+        /// would mean a <c>Dictionary&lt;Type, counters&gt;</c> — a second book, i.e. L-4's shape
+        /// rebuilt for statistics. These are diagnostics, not lifetime.</para>
+        /// </remarks>
+        public TieredCacheStats? GetCacheStats<T>() where T : class => _inner.GetTieredCacheStats<T>();
 
         /// <summary>
-        /// Get combined cache statistics across all types
+        /// Get combined cache statistics across all types.
         /// </summary>
-        public TieredCacheStats GetCombinedStats()
-        {
-            var combined = new TieredCacheStats
-            {
-                MaxSizeBytes = _config.MaxCacheSizeBytes
-            };
-
-            foreach (var cache in _tieredCaches.Values)
-            {
-                var method = cache.GetType().GetMethod("GetStatistics");
-                if (method != null)
-                {
-                    var stats = (TieredCacheStats)method.Invoke(cache, null);
-                    combined.TotalEntries += stats.TotalEntries;
-                    combined.HotEntries += stats.HotEntries;
-                    combined.WarmEntries += stats.WarmEntries;
-                    combined.ColdEntries += stats.ColdEntries;
-                    combined.PinnedEntries += stats.PinnedEntries;
-                    combined.TotalSizeBytes += stats.TotalSizeBytes;
-                    combined.TotalAccesses += stats.TotalAccesses;
-                    combined.CacheHits += stats.CacheHits;
-                    combined.TotalEvictions += stats.TotalEvictions;
-                    combined.TotalPromotions += stats.TotalPromotions;
-                    combined.TotalDemotions += stats.TotalDemotions;
-                }
-            }
-
-            combined.HitRate = combined.TotalAccesses > 0 ? (float)combined.CacheHits / combined.TotalAccesses : 0f;
-
-            return combined;
-        }
+        /// <remarks>
+        /// <c>TotalSizeBytes</c> and <c>MaxSizeBytes</c> are now the same two numbers eviction
+        /// actually gates on, rather than a sum over per-type caches compared against a ceiling
+        /// nothing enforced (L-4). The merged loader keeps one byte total over one dictionary, so
+        /// the reported figure and the enforced figure cannot drift apart — there is no second book
+        /// to reconcile.
+        /// </remarks>
+        public TieredCacheStats GetCombinedStats() => _inner.GetTieredCacheStats();
 
         /// <summary>
-        /// Force tier evaluation for all caches
+        /// Force tier evaluation across every cached entry.
         /// </summary>
-        public void EvaluateTiers()
-        {
-            foreach (var cache in _tieredCaches.Values)
-            {
-                var method = cache.GetType().GetMethod("ForceEvaluateTiers");
-                method?.Invoke(cache, null);
-            }
-        }
+        public void EvaluateTiers() => _inner.EvaluateTiers();
 
         /// <summary>
-        /// Force eviction for all caches
+        /// Force an eviction pass.
         /// </summary>
-        public void ForceEviction()
-        {
-            foreach (var cache in _tieredCaches.Values)
-            {
-                var method = cache.GetType().GetMethod("ForceEviction");
-                method?.Invoke(cache, null);
-            }
-        }
+        /// <remarks>
+        /// Eviction now ranks candidates of every Type together in one pass. It used to walk each
+        /// per-type cache in turn, where a cache could only ever evict its own entries and relied on
+        /// round-robin over siblings to converge — the structural half of L-4.
+        /// </remarks>
+        public void ForceEviction() => _inner.ForceEviction();
 
         /// <summary>
-        /// Clear all caches
+        /// Clear the cache, hard-releasing every handle it holds regardless of who else still holds
+        /// a reference.
         /// </summary>
-        public void ClearCache()
-        {
-            Debug.Log($"[TieredAssetLoader] Clearing all caches");
-
-            foreach (var cache in _tieredCaches.Values)
-            {
-                if (cache is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
-            }
-
-            _tieredCaches.Clear();
-            _activeHandles.Clear();
-        }
-
-        #endregion
-
-        #region Helpers
-
-        /// <summary>
-        /// Estimate asset memory size for cache management
-        /// </summary>
-        private long EstimateAssetSize(object asset)
-        {
-            if (asset == null) return 0;
-
-            // Rough estimates based on asset type
-            return asset switch
-            {
-                Texture2D texture => texture.width * texture.height * 4, // 4 bytes per pixel (RGBA)
-                AudioClip audio => (long)(audio.samples * audio.channels * 2), // 16-bit audio
-                Mesh mesh => mesh.vertexCount * 32, // Rough estimate
-                GameObject go => 4096, // Base estimate for prefab
-                ScriptableObject => 1024, // Small data objects
-                _ => 1024 // Default estimate
-            };
-        }
+        /// <remarks>
+        /// Semantics are unchanged: both this and <see cref="AssetLoader.ClearCache"/> force-release
+        /// every cached handle, so a caller still holding one across this call sees
+        /// <c>IsValid == false</c> afterwards.
+        /// </remarks>
+        public void ClearCache() => _inner.ClearCache();
 
         #endregion
 
         #region Dispose
 
-        public void Dispose()
-        {
-            if (_disposed) return;
-
-            Debug.Log("[TieredAssetLoader] Disposing loader and releasing all assets");
-            ClearCache();
-            _disposed = true;
-        }
+        /// <summary>
+        /// Teardown: hard-releases every asset this loader ever cached, and unregisters it.
+        /// </summary>
+        /// <remarks>
+        /// The <c>_disposed = true</c>-before-teardown ordering that this class used to implement
+        /// itself is preserved inside <see cref="AssetLoader.Dispose"/>, which flips first for the
+        /// same reason: a re-entrant call reached from inside teardown (a handle's release callback,
+        /// a nested Dispose) must not see the loader as still live. Idempotence likewise lives
+        /// there, so this needs no <c>_disposed</c> flag of its own.
+        /// </remarks>
+        public void Dispose() => _inner.Dispose();
 
         #endregion
     }

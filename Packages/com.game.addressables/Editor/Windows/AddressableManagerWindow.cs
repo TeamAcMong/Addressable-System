@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using AddressableManager.Editor.Data;
+using AddressableManager.Monitoring;
 
 namespace AddressableManager.Editor.Windows
 {
@@ -47,6 +48,16 @@ namespace AddressableManager.Editor.Windows
         private Label _memoryGraphSummary;
 
         // UI Elements - Scopes Tab
+        //
+        // Keyed by the LIVE, instance-qualified scope id (AssetTrackerService.TrackedScopes'
+        // key — e.g. "Scene-MainScene#h1234"), never a fixed category literal. Scope ids are
+        // dynamic and unbounded since v4.0.0 (HANDOFF_TO_SESSION_B.md E-CHAIN item 3), so a
+        // fixed 4-entry dictionary keyed by "Global"/"Session"/"Scene"/"Hierarchy" can only ever
+        // show real data for Global/Hybrid scopes — every Scene/Hierarchy scope's assets would
+        // silently read as 0 regardless of any other fix. Entries are created lazily in
+        // RefreshScopesTab as new scope ids appear, and persist for the life of the window so a
+        // Foldout's expanded/collapsed state survives across refresh ticks.
+        private ScrollView _scopesScroll;
         private Dictionary<string, (Foldout foldout, Label stats, ListView list, Button cleanup)> _scopeElements;
 
         // UI Elements - Settings Tab
@@ -88,6 +99,11 @@ namespace AddressableManager.Editor.Windows
             {
                 _root = visualTree.CloneTree();
                 rootVisualElement.Add(_root);
+
+                // Task 4.8. One compact row rather than a sixth tab: this dashboard already carries
+                // enough, and the CDN work has its own window. The strip answers "which environment
+                // and how much cache" at a glance and hands off to CdnManagerWindow for anything more.
+                rootVisualElement.Insert(0, CreateCdnStatusStrip());
             }
             else
             {
@@ -155,7 +171,11 @@ namespace AddressableManager.Editor.Windows
             _scopeFilter = _root.Q<DropdownField>("scope-filter");
             _assetCountLabel = _root.Q<Label>("asset-count-label");
 
-            _scopeFilter.choices = new List<string> { "All", "Global", "Session", "Scene", "Hierarchy" };
+            // Real choices are populated per-refresh by UpdateScopeFilterChoices() from the live
+            // AssetTrackerService.TrackedScopes keys — a fixed literal list here (as before) can
+            // only ever match Global/Hybrid scopes, since Scene/Hierarchy scope ids are
+            // instance-qualified and unbounded (HANDOFF_TO_SESSION_B.md E-CHAIN item 3).
+            _scopeFilter.choices = new List<string> { "All" };
             _scopeFilter.value = "All";
 
             // Performance Tab
@@ -197,33 +217,15 @@ namespace AddressableManager.Editor.Windows
 
         private void InitializeScopeElements()
         {
-            _scopeElements = new Dictionary<string, (Foldout, Label, ListView, Button)>
-            {
-                ["Global"] = (
-                    _root.Q<Foldout>("scope-global"),
-                    _root.Q<Label>("scope-global-stats"),
-                    _root.Q<ListView>("scope-global-list"),
-                    _root.Q<Button>("scope-global-cleanup")
-                ),
-                ["Session"] = (
-                    _root.Q<Foldout>("scope-session"),
-                    _root.Q<Label>("scope-session-stats"),
-                    _root.Q<ListView>("scope-session-list"),
-                    _root.Q<Button>("scope-session-cleanup")
-                ),
-                ["Scene"] = (
-                    _root.Q<Foldout>("scope-scene"),
-                    _root.Q<Label>("scope-scene-stats"),
-                    _root.Q<ListView>("scope-scene-list"),
-                    _root.Q<Button>("scope-scene-cleanup")
-                ),
-                ["Hierarchy"] = (
-                    _root.Q<Foldout>("scope-hierarchy"),
-                    _root.Q<Label>("scope-hierarchy-stats"),
-                    _root.Q<ListView>("scope-hierarchy-list"),
-                    _root.Q<Button>("scope-hierarchy-cleanup")
-                )
-            };
+            _scopesScroll = _root.Q<ScrollView>("scopes-scroll");
+            _scopeElements = new Dictionary<string, (Foldout, Label, ListView, Button)>();
+
+            // The UXML ships four illustrative Foldouts (Global/Session/Scene/Hierarchy) as a
+            // static preview for the UI Builder. Real scope ids are dynamic and instance-qualified
+            // (HANDOFF_TO_SESSION_B.md E-CHAIN item 3) and can never match those literals, so clear
+            // them out here and build the real entries dynamically in RefreshScopesTab/
+            // GetOrCreateScopeFoldout instead.
+            _scopesScroll?.Clear();
 
             var cleanupAllBtn = _root.Q<Button>("cleanup-all-btn");
             cleanupAllBtn.clicked += () =>
@@ -232,30 +234,46 @@ namespace AddressableManager.Editor.Windows
                     "Are you sure you want to cleanup all scopes? This will release all tracked assets.",
                     "Yes", "Cancel"))
                 {
-                    foreach (var scope in _scopeElements.Keys)
+                    foreach (var scopeId in _tracker.TrackedScopes.Keys.ToList())
                     {
-                        _tracker.ClearScope(scope);
+                        _tracker.ClearScope(scopeId);
                     }
                     RefreshScopesTab();
                 }
             };
+        }
 
-            // Setup cleanup buttons for each scope
-            foreach (var kvp in _scopeElements)
-            {
-                var scopeName = kvp.Key;
-                var cleanupBtn = kvp.Value.cleanup;
-                cleanupBtn.clicked += () =>
-                {
-                    if (EditorUtility.DisplayDialog($"Cleanup {scopeName} Scope",
-                        $"Are you sure you want to cleanup the {scopeName} scope?",
-                        "Yes", "Cancel"))
-                    {
-                        _tracker.ClearScope(scopeName);
-                        RefreshScopesTab();
-                    }
-                };
-            }
+        /// <summary>
+        /// Best-effort category label derived from a live scope id's own naming convention
+        /// (BaseAssetScope / HybridScope / ScopeManager), used only for grouping/display next to
+        /// <see cref="AssetMonitorBridge.GetDisplayName"/>'s friendly label — never as a tracker
+        /// lookup key (HANDOFF_TO_SESSION_B.md E-CHAIN item 3).
+        /// </summary>
+        private static string GetScopeCategory(string scopeId)
+        {
+            if (string.IsNullOrEmpty(scopeId)) return "Unknown";
+            if (scopeId == "Global") return "Global";
+            if (scopeId == "Session") return "Session"; // ScopeManager's own non-Hybrid entry
+            if (scopeId.StartsWith("Hybrid:Global", StringComparison.Ordinal)) return "Global";
+            if (scopeId.StartsWith("Hybrid:Session", StringComparison.Ordinal)) return "Session";
+            if (scopeId.StartsWith("Hybrid:", StringComparison.Ordinal)) return "Hybrid";
+            if (scopeId.StartsWith("Scene-", StringComparison.Ordinal)) return "Scene";
+            if (scopeId.StartsWith("Hierarchy-", StringComparison.Ordinal)) return "Hierarchy";
+            return "Custom";
+        }
+
+        /// <summary>
+        /// Human-readable label for one dropdown choice: "All" as-is, otherwise
+        /// DisplayName + category (e.g. "MainScene (Scene)"), falling back to just the category
+        /// when no distinct display name was ever reported for this id.
+        /// </summary>
+        private static string FormatScopeChoice(string scopeId)
+        {
+            if (scopeId == "All" || string.IsNullOrEmpty(scopeId)) return scopeId;
+
+            var displayName = AssetMonitorBridge.GetDisplayName(scopeId);
+            var category = GetScopeCategory(scopeId);
+            return displayName == scopeId ? category : $"{displayName} ({category})";
         }
 
         private void InitializeMemoryGraph()
@@ -413,6 +431,8 @@ namespace AddressableManager.Editor.Windows
                 .Where(a => a.IsValid)
                 .ToList();
 
+            UpdateScopeFilterChoices();
+
             // Apply filters
             var searchTerm = _searchField.value?.ToLower() ?? "";
             var scopeFilterValue = _scopeFilter.value;
@@ -448,6 +468,39 @@ namespace AddressableManager.Editor.Windows
             _assetsList.Rebuild();
         }
 
+        /// <summary>
+        /// Repopulates the Assets-tab scope dropdown from the live
+        /// <see cref="AssetTrackerService.TrackedScopes"/> keys instead of the fixed
+        /// "Global"/"Session"/"Scene"/"Hierarchy" literals it used to ship with — those can only
+        /// ever match Global/Hybrid scopes, since Scene/Hierarchy ids are instance-qualified
+        /// (HANDOFF_TO_SESSION_B.md E-CHAIN item 3). Choices are the raw scope ids (what
+        /// TrackedAsset.ScopeName actually stores, so the equality filter below keeps working
+        /// unmodified); <see cref="FormatScopeChoice"/> renders the friendly label instead.
+        /// </summary>
+        private void UpdateScopeFilterChoices()
+        {
+            var choices = new List<string> { "All" };
+            choices.AddRange(_tracker.TrackedScopes.Keys.OrderBy(id => id, StringComparer.Ordinal));
+
+            // Only touch `choices` when the live scope set actually changed - reassigning it
+            // every refresh tick (this runs on the auto-refresh timer) would close an open
+            // dropdown popup and reset scroll position underneath the user for no reason.
+            if (_scopeFilter.choices == null || !_scopeFilter.choices.SequenceEqual(choices))
+            {
+                _scopeFilter.choices = choices;
+                _scopeFilter.formatListItemCallback = FormatScopeChoice;
+                _scopeFilter.formatSelectedValueCallback = FormatScopeChoice;
+
+                // The previously selected scope disappeared (e.g. its scene unloaded) - fall
+                // back to "All" instead of leaving the field pointing at a stale value that is
+                // no longer in `choices`.
+                if (!choices.Contains(_scopeFilter.value))
+                {
+                    _scopeFilter.SetValueWithoutNotify("All");
+                }
+            }
+        }
+
         private void RefreshPerformanceTab()
         {
             var summary = _metrics.GetSummary();
@@ -479,17 +532,36 @@ namespace AddressableManager.Editor.Windows
             }
         }
 
+        /// <summary>
+        /// Rebuilds each tracked scope's stats/asset list in place — one Foldout per LIVE scope
+        /// id from <see cref="AssetTrackerService.TrackedScopes"/>, created lazily the first time
+        /// a given id is seen (see <see cref="GetOrCreateScopeFoldout"/>) rather than a fixed
+        /// 4-entry set. This is the Dashboard's real "Scopes" surface — the one place E-CHAIN
+        /// item 4's DisplayName payload actually needs to land for a user to see it
+        /// (HANDOFF_TO_SESSION_B.md §4.5; BaseScopeInspector already did this correctly for the
+        /// per-object Inspector, this mirrors that pattern here).
+        /// </summary>
         private void RefreshScopesTab()
         {
-            foreach (var kvp in _scopeElements)
-            {
-                var scopeName = kvp.Key;
-                var (foldout, statsLabel, listView, cleanupBtn) = kvp.Value;
+            if (_scopesScroll == null) return;
 
-                var assets = _tracker.GetAssetsByScope(scopeName);
+            foreach (var kvp in _tracker.TrackedScopes.OrderBy(s => GetScopeCategory(s.Key))
+                         .ThenBy(s => s.Value.DisplayName, StringComparer.Ordinal))
+            {
+                var scopeId = kvp.Key;
+                var scope = kvp.Value;
+                var (foldout, statsLabel, listView, cleanupBtn) = GetOrCreateScopeFoldout(scopeId);
+
+                var category = GetScopeCategory(scopeId);
+                foldout.text = scope.DisplayName == scopeId
+                    ? $"{category} Scope"
+                    : $"{scope.DisplayName} ({category} Scope)";
+
+                var assets = scope.Assets;
                 var memory = assets.Sum(a => a.MemorySize);
 
-                statsLabel.text = $"Assets: {assets.Count} | Memory: {memory / (1024f * 1024f):F2} MB";
+                statsLabel.text = $"Assets: {assets.Count} | Memory: {memory / (1024f * 1024f):F2} MB" +
+                                   (scope.IsActive ? "" : "  |  inactive");
 
                 listView.itemsSource = assets;
                 listView.makeItem = () => new Label();
@@ -502,6 +574,54 @@ namespace AddressableManager.Editor.Windows
                 listView.fixedItemHeight = 25;
                 listView.Rebuild();
             }
+        }
+
+        /// <summary>
+        /// Returns the cached Foldout/stats/list/cleanup group for <paramref name="scopeId"/>,
+        /// building and appending it to <see cref="_scopesScroll"/> the first time this id is
+        /// seen. Reusing the cached elements (rather than clearing and rebuilding the scroll view
+        /// every refresh) keeps a Foldout's expanded/collapsed state stable across the
+        /// auto-refresh timer.
+        /// </summary>
+        private (Foldout foldout, Label stats, ListView list, Button cleanup) GetOrCreateScopeFoldout(string scopeId)
+        {
+            if (_scopeElements.TryGetValue(scopeId, out var existing))
+            {
+                return existing;
+            }
+
+            var foldout = new Foldout { value = false };
+            foldout.AddToClassList("scope-foldout");
+
+            var statsLabel = new Label();
+            statsLabel.AddToClassList("scope-stats");
+
+            var listView = new ListView();
+            listView.AddToClassList("scope-asset-list");
+
+            var cleanupBtn = new Button { text = "Cleanup" };
+            cleanupBtn.AddToClassList("scope-button");
+            cleanupBtn.clicked += () =>
+            {
+                var displayName = AssetMonitorBridge.GetDisplayName(scopeId);
+                if (EditorUtility.DisplayDialog($"Cleanup {displayName} Scope",
+                    $"Are you sure you want to cleanup the {displayName} scope?",
+                    "Yes", "Cancel"))
+                {
+                    _tracker.ClearScope(scopeId);
+                    RefreshScopesTab();
+                }
+            };
+
+            foldout.Add(statsLabel);
+            foldout.Add(listView);
+            foldout.Add(cleanupBtn);
+
+            _scopesScroll.Add(foldout);
+
+            var entry = (foldout, statsLabel, listView, cleanupBtn);
+            _scopeElements[scopeId] = entry;
+            return entry;
         }
 
         #endregion
@@ -566,7 +686,14 @@ namespace AddressableManager.Editor.Windows
             var memoryLabel = element.Q<Label>("memory-label");
 
             addressLabel.text = asset.Address;
-            infoLabel.text = $"{asset.TypeName} • {asset.ScopeName} Scope • Loaded {GetTimeSince(asset.LoadTime)} ago";
+
+            // Friendly label ("MainScene") next to the category ("Scene") rather than the raw
+            // instance-qualified scope id ("Scene-MainScene#h1234") a user has no reason to parse
+            // (HANDOFF_TO_SESSION_B.md E-CHAIN item 4).
+            var displayName = AssetMonitorBridge.GetDisplayName(asset.ScopeName);
+            var category = GetScopeCategory(asset.ScopeName);
+            var scopeLabel = displayName == asset.ScopeName ? category : $"{displayName} ({category})";
+            infoLabel.text = $"{asset.TypeName} • {scopeLabel} Scope • Loaded {GetTimeSince(asset.LoadTime)} ago";
             refsLabel.text = $"Refs: {asset.ReferenceCount}";
             memoryLabel.text = $"{asset.MemorySize / 1024f:F0} KB";
         }
@@ -748,5 +875,74 @@ namespace AddressableManager.Editor.Windows
         }
 
         #endregion
+
+        /// <summary>
+        /// Compact CDN status row — task 4.8.
+        /// </summary>
+        /// <remarks>
+        /// Built in code rather than added to the window's UXML on purpose: this file's UXML is
+        /// shared with the rest of the dashboard, and threading a CDN row through it would couple
+        /// two features that are otherwise independent. Rebuilt whenever the window is opened, so
+        /// there is no staleness to manage.
+        ///
+        /// Reads live state only in play mode. Outside it the runtime has nothing to report, and
+        /// showing the last known values would be worse than showing none.
+        /// </remarks>
+        private VisualElement CreateCdnStatusStrip()
+        {
+            var strip = new VisualElement();
+            strip.style.flexDirection = FlexDirection.Row;
+            strip.style.alignItems = Align.Center;
+            strip.style.paddingLeft = 6;
+            strip.style.paddingRight = 6;
+            strip.style.paddingTop = 3;
+            strip.style.paddingBottom = 3;
+            strip.style.borderBottomWidth = 1;
+            strip.style.borderBottomColor = new StyleColor(new Color(0f, 0f, 0f, 0.25f));
+
+            var label = new Label(DescribeCdnState());
+            label.style.flexGrow = 1;
+            label.style.overflow = Overflow.Hidden;
+            label.style.textOverflow = TextOverflow.Ellipsis;
+            label.tooltip = "CDN environment, catalog version and cache usage. Live values appear in play mode.";
+            strip.Add(label);
+
+            var open = new Button(() =>
+                AddressableManager.Editor.Cdn.Windows.CdnManagerWindow.ShowWindow())
+            {
+                text = "CDN Manager"
+            };
+            open.style.minWidth = 100;
+            strip.Add(open);
+
+            // 1 Hz while the window is open; stopped on detach so a closed window does not keep
+            // waking the editor.
+            var poll = strip.schedule.Execute(() => label.text = DescribeCdnState()).Every(1000);
+            strip.RegisterCallback<DetachFromPanelEvent>(_ => poll?.Pause(), TrickleDown.TrickleDown);
+
+            return strip;
+        }
+
+        /// <summary>One line describing CDN state, or why there is none.</summary>
+        private static string DescribeCdnState()
+        {
+            string version = UnityEditor.PlayerSettings.bundleVersion;
+
+            if (!EditorApplication.isPlaying)
+                return $"CDN  ·  app {version}  ·  not in play mode";
+
+            if (!AddressableManager.Cdn.CdnManager.IsInitialized)
+                return $"CDN  ·  app {version}  ·  not initialised";
+
+            var cache = AddressableManager.Cdn.CdnManager.GetCacheStats();
+            string cacheText = cache.IsValid
+                ? $"cache {cache.OccupiedBytes / (1024 * 1024)} MB"
+                : "cache not reported";
+
+            return $"CDN  ·  {AddressableManager.Cdn.CdnManager.CurrentEnvironmentId}" +
+                   $"  ·  app {version}  ·  {cacheText}" +
+                   $"  ·  {AddressableManager.Cdn.CdnManager.NetworkState}";
+        }
+
     }
 }

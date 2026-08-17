@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CDN — Bàn giao trạng thái &amp; chiến lược làm tiếp</title>
+<style>
+:root{
+  --bg:#fff; --bg2:#f7f8fa; --code:#f3f4f6; --fg:#1a1d21; --mut:#5a626e; --sub:#868e9a;
+  --bd:#e4e7ea; --bd2:#ccd1d7; --ac:#2f6feb; --acs:#eaf1fe; --acb:#b9d0fb;
+  --wn:#a25c00; --wns:#fdf4e6; --wnb:#f0d8ad; --dg:#bf3b30; --dgs:#fdeeec; --dgb:#f3c6c1;
+  --ok:#1b7a4b; --oks:#eaf7f0;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#131619; --bg2:#191d21; --code:#1d2126; --fg:#e3e7ea; --mut:#98a1ac; --sub:#727b87;
+  --bd:#282e35; --bd2:#3a424b; --ac:#74a4ff; --acs:#17233a; --acb:#2d4470;
+  --wn:#e0a558; --wns:#2a2115; --wnb:#4d3c1e; --dg:#f08078; --dgs:#2d1a18; --dgb:#573029;
+  --ok:#5ec48d; --oks:#152a20;}}
+:root[data-theme="dark"]{
+  --bg:#131619; --bg2:#191d21; --code:#1d2126; --fg:#e3e7ea; --mut:#98a1ac; --sub:#727b87;
+  --bd:#282e35; --bd2:#3a424b; --ac:#74a4ff; --acs:#17233a; --acb:#2d4470;
+  --wn:#e0a558; --wns:#2a2115; --wnb:#4d3c1e; --dg:#f08078; --dgs:#2d1a18; --dgb:#573029;
+  --ok:#5ec48d; --oks:#152a20;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:1rem}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+main{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem 6rem}
+h1{font-size:1.85rem;margin:0 0 .4rem;letter-spacing:-.02em;line-height:1.25}
+h2{font-size:1.35rem;margin:3rem 0 .9rem;padding-top:1.5rem;border-top:2px solid var(--bd2);letter-spacing:-.015em;scroll-margin-top:1rem}
+h3{font-size:1.05rem;margin:2rem 0 .6rem}
+h4{font-size:.94rem;margin:1.4rem 0 .5rem;color:var(--mut)}
+p{margin:0 0 1rem}
+ul,ol{margin:0 0 1rem;padding-left:1.4rem}
+li{margin-bottom:.4rem}
+a{color:var(--ac)}
+strong{font-weight:650}
+code{font-family:var(--mono);font-size:.855em;background:var(--code);padding:.12em .38em;border-radius:4px;border:1px solid var(--bd);word-break:break-word}
+pre{background:var(--code);border:1px solid var(--bd);border-radius:8px;padding:.9rem 1.05rem;overflow-x:auto;margin:0 0 1.2rem;line-height:1.5}
+pre code{background:none;border:none;padding:0;font-size:.82rem;white-space:pre}
+.tw{overflow-x:auto;margin:0 0 1.3rem;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.875rem;min-width:520px}
+th,td{padding:.5rem .75rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--bd)}
+th{background:var(--bg2);font-weight:650;font-size:.8rem;white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td code,th code{font-size:.83em;white-space:nowrap}
+.note{border-left:3px solid var(--ac);background:var(--acs);padding:.8rem 1.05rem;border-radius:0 6px 6px 0;margin:0 0 1.3rem}
+.note.w{border-left-color:var(--wn);background:var(--wns)}
+.note.d{border-left-color:var(--dg);background:var(--dgs)}
+.note.g{border-left-color:var(--ok);background:var(--oks)}
+.note p:last-child{margin-bottom:0}
+.tag{display:block;font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.3rem;color:var(--ac)}
+.note.w .tag{color:var(--wn)} .note.d .tag{color:var(--dg)} .note.g .tag{color:var(--ok)}
+.head{border-bottom:1px solid var(--bd);padding-bottom:1.3rem;margin-bottom:1.5rem}
+.meta{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.8rem}
+.b{display:inline-block;padding:.16rem .55rem;border-radius:999px;font-size:.73rem;font-family:var(--mono);border:1px solid var(--bd2);color:var(--mut);background:var(--bg2)}
+.b.g{background:var(--oks);border-color:var(--ok);color:var(--ok)}
+.b.a{background:var(--acs);border-color:var(--acb);color:var(--ac)}
+.b.w{background:var(--wns);border-color:var(--wnb);color:var(--wn)}
+.ok{color:var(--ok);font-weight:600}
+.no{color:var(--dg);font-weight:600}
+.pend{color:var(--wn);font-weight:600}
+.toc{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:.9rem 1.2rem;margin:1.5rem 0 2rem}
+.toc ol{margin:0;padding-left:1.3rem;columns:2;column-gap:2rem}
+.toc li{font-size:.875rem;margin-bottom:.2rem;break-inside:avoid}
+@media(max-width:700px){.toc ol{columns:1}}
+button.t{position:fixed;top:1rem;right:1rem;padding:.3rem .65rem;font-size:.75rem;cursor:pointer;background:var(--bg2);color:var(--mut);border:1px solid var(--bd);border-radius:6px;font-family:var(--sans)}
+</style>
+</head>
+<body>
+<button class="t" id="tb" type="button">Sáng / Tối</button>
+<main>
+
+<div class="head">
+<h1>CDN System — Bàn giao trạng thái &amp; chiến lược làm tiếp</h1>
+<p style="color:var(--mut);margin:0">Phase 0–4 đóng. Phase 5 còn phần cần thiết bị thật, CDN thật, và một người nhìn UI.</p>
+<div class="meta">
+<span class="b a">branch: feat/cdn-system</span>
+<span class="b">HEAD: 58ba298</span>
+<span class="b g">Phase 0–2: đóng</span>
+<span class="b g">Phase 3: 11/11</span>
+<span class="b g">Phase 4: 8/8</span>
+<span class="b w">Phase 5: 5/10</span>
+<span class="b">Unity 6000.5.7f1 · Addressables 2.9.1</span>
+</div>
+</div>
+
+<div class="toc">
+<ol>
+<li><a href="#now">Đang ở đâu</a></li>
+<li><a href="#done">Đã xong từng phase</a></li>
+<li><a href="#left">Còn lại — và tại sao</a></li>
+<li><a href="#api">Bẫy API đã xác minh</a></li>
+<li><a href="#lesson">Kiểu lỗi lặp lại</a></li>
+<li><a href="#cmd">Lệnh cần dùng</a></li>
+<li><a href="#next">Làm gì tiếp</a></li>
+</ol>
+</div>
+
+<h2 id="now">1. Đang ở đâu</h2>
+
+<p>Nhánh <code>feat/cdn-system</code>, đã push. Compile 0 lỗi. Settings contract 70/70.
+Đã phát hành: <code>4.1.0-pre.1</code> (Editor pipeline), <code>4.1.0-pre.2</code> (runtime layer),
+<code>4.1.0-pre.3</code> (download, cache, chẩn đoán), <code>4.1.0-pre.4</code> (Catalog Inspector, UPM samples,
+hướng dẫn dev game, dọn dead code).</p>
+
+<div class="tw"><table>
+<thead><tr><th>Phase</th><th>Trạng thái</th><th>Kiểm chứng</th></tr></thead>
+<tbody>
+<tr><td>0 — Nền móng</td><td class="ok">đóng</td><td>PlayMode test qua HTTP thật</td></tr>
+<tr><td>1 — Build &amp; content update</td><td class="ok">13/13</td><td>tiêu chí thoát đo được: 2,076 MB / 2,5 MB</td></tr>
+<tr><td>2 — Runtime bootstrap</td><td class="ok">10/10</td><td>4 test tích hợp, xanh 2 lượt</td></tr>
+<tr><td>3 — Download orchestration</td><td class="ok">11/11</td><td>12 unit test xanh 2 lượt; <strong>3 tiêu chí đo chưa chạy</strong></td></tr>
+<tr><td>4 — Cache, errors, diagnostics</td><td class="ok">8/8</td><td>14/14 mã lỗi có mục troubleshooting</td></tr>
+<tr><td>5 — Hardening &amp; rollout</td><td class="pend">5/10</td><td>fault injection 5/5; Catalog Inspector đọc catalog nhị phân thật (5.9); hướng dẫn dev game (5.5); <strong>6/6 tab</strong> dựng + refresh sạch</td></tr>
+</tbody></table></div>
+
+<h2 id="done">2. Đã xong từng phase</h2>
+
+<h3>Editor pipeline (Phase 0–1)</h3>
+<p><code>CdnBuildPipeline</code> giữ chuỗi gate ở <strong>một chỗ duy nhất</strong>, dùng chung bởi CLI và tab Build:
+compile → state file có → version khớp → restriction → build → manifest → verify. Mọi gate chạy
+<em>trước</em> build, vì lỗi mà gate version chặn không phát hiện được sau đó.
+Kèm <code>CatalogVerifier</code>, <code>BuildManifest</code> + <code>ContentDiff</code>,
+<code>CdnProfileManager</code>, <code>LocalContentServer</code>, 2 workflow CI + 7 script.</p>
+
+<h3>Runtime (Phase 2–4)</h3>
+<p><code>CdnManager</code> là điểm vào: <code>InitializeAsync</code>, <code>CheckForUpdateAsync</code>,
+<code>ApplyUpdateAsync</code>, <code>GetDownloadSizeAsync</code>, <code>DownloadAsync</code>,
+<code>SetEnvironment</code>, <code>PromoteFailover</code>, <code>Cache</code>.
+Dưới nó: <code>CatalogService</code>, <code>DownloadService</code> (retry + backoff + jitter, huỷ,
+pre-flight, CRC auto-repair), <code>CacheService</code> (dọn bundle cũ tự động sau update),
+<code>CdnErrorMapper</code> (phân loại theo mã HTTP), <code>ICdnTelemetry</code>.</p>
+
+<div class="note g">
+<span class="tag">Đóng góp lớn nhất của Phase 4</span>
+<p><code>CleanObsoleteAsync</code> chạy tự động trong <code>ApplyUpdateAsync</code>. Addressables
+không tự xoá bundle bị thay thế; sau hai mươi bản update người chơi mang theo hai mươi thế hệ
+content. Đó là câu trả lời thường gặp cho "sao game 8 GB".</p>
+</div>
+
+<h2 id="left">3. Còn lại — và tại sao</h2>
+
+<div class="tw"><table>
+<thead><tr><th>Việc</th><th>Trạng thái</th><th>Lý do</th></tr></thead>
+<tbody>
+<tr><td>Tiêu chí đo Phase 3<br><span style="font-size:.85em">cancel/resume 30%, tốc độ ±15%, không alloc</span></td>
+<td class="pend">chưa chạy</td>
+<td>Cần corpus lớn <strong>không nén được</strong> (nặng thật trong git, khác corpus 2 MB hiện tại chỉ tốn 10 KiB),
+và đo alloc cần <code>Recorder</code> API thay Profiler UI. Throttle server <strong>đã có</strong> (<code>ServerFaults.Throttle</code>).</td></tr>
+<tr><td>5.2 Ma trận thiết bị</td><td class="no">không làm được</td><td>Không có thiết bị Android/iOS.</td></tr>
+<tr><td>5.3 Staging soak</td><td class="no">không làm được</td><td>Không có hạ tầng staging.</td></tr>
+<tr><td>5.4 Load/cost với CDN thật</td><td class="no">không làm được</td><td>Không có credential R2.</td></tr>
+<tr><td>5.7 Gỡ <code>[Obsolete]</code></td><td class="pend">không nên làm bây giờ</td>
+<td>Đây là hành động của bản <strong>5.0.0</strong>. Gỡ lúc này vi phạm invariant 6 và phá consumer đang dùng <code>pre.2</code>.</td></tr>
+<tr><td>5.9 Catalog Inspector</td><td class="ok">xong</td>
+<td>Không thêm dependency nào. <code>CatalogReader</code> reflect hai internal
+(<code>LoadFromFile</code>, <code>CreateCustomLocator</code>), phần còn lại là public interface;
+<code>CatalogReaderTests</code> ghim cả hai nên nâng Addressables mà đổi tên thì test đỏ.
+Lần chạy đầu trên catalog thật bắt được hai bug của chính nó: <code>BundleName</code> trong catalog là
+hash chứ không phải tên file, và bundle local (<code>RuntimePath</code>) bị tính là thiếu trên CDN —
+8 báo động giả cùng lúc. Có cả bản CLI (<code>CatalogInspectCLI</code>) để CI chặn publish.</td></tr>
+<tr><td>5.10 UI pass 6 tab</td><td class="pend">cần người nhìn</td>
+<td>Probe chứng minh dựng được, refresh được, kết luận đúng. <strong>Không</strong> chứng minh được nó trông thế nào.</td></tr>
+<tr><td>CI chạy lần đầu</td><td class="pend">chưa chạy</td>
+<td>Không có runner Unity self-hosted, không có credential. Đã kiểm cú pháp shell, cấu trúc YAML, 13 đường dẫn JSON.</td></tr>
+</tbody></table></div>
+
+<h2 id="api">4. Bẫy API đã xác minh trong source 2.9.1</h2>
+
+<div class="tw"><table>
+<thead><tr><th>API</th><th>Thực tế</th></tr></thead>
+<tbody>
+<tr><td><code>[BuildTarget]</code> vs <code>GetPlatformPathSubFolder()</code></td>
+<td>Build publish vào <code>StandaloneWindows64</code>; API runtime của Unity trả <code>Windows</code> cho <em>cùng</em> target
+(<code>PlatformMappingService.cs:93,:157</code>). Dùng API của Unity là <strong>404 toàn bộ</strong>.</td></tr>
+<tr><td><code>UpdateCatalogs</code></td>
+<td><code>autoCleanBundleCache</code> là tham số <strong>đầu tiên</strong> (<code>:2145</code>), source ghi rõ "must be listed first". Phải gọi bằng named argument.</td></tr>
+<tr><td><code>ChainOperation</code></td>
+<td><strong>Tự khởi động init khi đọc</strong> (<code>AddressablesImpl.cs:106</code>). Dùng <code>ResourceLocators</code> để kiểm "đã init chưa".</td></tr>
+<tr><td><code>ContentStateFilePath</code></td>
+<td>Luôn null sau update build (<code>BuildScriptPackedMode.cs:575</code>). Sau <em>full</em> build, null nghĩa là copy đã lỗi và bị nuốt (<code>BuildScriptBase.cs:376-389</code>).</td></tr>
+<tr><td><code>RemoteCatalog*FilePath</code></td><td>Public, đúng kiểu, <strong>không có chỗ nào gán</strong>. Luôn null.</td></tr>
+<tr><td><code>ContentCatalogData.LoadFromFile</code></td><td><code>internal</code>. Không parse được catalog nhị phân → 1.6 lấy inventory từ manifest.</td></tr>
+<tr><td><code>ContentStateBuildPath</code></td><td>Là <strong>thư mục</strong>; Addressables tự nối tên file (<code>ContentUpdateScript.cs:574</code>).</td></tr>
+<tr><td><code>AddressableAssetGroup.FlaggedDuringContentUpdateRestriction</code></td>
+<td><code>{ get; internal set; }</code> — code ngoài package không gán được. Cờ ở <em>entry</em> mới là public field.</td></tr>
+<tr><td><code>CheckCatalogsOperation</code></td>
+<td>Gộp lỗi con vào <strong>text</strong>, không lồng qua <code>InnerException</code>. Mapper phải trích <code>ResponseCode : NNN</code>.</td></tr>
+<tr><td>Newtonsoft.Json</td><td><strong>Không có trong project.</strong> Dùng <code>JsonUtility</code>.</td></tr>
+</tbody></table></div>
+
+<h2 id="lesson">5. Kiểu lỗi lặp lại</h2>
+
+<p>Không phải code sai. Là <strong>code chạy sạch, tự kiểm tra xanh, và không kiểm cái nó tưởng đang kiểm</strong>.</p>
+
+<ul>
+<li><code>CatalogService</code> phân loại lỗi bằng hàm nội bộ viết ở Phase 2 kèm ghi chú "Phase 3 sẽ thay" — Phase 3 thêm mapper và <strong>không quay lại</strong>. 503 ra <code>Unknown</code> + non-retryable, nghĩa là retry chưa bao giờ chạy cho thao tác catalog. Chỉ fault injection bắt được.</li>
+<li><code>CdnBuildSnapshotTests</code> — 4 test tên nghe như đo bundling thật, thực ra dựng bundle giả trong temp.</li>
+<li><code>TotalChangedBytes</code> đo hiệu kích thước thay vì số byte phải tải.</li>
+<li>Phép đo tốc độ cũ <strong>không có đơn vị</strong>: phân số/giây nhân 100 gắn nhãn KB/s.</li>
+<li>Corpus bản đầu: self-check đếm qua dict khoá ghép nên che mất việc entry bị dời group.</li>
+<li><code>ArchiveAfterBuild</code>, <code>ResolvePath</code> — viết xong, chưa ai gọi, bug nằm im.</li>
+<li><code>core.autocrlf</code> đổi LF→CRLF khi checkout, làm bundle khác hash <strong>dù không có gì thay đổi</strong>. Đã vá bằng <code>.gitattributes</code>.</li>
+</ul>
+
+<div class="note d">
+<span class="tag">Bắt buộc sau mọi lệnh Unity</span>
+<pre style="margin:.5rem 0 0"><code>grep -c "error CS" build.log     # phải là 0
+git status --short               # tác dụng phụ có xảy ra không
+ls / sha256sum &lt;file mong đợi&gt;   # nó có thật không</code></pre>
+<p style="margin-top:.6rem"><strong>Unity exit 0 kể cả khi assembly không compile và method không hề chạy.</strong>
+Và <code>LogAssert.ignoreFailingMessages</code> đặt trong <code>[SetUp]</code> <strong>không có tác dụng</strong> —
+runner reset nó sau SetUp.</p>
+</div>
+
+<h2 id="cmd">6. Lệnh cần dùng</h2>
+
+<pre><code>ROOT=.claude/worktrees/cdn-system-package-review-5545d3
+UNITY="C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe"
+
+# Settings contract (cũng là cách compile nhanh nhất)
+"$UNITY" -batchmode -quit -nographics -projectPath $ROOT \
+  -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup -profile Local
+
+# Build / update / verify
+"$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent       -cdnProfile Local
+"$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate -cdnProfile Local
+"$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput       -cdnProfile Local
+
+# Smoke check 6 tab (không cần mở Editor)
+"$UNITY" ... -executeMethod AddressableManager.Editor.Cdn.CdnTabProbeCLI.ProbeTabs
+
+# Test
+"$UNITY" ... -executeMethod AddressableManager.Tests.CdnSettingsFixture.EnsureTestSettings
+"$UNITY" ... -executeMethod AddressableManager.Tests.PlayModeTestSetup.EnsurePackedPlayModeBuilder
+"$UNITY" -batchmode -nographics -projectPath $ROOT -runTests -testPlatform EditMode  -testResults r.xml
+"$UNITY" -batchmode -nographics -projectPath $ROOT -runTests -testPlatform PlayMode -testResults r.xml</code></pre>
+
+<h2 id="next">7. Làm gì tiếp</h2>
+
+<ol>
+<li><strong>Mở 6 tab ra nhìn.</strong> Rẻ nhất, và gỡ đúng khoảng mù duy nhất mà batchmode không gỡ được. Nhớ kiểm ở bề rộng 560px (tiêu chí §5.10).</li>
+<li><strong>Chạy CI lần đầu</strong> trên bucket Dev vứt đi được. Cần secrets <code>R2_ENDPOINT</code>, <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code>, <code>CF_ZONE_ID</code>, <code>CF_API_TOKEN</code>; vars <code>R2_BUCKET</code>, <code>R2_ARCHIVE_BUCKET</code>, <code>CDN_GAME_PREFIX</code>, <code>CDN_BASE_URL</code>.</li>
+<li><strong>Đóng tiêu chí đo Phase 3</strong> — quyết định corpus lớn sinh lúc chạy (gitignore) hay commit.</li>
+<li><strong>Phase 5 phần cần thiết bị</strong> khi có máy thật và CDN thật.</li>
+</ol>
+
+<div class="note w">
+<span class="tag">Trước khi giao cho agent</span>
+<p><code>CLAUDE.md</code> ở gốc repo có routing table và ba tầng kiểm chứng. Doc thiết kế đã được sửa
+lời khuyên sai về static content ở <strong>cả hai bản ngôn ngữ</strong>; tập <code>id</code> vẫn khớp
+nên nút chuyển ngôn ngữ giữ nguyên vị trí đọc.</p>
+</div>
+
+</main>
+<script>
+(function(){
+  var r=document.documentElement,b=document.getElementById('tb'),s=null;
+  try{s=localStorage.getItem('cdn-handoff-theme')}catch(e){}
+  if(s)r.setAttribute('data-theme',s);
+  b.addEventListener('click',function(){
+    var d=window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var c=r.getAttribute('data-theme')||(d?'dark':'light');
+    var n=c==='dark'?'light':'dark';
+    r.setAttribute('data-theme',n);
+    try{localStorage.setItem('cdn-handoff-theme',n)}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

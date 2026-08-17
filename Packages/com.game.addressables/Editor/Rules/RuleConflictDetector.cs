@@ -19,7 +19,11 @@ namespace AddressableManager.Editor.Rules
             EmptyAddress,               // Empty or whitespace-only address
             CircularDependency,         // Asset depends on itself (circular reference)
             MissingReference,           // Asset references missing object
-            GroupConflict              // Asset in wrong group for its dependencies
+            GroupConflict,              // Asset in wrong group for its dependencies
+
+            // Added after the six types above existed - append only, do not renumber
+            // (HANDOFF_TO_SESSION_B.md §4.5 "Also").
+            SettingsNotInitialized      // AddressableAssetSettings could not be resolved at all
         }
 
         public class Conflict
@@ -51,6 +55,16 @@ namespace AddressableManager.Editor.Rules
 
             if (settings == null)
             {
+                // An empty list here is indistinguishable from "checked settings, found zero
+                // conflicts" - exactly the invariant-4 sentinel-value trap, and the reason a CI
+                // gate on conflicts.Count == 0 goes green on a project where Addressables was
+                // never initialized instead of failing loudly. Surface the missing-settings case
+                // as a real conflict entry instead of an empty result
+                // (HANDOFF_TO_SESSION_B.md §4.5 "Also").
+                conflicts.Add(new Conflict(
+                    ConflictType.SettingsNotInitialized,
+                    "AddressableAssetSettings could not be found - Addressables has not been initialized for this project",
+                    "Open Window > Asset Management > Addressables > Groups to initialize Addressables, or pass an explicit AddressableAssetSettings instance to DetectConflicts"));
                 return conflicts;
             }
 

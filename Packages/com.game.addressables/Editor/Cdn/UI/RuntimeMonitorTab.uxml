@@ -1,0 +1,19 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="monitor-root" class="cdn-tab-page">
+        <ui:HelpBox name="monitor-summary" text="Enter play mode to inspect live CDN state." class="cdn-preview-summary" />
+
+        <ui:VisualElement name="monitor-state" class="cdn-preview-state" />
+
+        <ui:VisualElement name="monitor-download" class="cdn-monitor-download">
+            <ui:Label name="monitor-download-label" text="No download in progress" class="cdn-monitor-download-label" />
+            <ui:ProgressBar name="monitor-download-bar" value="0" low-value="0" high-value="1" class="cdn-monitor-bar" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="monitor-actions" class="cdn-actions-row">
+            <ui:Button name="monitor-check-btn" text="Check for update" class="cdn-btn cdn-btn-wide" />
+            <ui:Button name="monitor-clean-btn" text="Clean obsolete" class="cdn-btn" />
+            <ui:Button name="monitor-clear-btn" text="Clear cache" class="cdn-btn" />
+            <ui:Button name="monitor-refresh-btn" text="Refresh" class="cdn-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

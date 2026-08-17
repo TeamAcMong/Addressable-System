@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEditor;
 using AddressableManager.Scopes;
 using AddressableManager.Core;
+using AddressableManager.Monitoring;
 
 namespace AddressableManager.Editor.Data
 {
@@ -38,6 +39,16 @@ namespace AddressableManager.Editor.Data
         public class TrackedScope
         {
             public string ScopeName { get; set; }
+
+            /// <summary>
+            /// Friendly label for this scope (falls back to <see cref="ScopeName"/>'s raw,
+            /// instance-qualified id when none was reported — see
+            /// <see cref="AssetMonitorBridge.GetDisplayName"/>). This is what the Dashboard should
+            /// show a user; <see cref="ScopeName"/> remains the lookup key
+            /// (HANDOFF_TO_SESSION_B.md E-CHAIN item 4).
+            /// </summary>
+            public string DisplayName { get; set; }
+
             public bool IsActive { get; set; }
             public List<TrackedAsset> Assets { get; set; } = new List<TrackedAsset>();
             public long TotalMemory => Assets.Sum(a => a.MemorySize);
@@ -150,6 +161,7 @@ namespace AddressableManager.Editor.Data
                 _trackedScopes[scopeName] = new TrackedScope
                 {
                     ScopeName = scopeName,
+                    DisplayName = AssetMonitorBridge.GetDisplayName(scopeName),
                     IsActive = isActive
                 };
             }
@@ -204,11 +216,18 @@ namespace AddressableManager.Editor.Data
         {
             var threshold = DateTime.Now.AddMinutes(-minutesThreshold);
 
+            // IsValid + ReferenceCount > 0 + no ref-count change in minutesThreshold is the full
+            // "stuck" signature on its own - still holding at least one reference, and nothing
+            // has loaded (cache hit) or released against it in a while. The previous extra
+            // "ReferenceCount == InitialRefCount" clause excluded exactly the over-retained case
+            // this method exists to catch: an asset repeatedly loaded from cache without a
+            // matching Release each time accumulates ReferenceCount above InitialRefCount (which
+            // is always 1, set once at first load) and can never satisfy that equality again, so
+            // it could never be flagged (HANDOFF_TO_SESSION_B.md §4.5 "Also").
             return _trackedAssets.Values
                 .Where(a => a.IsValid &&
                            a.ReferenceCount > 0 &&
-                           a.LastRefCountChange < threshold &&
-                           a.ReferenceCount == a.InitialRefCount)
+                           a.LastRefCountChange < threshold)
                 .ToList();
         }
 
@@ -257,6 +276,7 @@ namespace AddressableManager.Editor.Data
                 _trackedScopes[scopeName] = new TrackedScope
                 {
                     ScopeName = scopeName,
+                    DisplayName = AssetMonitorBridge.GetDisplayName(scopeName),
                     IsActive = true
                 };
             }

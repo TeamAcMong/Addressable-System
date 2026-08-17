@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using AddressableManager.Loaders;
+using AddressableManager.Managers;
 using AddressableManager.Monitoring;
 
 namespace AddressableManager.Scopes
@@ -29,6 +30,18 @@ namespace AddressableManager.Scopes
     ///
     /// // Clear all instances:
     /// HybridScope.ClearAllNamed("Session");
+    ///
+    /// Storage identity (see Documentation/LIFETIME_DESIGN.md §5 step 6 and
+    /// Documentation/HANDOFF_TO_SESSION_B.md A-12 for the full map): this is storage "D" — a
+    /// third, independent scope mechanism next to <see cref="GlobalAssetScope"/>/<c>SceneAssetScope</c>
+    /// (storage A/C) and <see cref="ScopeManager"/>'s own <c>"Session"</c> entry (storage B).
+    /// <c>HybridScope.Global</c>/<c>.Session</c> share NO state with
+    /// <see cref="AddressableManager.Facade.AddressablesFacade.GetGlobalScope"/> or
+    /// <c>AddressablesFacade.GetSessionLoader()</c> despite the identical names — each instance
+    /// reports to monitoring and to <see cref="ScopeManager"/>'s directory under a
+    /// <c>"Hybrid:"</c>-prefixed id (<c>"Hybrid:Global"</c>, <c>"Hybrid:Session"</c>,
+    /// <c>"Hybrid:{type}:{name}"</c>) precisely so it never collides with storage A/B/C's own
+    /// channels on the dashboard.
     /// </summary>
     public class HybridScope : IAssetScope, IDisposable
     {
@@ -52,10 +65,14 @@ namespace AddressableManager.Scopes
             {
                 lock (_lock)
                 {
-                    if (_globalInstance == null)
+                    // Treat a disposed instance as absent, not just a null one — belt-and-braces
+                    // for anyone who called Dispose() directly on the singleton (Deactivate() no
+                    // longer does; see its docs) instead of going through ClearAll(). Without this
+                    // the next Global access would hand back the disposed husk and every Loader
+                    // read off it would throw ObjectDisposedException forever (A-6b).
+                    if (_globalInstance == null || _globalInstance._disposed)
                     {
                         _globalInstance = new HybridScope("Global", null);
-                        AssetMonitorBridge.ReportScopeRegistered("Global", true);
                     }
                     return _globalInstance;
                 }
@@ -71,10 +88,10 @@ namespace AddressableManager.Scopes
             {
                 lock (_lock)
                 {
-                    if (_sessionInstance == null)
+                    // See Global's comment — same disposed-as-absent guard.
+                    if (_sessionInstance == null || _sessionInstance._disposed)
                     {
                         _sessionInstance = new HybridScope("Session", null);
-                        AssetMonitorBridge.ReportScopeRegistered("Session", true);
                     }
                     return _sessionInstance;
                 }
@@ -98,13 +115,15 @@ namespace AddressableManager.Scopes
             {
                 string key = $"{scopeType}:{instanceName}";
 
-                if (!_namedInstances.TryGetValue(key, out var instance))
+                // See Global's comment — treat a disposed entry as absent rather than handing
+                // back a husk. ClearNamed() removes the dictionary entry on Dispose, but a direct
+                // Dispose() call on the returned instance would not (A-6b).
+                if (!_namedInstances.TryGetValue(key, out var instance) || instance._disposed)
                 {
                     instance = new HybridScope(scopeType, instanceName);
                     _namedInstances[key] = instance;
 
                     Debug.Log($"[HybridScope] Created named instance: {key}");
-                    AssetMonitorBridge.ReportScopeRegistered(key, true);
                 }
 
                 return instance;
@@ -134,11 +153,12 @@ namespace AddressableManager.Scopes
 
                 if (_namedInstances.TryGetValue(key, out var instance))
                 {
+                    // Dispose() reports to monitoring / unregisters from ScopeManager's directory
+                    // itself now (using the "Hybrid:" id) — no separate report here.
                     instance.Dispose();
                     _namedInstances.Remove(key);
 
                     Debug.Log($"[HybridScope] Cleared named instance: {key}");
-                    AssetMonitorBridge.ReportScopeCleared(key);
                 }
             }
         }
@@ -156,9 +176,9 @@ namespace AddressableManager.Scopes
                 {
                     if (kvp.Key.StartsWith(scopeType + ":"))
                     {
+                        // Dispose() reports to monitoring / the directory itself — see ClearNamed.
                         kvp.Value.Dispose();
                         keysToRemove.Add(kvp.Key);
-                        AssetMonitorBridge.ReportScopeCleared(kvp.Key);
                     }
                 }
 
@@ -191,11 +211,11 @@ namespace AddressableManager.Scopes
             {
                 if (_sessionInstance != null)
                 {
+                    // Dispose() reports to monitoring / the directory itself — see ClearNamed.
                     _sessionInstance.Dispose();
                     _sessionInstance = null;
 
                     Debug.Log("[HybridScope] Cleared Session singleton");
-                    AssetMonitorBridge.ReportScopeCleared("Session");
                 }
             }
         }
@@ -208,7 +228,7 @@ namespace AddressableManager.Scopes
         {
             lock (_lock)
             {
-                // Clear singletons
+                // Clear singletons. Dispose() reports to monitoring / the directory itself now.
                 _globalInstance?.Dispose();
                 _globalInstance = null;
 
@@ -219,12 +239,40 @@ namespace AddressableManager.Scopes
                 foreach (var kvp in _namedInstances)
                 {
                     kvp.Value.Dispose();
-                    AssetMonitorBridge.ReportScopeCleared(kvp.Key);
                 }
 
                 _namedInstances.Clear();
 
                 Debug.Log("[HybridScope] Cleared all scopes (singletons + named instances)");
+            }
+        }
+
+        // Reset the three static stores on domain reload (Editor) and at the start of a fresh
+        // SubsystemRegistration in a build — the same job ScopeManager.ResetOnLoad already does
+        // for its own statics (Managers/ScopeManager.cs). Without this hook, with domain reload
+        // disabled (Enter Play Mode Options), _globalInstance/_sessionInstance/_namedInstances and
+        // every AssetLoader + handle they hold survive into the next Play session
+        // (HANDOFF_TO_SESSION_B.md A-6a). ClearAll() already disposes and nulls both singletons
+        // and clears the named-instance dictionary, so this is mostly delegation — but the
+        // explicit re-null after a caught exception is required: a throw partway through ClearAll
+        // must not leave a static pointing at a half-disposed scope.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOnLoad()
+        {
+            try
+            {
+                ClearAll();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[HybridScope] Reset failed: {ex}");
+            }
+
+            lock (_lock)
+            {
+                _globalInstance = null;
+                _sessionInstance = null;
+                _namedInstances.Clear();
             }
         }
 
@@ -241,7 +289,23 @@ namespace AddressableManager.Scopes
                 : $"{scopeType}:{instanceName}";
 
             _loader = new AssetLoader(loaderName);
+
+            // Self-report once, here, rather than at each of the three call sites (Global,
+            // Session, GetNamed) that used to do it separately — so every construction path
+            // reports under the same "Hybrid:"-prefixed id (see the class docs' storage-identity
+            // note / A-12). Registered with ScopeManager's directory as a foreign (not
+            // manager-owned) entry: ClearAll()/ClearAllExcept() can reach this loader's cache, but
+            // only this scope's own Dispose() may remove the entry or dispose the loader — the
+            // one-owner rule (LIFETIME_DESIGN.md §1, §5 step 6).
+            AssetMonitorBridge.ReportScopeRegistered(DirectoryId, true);
+            ScopeManager.Instance.RegisterExternal(DirectoryId, _loader, this);
         }
+
+        // "Hybrid:" prefixed so this scope's self-report never collides with the like-named
+        // storage GlobalAssetScope / ScopeManager's own "Session" entry report under their own,
+        // unprefixed ids — despite GetScopeName() returning the same "Global"/"Session"/"{type}:
+        // {name}" text those use for their (unrelated) storages. See the class docs.
+        private string DirectoryId => "Hybrid:" + GetScopeName();
 
         /// <summary>
         /// Asset loader for this scope
@@ -288,11 +352,17 @@ namespace AddressableManager.Scopes
         }
 
         /// <summary>
-        /// Deactivate and cleanup this scope (IAssetScope requirement)
+        /// Deactivate this scope (IAssetScope requirement) — clears its cache, same as
+        /// <see cref="BaseAssetScope.Deactivate"/>. Used to alias <see cref="Dispose"/>, which left
+        /// the owning static (<see cref="Global"/>/<see cref="Session"/>/a <c>GetNamed</c> entry)
+        /// pointing at a disposed instance: the next access threw <see cref="ObjectDisposedException"/>
+        /// forever instead of returning a usable scope (HANDOFF_TO_SESSION_B.md A-6b). This scope
+        /// stays usable after Deactivate() — the next <see cref="Loader"/> access re-populates the
+        /// cache exactly as it would for a freshly-created scope.
         /// </summary>
         public void Deactivate()
         {
-            Dispose();
+            ClearCache();
         }
 
         /// <summary>
@@ -344,6 +414,15 @@ namespace AddressableManager.Scopes
             Debug.Log($"[HybridScope] Disposing scope: {GetScopeName()}");
             _loader?.ClearCache();
             _loader?.Dispose();
+
+            // Single source of truth for both reports now — every caller that used to report
+            // these itself (Global/Session/GetNamed's creation, ClearNamed/ClearAllNamed/
+            // ClearSessionSingleton/ClearAll's teardown) relies on this happening here instead.
+            AssetMonitorBridge.ReportScopeCleared(DirectoryId);
+            // Pass _loader so ScopeManager only removes the entry if it's still ours — see
+            // BaseAssetScope.Dispose's identical comment (LIFETIME_DESIGN.md §1a).
+            ScopeManager.Instance.UnregisterExternal(DirectoryId, _loader);
+
             _disposed = true;
         }
 

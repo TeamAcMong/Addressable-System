@@ -1,0 +1,25 @@
+/*
+ * Runtime Monitor tab (task 4.6). Layout only; colours from --unity-colors-* per repo
+ * Invariant 5. Reuses .cdn-state-row / .cdn-state-key / .cdn-state-value from the Update
+ * Preview stylesheet rather than redefining them, so the two read as one window.
+ */
+
+.cdn-monitor-download {
+    flex-shrink: 0;
+    flex-direction: column;
+    margin-bottom: 6px;
+    padding: 6px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+}
+
+.cdn-monitor-download-label {
+    color: var(--unity-colors-default-text);
+    margin-bottom: 4px;
+    white-space: normal;
+}
+
+.cdn-monitor-bar {
+    height: 18px;
+}

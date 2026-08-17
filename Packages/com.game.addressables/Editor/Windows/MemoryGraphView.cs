@@ -111,9 +111,15 @@ namespace AddressableManager.Editor.Windows
         }
 
         /// <summary>
-        /// Clear all samples
+        /// Clear all samples.
         /// </summary>
-        public void Clear()
+        /// <remarks>
+        /// Named ClearSamples, not Clear, because this type is a <see cref="VisualElement"/> and
+        /// <c>VisualElement.Clear()</c> already means "remove my child elements". Two methods with
+        /// the same name doing unrelated things, chosen by the static type of the reference, is the
+        /// kind of thing that works until someone holds this as a VisualElement.
+        /// </remarks>
+        public void ClearSamples()
         {
             _samples.Clear();
             _maxMemory = 10f * 1024f * 1024f;

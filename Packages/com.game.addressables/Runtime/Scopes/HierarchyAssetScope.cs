@@ -8,8 +8,10 @@ namespace AddressableManager.Scopes
     /// Use for: per-character assets, per-enemy resources, UI panel assets, etc.
     ///
     /// Identity: each <c>HierarchyAssetScope</c> generates a unique scope id
-    /// of the form <c>Hierarchy-{name}#{instanceId}</c> by default. Override
-    /// via <see cref="customScopeId"/> (Inspector) or pass to
+    /// of the form <c>Hierarchy-{name}#{tag}</c> by default, where <c>tag</c> is a
+    /// per-object identifier guaranteed unique for the object's lifetime (its shape
+    /// varies by Unity version -- see <see cref="Awake"/>). Override via
+    /// <see cref="customScopeId"/> (Inspector) or pass to
     /// <see cref="AddTo(GameObject, string, string)"/>.
     /// </summary>
     public class HierarchyAssetScope : MonoBehaviour, IAssetScope
@@ -46,8 +48,27 @@ namespace AddressableManager.Scopes
                 customDisplayName = _pendingDisplayName;
             }
 
+            // Unity 6000.5 marks Object.GetInstanceID() Obsolete(error: true) (CS0619) --
+            // it no longer compiles. The obvious fix, GetEntityId() (available since
+            // 6000.4), returns the 64-bit EntityId struct -- but casting it back to int is
+            // *also* Obsolete(error: true) on 6000.5 ("EntityId will not be representable
+            // by an int in the future"), so the pre-6000.5 int-shaped id cannot be
+            // preserved past this version; Unity deliberately closed that door. This id is
+            // only used as an in-process ScopeManager dictionary key / monitoring channel
+            // name (see BaseAssetScope) -- never persisted or parsed back -- so a
+            // differently-shaped-but-still-unique string is safe, it just must not change
+            // *silently*. Below 6000.5: "#<signed 32-bit instance id>" (e.g. "#-1234").
+            // From 6000.5 on: "#<EntityId.ToString()>", which prints the struct's raw
+            // 64-bit value as an unsigned decimal (e.g. "#4294967295") -- same uniqueness
+            // guarantee, different shape. Do not "simplify" this back into a single call.
+#if UNITY_6000_5_OR_NEWER
+            string GetScopeInstanceTag() => GetEntityId().ToString();
+#else
+            string GetScopeInstanceTag() => GetInstanceID().ToString();
+#endif
+
             var id = string.IsNullOrEmpty(customScopeId)
-                ? $"Hierarchy-{gameObject.name}#{GetInstanceID()}"
+                ? $"Hierarchy-{gameObject.name}#{GetScopeInstanceTag()}"
                 : customScopeId;
             var display = string.IsNullOrEmpty(customDisplayName)
                 ? gameObject.name

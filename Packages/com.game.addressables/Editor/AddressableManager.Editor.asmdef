@@ -5,7 +5,8 @@
         "AddressableManager",
         "Unity.Addressables",
         "Unity.Addressables.Editor",
-        "Unity.ResourceManager"
+        "Unity.ResourceManager",
+        "UniTask"
     ],
     "includePlatforms": [
         "Editor"
@@ -16,6 +17,17 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "TMP_PRESENT"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.3.0",
+            "define": "UNITASK_PRESENT"
+        }
+    ],
     "noEngineReferences": false
 }

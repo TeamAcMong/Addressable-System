@@ -1,0 +1,22 @@
+# Line-ending policy for content that ends up inside asset bundles.
+#
+# WHY THIS FILE EXISTS
+# core.autocrlf is true on at least one machine here, so git rewrites LF to CRLF on checkout for
+# anything it considers text. For source that is harmless. For a TextAsset it is not: the converted
+# bytes are the bytes Unity packs into the bundle, so the same commit produces a different bundle
+# depending on who checked it out. Observed directly — corpus-asset-c.txt came back from a
+# `git checkout` at 175 bytes where the generator had written 173, and the next build emitted a
+# differently-hashed group C bundle with nothing in the project actually changed.
+#
+# That breaks the property the whole Phase 1 measurement rests on: a rebuild with no source change
+# must produce byte-identical bundles, or the snapshot diff cannot tell "rebuilt" from "changed",
+# and a Linux CI runner and a Windows workstation would disagree about every patch size.
+#
+# -text tells git to leave the bytes alone in both directions.
+
+# Test corpus: generated with LF by CdnTestContentCLI, must stay exactly as generated.
+Assets/Examples/CdnTest/*.txt -text
+Assets/Examples/CdnTest/*.png binary
+
+# The same reasoning applies to any future TextAsset that ships in a bundle. Add it here when you
+# add it to a group; a bundle whose bytes depend on the checkout is not reproducible.

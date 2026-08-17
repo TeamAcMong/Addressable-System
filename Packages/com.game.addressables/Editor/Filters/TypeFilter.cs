@@ -12,8 +12,15 @@ namespace AddressableManager.Editor.Filters
     public class TypeFilter : AssetFilterBase
     {
         [Header("Type Filter Settings")]
+        // Short name, matching the Tooltip's own examples and what Setup() below actually
+        // resolves: it tries Type.GetType(_typeName) unqualified first (fails for any UnityEngine
+        // type), THEN "UnityEngine.{_typeName}, UnityEngine" and "UnityEditor.{_typeName},
+        // UnityEditor". The previous default "UnityEngine.GameObject" defeated all three - the
+        // qualified fallbacks double-prefixed it into "UnityEngine.UnityEngine.GameObject, ..."
+        // - so _cachedType stayed null forever and this filter silently matched nothing out of
+        // the box (HANDOFF_TO_SESSION_B.md §4.5 "Also").
         [Tooltip("Asset type to match (e.g., Sprite, GameObject, AudioClip)")]
-        [SerializeField] private string _typeName = "UnityEngine.GameObject";
+        [SerializeField] private string _typeName = "GameObject";
 
         [Tooltip("Match derived types as well")]
         [SerializeField] private bool _includeSubclasses = true;

@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Basic address assignment rules - Assigns addresses based on asset paths",
-  "autoApplyOnImport": true,
+  "autoApplyOnImport": false,
   "autoApplyOnModified": false,
   "verboseLogging": false,
   "versionExpression": "",
@@ -14,9 +14,14 @@
       "priority": 100,
       "skipExisting": false,
       "targetGroupName": "UI",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/UISpritesPathFilter.asset"
+        }
+      ],
       "addressProviderType": "FileNameAddressProvider",
-      "addressProviderPath": ""
+      "addressProviderPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/FileNameAddressProvider.asset"
     },
     {
       "ruleName": "Prefabs by Path",
@@ -25,9 +30,14 @@
       "priority": 90,
       "skipExisting": false,
       "targetGroupName": "Prefabs",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/PrefabsPathFilter.asset"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
-      "addressProviderPath": ""
+      "addressProviderPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/PathAddressProvider.asset"
     },
     {
       "ruleName": "Audio by Filename",
@@ -36,9 +46,14 @@
       "priority": 80,
       "skipExisting": false,
       "targetGroupName": "Audio",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/AudioPathFilter.asset"
+        }
+      ],
       "addressProviderType": "FileNameAddressProvider",
-      "addressProviderPath": ""
+      "addressProviderPath": "Packages/com.game.addressables/Editor/Templates/BasicAddressRules/FileNameAddressProvider.asset"
     }
   ],
   "labelRules": [],

@@ -1,0 +1,17 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="update-preview-root" class="cdn-tab-page">
+        <ui:HelpBox name="update-preview-summary" text="Checking..." class="cdn-preview-summary" />
+
+        <ui:VisualElement name="update-preview-state" class="cdn-preview-state" />
+
+        <ui:ScrollView name="update-preview-scroll" class="cdn-preview-scroll">
+            <ui:VisualElement name="update-preview-rows" class="cdn-preview-rows" />
+        </ui:ScrollView>
+
+        <ui:VisualElement name="update-preview-actions" class="cdn-actions-row">
+            <ui:Button name="update-preview-prepare-btn" text="Prepare content update" class="cdn-btn cdn-btn-primary cdn-btn-wide" />
+            <ui:Button name="update-preview-check-btn" text="Re-check" class="cdn-btn" />
+            <ui:Button name="update-preview-copy-btn" text="Copy report" class="cdn-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

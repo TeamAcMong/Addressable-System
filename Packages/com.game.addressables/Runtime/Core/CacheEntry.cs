@@ -40,7 +40,14 @@ namespace AddressableManager.Core
         public long EstimatedSize { get; }
 
         /// <summary>
-        /// Cache key for this entry
+        /// Cache key for this entry, as supplied to <c>Set()</c> — display/log use only. This stays
+        /// <c>string</c> (not <c>AssetCacheKey</c>) because <see cref="CacheEntry{T}"/> is shared by
+        /// both <see cref="TieredCache{T}"/> and <see cref="ThreadSafeCacheManager{T}"/>, and the
+        /// latter's dictionary is still keyed by the plain string it was given
+        /// (HANDOFF_TO_SESSION_B.md L-9 is scoped to <see cref="TieredCache{T}"/>/
+        /// <see cref="AddressableManager.Loaders.TieredAssetLoader"/> — the real
+        /// <c>(address, Type)</c> dictionary key lives internally in <see cref="TieredCache{T}"/>
+        /// now; this field no longer needs to carry it).
         /// </summary>
         public string Key { get; }
 
@@ -48,6 +55,21 @@ namespace AddressableManager.Core
         /// Whether this entry is pinned (cannot be evicted)
         /// </summary>
         public bool IsPinned { get; set; }
+
+        /// <summary>
+        /// The <see cref="CalculateTierScore"/> value this entry was <em>selected</em> on during the
+        /// current eviction pass, so it is also the value the entry is <em>ordered</em> on.
+        /// </summary>
+        /// <remarks>
+        /// Written by the eviction pass immediately before sorting, and meaningless outside one.
+        /// It exists because <see cref="CalculateTierScore"/> is not stable across calls: it reads
+        /// <c>Time.realtimeSinceStartup</c> twice per call and that clock is not frame-latched, so a
+        /// comparer that recomputes it gives <c>List&lt;T&gt;.Sort</c> answers that drift while the
+        /// sort runs. Introsort detects the resulting intransitivity and throws
+        /// <c>InvalidOperationException: IComparer.Compare() method returns inconsistent results</c>.
+        /// Mirrors <c>AssetLoader.CachedAsset.SortScore</c>, which exists for the same reason.
+        /// </remarks>
+        public float SortScore { get; set; }
 
         public CacheEntry(string key, IAssetHandle<T> handle, long estimatedSize)
         {

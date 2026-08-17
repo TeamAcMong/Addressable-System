@@ -122,14 +122,27 @@ namespace AddressableManager.Editor.Rules
             if (_filters == null || _filters.Count == 0)
                 return false;
 
-            // AND logic - all filters must match
+            // AND logic over ENABLED filters. AssetFilterBase.IsMatch() returning true for a
+            // disabled filter is correct in isolation - a disabled filter must not veto the
+            // filters that ARE active. But ANDing only those "always true" disabled results
+            // together silently turns a rule into match-all the moment every one of its
+            // filters gets unchecked, and this rule runs against an unbounded project-wide
+            // scan (see GetAllAssetPaths()). Require at least one ENABLED filter to actually
+            // constrain the match; a rule with every filter disabled has no active constraint
+            // left and must not match anything (HANDOFF_TO_SESSION_B.md E-PAIR-1). Do not
+            // "fix" this by flipping AssetFilterBase.IsMatch's disabled-return-value instead -
+            // that would silently invert every already-configured filter across the project.
+            bool hasEnabledFilter = false;
             foreach (var filter in _filters)
             {
                 if (filter == null || !filter.IsMatch(assetPath))
                     return false;
+
+                if (filter.Enabled)
+                    hasEnabledFilter = true;
             }
 
-            return true;
+            return hasEnabledFilter;
         }
 
         /// <summary>
@@ -168,9 +181,20 @@ namespace AddressableManager.Editor.Rules
             if (group != null)
                 return group;
 
-            // Create new group
+            // Create new group.
+            // CreateGroup's schemasToCopy/types parameters are opt-in: passing null for
+            // schemasToCopy with no types (as this call used to) creates a group with an EMPTY
+            // schema set. Without a BundledAssetGroupSchema that group contributes nothing to a
+            // content build - silently (see Assets/AddressableAssetsData/AssetGroups/Scene.asset,
+            // which shipped exactly this way: two scene entries under
+            // m_SchemaSet: m_Schemas: []).
+            // AddressableGroupSchemaUtility.EnsureSchemas attaches the schemas a normal group
+            // needs right after creation; see its doc comment for why DefaultGroup's own schemas
+            // are preferred over fresh default-valued ones.
             Debug.Log($"[AddressRule] Creating new group: {_targetGroupName}");
-            return settings.CreateGroup(_targetGroupName, false, false, true, null);
+            var newGroup = settings.CreateGroup(_targetGroupName, false, false, true, null);
+            AddressableGroupSchemaUtility.EnsureSchemas(newGroup, settings);
+            return newGroup;
         }
 
         /// <summary>

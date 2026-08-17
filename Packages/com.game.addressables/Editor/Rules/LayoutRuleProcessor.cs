@@ -83,10 +83,18 @@ namespace AddressableManager.Editor.Rules
                 progressCallback?.Invoke(0.9f, "Processing version rules...");
                 ProcessVersionRules(allAssetPaths, result, progressCallback);
 
-                // Save changes
+                // Save changes - only if something was actually applied. A rule set that
+                // validates but matches nothing is the everyday case (not an error), and
+                // dirtying + saving AddressableAssetSettings.asset on every no-op run - which,
+                // with AutoApplyOnImport on, means every asset import in the project - produces
+                // spurious diffs/merge conflicts in a shared project for no actual change
+                // (HANDOFF_TO_SESSION_B.md §4.5 "Also").
                 progressCallback?.Invoke(0.95f, "Saving changes...");
-                EditorUtility.SetDirty(_settings);
-                AssetDatabase.SaveAssets();
+                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0)
+                {
+                    EditorUtility.SetDirty(_settings);
+                    AssetDatabase.SaveAssets();
+                }
 
                 progressCallback?.Invoke(1.0f, "Complete!");
                 Log($"Rule processing complete. Processed {result.TotalAssetsProcessed} assets.");
@@ -130,9 +138,12 @@ namespace AddressableManager.Editor.Rules
                 ProcessLabelRules(assetPaths, result, progressCallback);
                 ProcessVersionRules(assetPaths, result, progressCallback);
 
-                // Save
-                EditorUtility.SetDirty(_settings);
-                AssetDatabase.SaveAssets();
+                // Save - only if something was actually applied (see ApplyRules() above).
+                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0)
+                {
+                    EditorUtility.SetDirty(_settings);
+                    AssetDatabase.SaveAssets();
+                }
             }
             catch (Exception ex)
             {
@@ -161,19 +172,32 @@ namespace AddressableManager.Editor.Rules
             }
         }
 
+        // Rules are applied by ApplyRules() to every path GetAllAssetPaths() returns, and a rule
+        // whose filters are all individually disabled used to become match-all (see
+        // AddressRule.IsMatch fix). FindAssets("") with no folder scope searches the ENTIRE
+        // project database - Packages/ included - so that combination could rewrite addresses
+        // across package boundaries. Bound the scan to "Assets" and exclude
+        // Assets/AddressableAssetsData so rule application can never touch Addressables' own
+        // settings/group assets or anything outside the project's own asset tree
+        // (HANDOFF_TO_SESSION_B.md E-PAIR-1).
+        private const string ExcludedAddressableDataPrefix = "Assets/AddressableAssetsData/";
+
         private List<string> GetAllAssetPaths()
         {
             var paths = new List<string>();
 
-            // Get all asset GUIDs
-            var allGuids = AssetDatabase.FindAssets("");
+            // Get all asset GUIDs, scoped to the project's own Assets folder only.
+            var allGuids = AssetDatabase.FindAssets("", new[] { "Assets" });
             foreach (var guid in allGuids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
-                {
-                    paths.Add(path);
-                }
+                if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path))
+                    continue;
+
+                if (path.StartsWith(ExcludedAddressableDataPrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                paths.Add(path);
             }
 
             return paths;

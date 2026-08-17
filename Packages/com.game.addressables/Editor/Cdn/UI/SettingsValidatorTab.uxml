@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="validator-root" class="cdn-tab-page">
+        <ui:HelpBox name="validator-summary" text="Checking..." class="cdn-validator-summary" />
+
+        <ui:ScrollView name="validator-scroll" class="cdn-validator-scroll">
+            <ui:VisualElement name="validator-rows" class="cdn-validator-rows" />
+        </ui:ScrollView>
+
+        <ui:VisualElement name="validator-actions" class="cdn-actions-row">
+            <ui:Button name="validator-fix-all-btn" text="Fix All" class="cdn-btn cdn-btn-primary" />
+            <ui:Button name="validator-recheck-btn" text="Re-check" class="cdn-btn" />
+            <ui:Button name="validator-copy-btn" text="Copy report" class="cdn-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

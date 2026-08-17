@@ -126,9 +126,13 @@ namespace AddressableManager.Editor.Automation
         [MenuItem("Tools/Addressable Manager/Force Process All Assets")]
         public static void ForceProcessAllAssets()
         {
-            var allAssets = AssetDatabase.FindAssets("")
+            // Bound to "Assets" and exclude Assets/AddressableAssetsData - same unbounded
+            // FindAssets("") defect as LayoutRuleProcessor.GetAllAssetPaths, here reachable via
+            // the "Force Process All Assets" menu item (HANDOFF_TO_SESSION_B.md E-PAIR-1).
+            var allAssets = AssetDatabase.FindAssets("", new[] { "Assets" })
                 .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
                 .Where(path => !string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
+                .Where(path => !path.StartsWith("Assets/AddressableAssetsData/"))
                 .ToList();
 
             Debug.Log($"[AddressableAutoProcessor] Force processing {allAssets.Count} assets");

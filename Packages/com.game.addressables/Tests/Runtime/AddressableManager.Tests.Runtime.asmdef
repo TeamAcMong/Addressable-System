@@ -1,0 +1,38 @@
+{
+    "name": "AddressableManager.Tests.Runtime",
+    "rootNamespace": "AddressableManager.Tests",
+    "references": [
+        "AddressableManager",
+        "AddressableManager.Editor",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "TMP_PRESENT"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.3.0",
+            "define": "UNITASK_PRESENT"
+        }
+    ],
+    "noEngineReferences": false
+}

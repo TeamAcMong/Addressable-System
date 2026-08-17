@@ -1,0 +1,105 @@
+/*
+ * Settings Validator tab (design doc §5.10 mockup). Layout/spacing only, colours from
+ * --unity-colors-* (design doc §5.11 / repo Invariant 5). Status glyphs are real Image elements set
+ * from EditorGUIUtility.IconContent in SettingsValidatorTab.cs, not ::before/::after (not supported
+ * by USS).
+ */
+
+.cdn-tab-page {
+    flex-grow: 1;
+    flex-direction: column;
+    padding: 8px;
+}
+
+.cdn-validator-summary {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-validator-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+}
+
+.cdn-validator-rows {
+    flex-direction: column;
+}
+
+.cdn-section-header {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    background-color: var(--unity-colors-toolbar-background);
+    padding: 4px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-rule-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-rule-row:hover {
+    background-color: var(--unity-colors-highlight-background-inactive);
+}
+
+.cdn-rule-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.cdn-rule-key {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-rule-value {
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.cdn-rule-value-changed {
+    -unity-font-style: bold;
+}
+
+.cdn-rule-manual-tag {
+    margin-left: 8px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    font-size: 9px;
+    color: var(--unity-colors-default-text);
+    flex-shrink: 0;
+}
+
+.cdn-actions-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    padding-top: 6px;
+    justify-content: flex-end;
+}
+
+.cdn-btn {
+    min-width: 80px;
+    margin-left: 6px;
+}
+
+.cdn-btn-primary {
+    -unity-font-style: bold;
+}

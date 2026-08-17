@@ -10,6 +10,47 @@ using AddressableManager.Editor.Versioning;
 namespace AddressableManager.Editor.CLI
 {
     /// <summary>
+    /// Result data for JSON serialization in CLI commands
+    /// </summary>
+    [Serializable]
+    internal class CLIResultData
+    {
+        public bool success;
+        public int totalAssetsProcessed;
+        public int addressesApplied;
+        public int labelsApplied;
+        public int versionsApplied;
+        public List<string> warnings = new List<string>();
+        public List<string> errors = new List<string>();
+        public string timestamp;
+    }
+
+    /// <summary>
+    /// Result data for JSON serialization in <see cref="AddressableCLI.DetectConflicts"/>.
+    /// JsonUtility cannot serialize anonymous types (no [Serializable], and it reflects fields
+    /// not the properties an anonymous type actually has) — DetectConflicts used to build its
+    /// report as one and pass it straight to JsonUtility.ToJson, which silently produced "{}"
+    /// regardless of how many conflicts were found. This mirrors the same fix CLIResultData
+    /// already applies for ApplyRules' SaveResultToFile.
+    /// </summary>
+    [Serializable]
+    internal class ConflictReportEntry
+    {
+        public string type;
+        public string message;
+        public List<string> affectedAssets = new List<string>();
+        public string suggestion;
+    }
+
+    [Serializable]
+    internal class ConflictReportData
+    {
+        public string timestamp;
+        public int totalConflicts;
+        public List<ConflictReportEntry> conflicts = new List<ConflictReportEntry>();
+    }
+
+    /// <summary>
     /// CLI commands for CI/CD integration
     /// Can be called from command line with Unity batch mode
     /// </summary>
@@ -21,6 +62,14 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void ApplyRules()
         {
+            // Gate: do not report on an assembly that did not build
+            if (EditorUtility.scriptCompilationFailed)
+            {
+                LogError("FAILURE: script compilation failed");
+                EditorApplication.Exit(1);
+                return;
+            }
+
             var args = ParseCommandLineArgs();
 
             string layoutRuleAssetPath = GetArg(args, "layoutRuleAssetPath", "");
@@ -99,6 +148,27 @@ namespace AddressableManager.Editor.CLI
                     return;
                 }
 
+                // Check processor warnings if -warningAsError flag is set
+                if (warningAsError && result.Warnings.Count > 0)
+                {
+                    LogError($"  Warnings (treated as errors): {result.Warnings.Count}");
+                    foreach (var warning in result.Warnings)
+                    {
+                        LogError($"    {warning}");
+                    }
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                if (result.Warnings.Count > 0)
+                {
+                    LogWarning($"  Warnings: {result.Warnings.Count}");
+                    foreach (var warning in result.Warnings)
+                    {
+                        LogWarning($"    {warning}");
+                    }
+                }
+
                 EditorApplication.Exit(0);
             }
             catch (Exception ex)
@@ -115,6 +185,14 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void ValidateLayoutRules()
         {
+            // Gate: do not report on an assembly that did not build
+            if (EditorUtility.scriptCompilationFailed)
+            {
+                LogError("FAILURE: script compilation failed");
+                EditorApplication.Exit(1);
+                return;
+            }
+
             var args = ParseCommandLineArgs();
 
             string layoutRuleAssetPath = GetArg(args, "layoutRuleAssetPath", "");
@@ -193,6 +271,14 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void SetVersionExpression()
         {
+            // Gate: do not report on an assembly that did not build
+            if (EditorUtility.scriptCompilationFailed)
+            {
+                LogError("FAILURE: script compilation failed");
+                EditorApplication.Exit(1);
+                return;
+            }
+
             var args = ParseCommandLineArgs();
 
             string layoutRuleAssetPath = GetArg(args, "layoutRuleAssetPath", "");
@@ -257,6 +343,14 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void DetectConflicts()
         {
+            // Gate: do not report on an assembly that did not build
+            if (EditorUtility.scriptCompilationFailed)
+            {
+                LogError("FAILURE: script compilation failed");
+                EditorApplication.Exit(1);
+                return;
+            }
+
             var args = ParseCommandLineArgs();
             string reportFilePath = GetArg(args, "reportFilePath", "conflicts.json");
 
@@ -264,17 +358,17 @@ namespace AddressableManager.Editor.CLI
             {
                 var conflicts = RuleConflictDetector.DetectConflicts();
 
-                var report = new
+                var report = new ConflictReportData
                 {
                     timestamp = DateTime.UtcNow.ToString("o"),
                     totalConflicts = conflicts.Count,
-                    conflicts = conflicts.Select(c => new
+                    conflicts = conflicts.Select(c => new ConflictReportEntry
                     {
                         type = c.Type.ToString(),
                         message = c.Message,
                         affectedAssets = c.AffectedAssets,
                         suggestion = c.Suggestion
-                    })
+                    }).ToList()
                 };
 
                 string json = JsonUtility.ToJson(report, true);
@@ -298,6 +392,83 @@ namespace AddressableManager.Editor.CLI
             }
         }
 
+        /// <summary>
+        /// Import rules from a JSON template file
+        /// Usage: Unity -batchmode -executeMethod AddressableManager.Editor.CLI.AddressableCLI.ImportRules -layoutRuleAssetPath "Assets/Rules/Main.asset" -importFilePath "Packages/com.game.addressables/Editor/Templates/VersionedAssetsRules.json" -mergeMode true
+        /// </summary>
+        public static void ImportRules()
+        {
+            // Gate: do not report on an assembly that did not build
+            if (EditorUtility.scriptCompilationFailed)
+            {
+                LogError("FAILURE: script compilation failed");
+                EditorApplication.Exit(1);
+                return;
+            }
+
+            var args = ParseCommandLineArgs();
+
+            string layoutRuleAssetPath = GetArg(args, "layoutRuleAssetPath", "");
+            string importFilePath = GetArg(args, "importFilePath", "");
+            bool mergeMode = GetArg(args, "mergeMode", false);
+
+            if (string.IsNullOrEmpty(layoutRuleAssetPath))
+            {
+                LogError("Missing required argument: -layoutRuleAssetPath");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(importFilePath))
+            {
+                LogError("Missing required argument: -importFilePath");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            if (!File.Exists(importFilePath))
+            {
+                LogError($"Import file not found: {importFilePath}");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            var ruleData = AssetDatabase.LoadAssetAtPath<LayoutRuleData>(layoutRuleAssetPath);
+            if (ruleData == null)
+            {
+                LogError($"LayoutRuleData not found at path: {layoutRuleAssetPath}");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            try
+            {
+                bool success = RuleSerializer.ImportFromJson(ruleData, importFilePath, mergeMode);
+
+                if (success)
+                {
+                    Log($"✓ Rules imported successfully from: {importFilePath}");
+                    Log($"  Target: {layoutRuleAssetPath}");
+                    Log($"  Merge mode: {mergeMode}");
+
+                    EditorUtility.SetDirty(ruleData);
+                    AssetDatabase.SaveAssets();
+
+                    EditorApplication.Exit(0);
+                }
+                else
+                {
+                    LogError($"Failed to import rules from: {importFilePath}");
+                    EditorApplication.Exit(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Exception during rule import: {ex.Message}");
+                EditorApplication.Exit(2);
+            }
+        }
+
         #region Helpers
 
         private static Dictionary<string, string> ParseCommandLineArgs()
@@ -307,11 +478,22 @@ namespace AddressableManager.Editor.CLI
 
             for (int i = 0; i < cmdArgs.Length; i++)
             {
-                if (cmdArgs[i].StartsWith("-") && i + 1 < cmdArgs.Length)
+                if (cmdArgs[i].StartsWith("-"))
                 {
                     string key = cmdArgs[i].TrimStart('-');
-                    string value = cmdArgs[i + 1];
-                    args[key] = value;
+
+                    // Check if next argument exists and is not another flag
+                    if (i + 1 < cmdArgs.Length && !cmdArgs[i + 1].StartsWith("-"))
+                    {
+                        string value = cmdArgs[i + 1];
+                        args[key] = value;
+                        i++; // Skip the value argument
+                    }
+                    else
+                    {
+                        // Valueless flag defaults to "true"
+                        args[key] = "true";
+                    }
                 }
             }
 
@@ -331,15 +513,15 @@ namespace AddressableManager.Editor.CLI
 
         private static void SaveResultToFile(LayoutRuleProcessor.ProcessResult result, string filePath)
         {
-            var resultData = new
+            var resultData = new CLIResultData
             {
                 success = result.Success,
                 totalAssetsProcessed = result.TotalAssetsProcessed,
                 addressesApplied = result.AddressesApplied,
                 labelsApplied = result.LabelsApplied,
                 versionsApplied = result.VersionsApplied,
-                warnings = result.Warnings,
-                errors = result.Errors,
+                warnings = new List<string>(result.Warnings),
+                errors = new List<string>(result.Errors),
                 timestamp = DateTime.UtcNow.ToString("o")
             };
 

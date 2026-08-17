@@ -200,7 +200,7 @@ namespace AddressableManager.Editor.Tools
 
         private static void CreateScopeObject<T>(string name) where T : Component
         {
-            var existing = Object.FindObjectOfType<T>();
+            var existing = Object.FindAnyObjectByType<T>();
             if (existing != null)
             {
                 Debug.LogWarning($"{typeof(T).Name} already exists on {existing.gameObject.name}");

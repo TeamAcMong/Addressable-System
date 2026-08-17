@@ -1,0 +1,146 @@
+# Delta content update — no player build.
+#
+# Patches content for an app version that is already in players' hands. Identical to
+# content-full.yml apart from the two steps at the front: it restores the baseline that version
+# shipped with, and builds a delta against it instead of a new full set.
+#
+# The version cannot be chosen freely. It must be a version that has an archived
+# addressables_content_state.bin, and ContentStateManager.Validate refuses the build if the state
+# file's playerVersion does not match the live PlayerSettings.bundleVersion — the check that stops
+# a patch from being written to a path no shipped player polls.
+
+name: Content Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Unity build target
+        required: true
+        type: choice
+        options: [Android, iOS, StandaloneWindows64]
+      environment:
+        description: CDN profile to build against
+        required: true
+        type: choice
+        options: [Dev, Staging, Prod]
+      app_version:
+        description: Shipped app version being patched (must have an archived baseline)
+        required: true
+        type: string
+
+concurrency:
+  # Two updates for the same version and platform would build against the same baseline and each
+  # publish a catalog naming only its own bundles; the second to finish would silently drop the
+  # first patch's content.
+  group: content-${{ inputs.platform }}-${{ inputs.app_version }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: [self-hosted, unity]
+    env:
+      PLATFORM: ${{ inputs.platform }}
+      APP_VERSION: ${{ inputs.app_version }}
+      GAME: ${{ vars.CDN_GAME_PREFIX }}
+      BUCKET: ${{ vars.R2_BUCKET }}
+      ARCHIVE_BUCKET: ${{ vars.R2_ARCHIVE_BUCKET }}
+      CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clean previous output
+        # Must happen before the fetch: fetch-content-state.sh refuses to overwrite an existing
+        # state file, so that the baseline this patch is built against is never ambiguous.
+        run: rm -rf ServerData
+
+      - name: Fetch content state for the target app version
+        run: ./ci/fetch-content-state.sh
+
+      - name: Apply the settings contract
+        # Every Unity step goes through ci/unity-run.sh, which scans the log for `error CS` instead of
+        # trusting the exit code — Unity exits 0 from -executeMethod when the assembly did not compile,
+        # so the method never runs and the step passes. The CLI's own scriptCompilationFailed gate
+        # cannot cover that case: it lives in the assembly that is broken.
+        run: |
+          ci/unity-run.sh --name "Apply the settings contract" -- \
+            -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
+            -profile "${{ inputs.environment }}"
+
+      - name: Build content update
+        # Gates on version match and content-update restrictions before building. A static-group
+        # change fails here by design, naming the offending asset.
+        #
+        # --expect matters more here than on a full build: a delta build also writes the new
+        # content_state.bin that every later update diffs against, so a run that reports success
+        # without producing output would corrupt the baseline silently.
+        run: |
+          ci/unity-run.sh --name "Build content update" \
+            --expect "ServerData/build-manifest.json" -- \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate \
+            -cdnProfile "${{ inputs.environment }}" \
+            -buildTarget "${{ inputs.platform }}"
+
+      - name: Verify output before anything reaches the network
+        run: |
+          ci/unity-run.sh --name "Verify output" -- \
+            -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput \
+            -cdnProfile "${{ inputs.environment }}" \
+            -manifest "ServerData/build-manifest.json"
+
+      - name: Check the catalog against the bundles about to be uploaded
+        # Different question from the step above. VerifyOutput checks the build against its own
+        # manifest; this checks the catalog against the files on disk. A catalog referencing a
+        # bundle that is not in the folder produces a 404 on a device and nothing in the log.
+        run: |
+          ci/unity-run.sh --name "Catalog vs bundles on disk" -- \
+            -executeMethod AddressableManager.Editor.Cdn.CatalogInspectCLI.Inspect
+
+      - name: Compile against the minimum supported Unity
+        # This runner uses one editor. package.json declares a lower minimum, and code that
+        # compiles on the runner can still fail for everyone installing the package - that is
+        # exactly how 4.1.0-pre.4 shipped a CS1503. Set MIN_UNITY_EDITOR to an installed editor
+        # at the declared minimum; the step is skipped, loudly, when it is not set.
+        run: |
+          if [ -z "$MIN_UNITY_EDITOR" ]; then
+            echo "::warning::MIN_UNITY_EDITOR is not set - the package was NOT checked against its"
+            echo "::warning::declared minimum Unity. This publish is only known to compile on the runner."
+            exit 0
+          fi
+          ./Tools/check-min-unity-api.sh "$MIN_UNITY_EDITOR"
+
+      - name: Upload bundles
+        # Append-only: the patch adds new bundles, and the ones players already hold keep their
+        # names and are skipped by --size-only.
+        run: ./ci/upload-bundles.sh
+
+      - name: Upload catalog
+        run: ./ci/upload-catalog.sh
+
+      - name: Purge edge cache
+        run: ./ci/purge-catalog.sh
+
+      - name: Post-deploy check
+        run: ./ci/verify-urls.sh
+
+      - name: Archive content state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-state-${{ inputs.platform }}-${{ inputs.app_version }}-update
+          path: |
+            ServerData/ContentState/**/addressables_content_state.bin
+            ServerData/build-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Mirror content state to durable storage
+        # An update build does not emit a new state file, so this re-archives the baseline it
+        # consumed. That is deliberate: the next update builds against the same one.
+        run: ./ci/archive-content-state.sh

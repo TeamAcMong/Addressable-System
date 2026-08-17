@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using UnityEngine;
 using AddressableManager.Loaders;
+using AddressableManager.Managers;
 using AddressableManager.Monitoring;
 
 namespace AddressableManager.Scopes
@@ -58,7 +59,23 @@ namespace AddressableManager.Scopes
             _loader = new AssetLoader(_scopeId);
             _isActive = false;
 
+            // Must run BEFORE ReportScopeRegistered: EditorAssetMonitor.OnScopeRegistered handles
+            // that call synchronously and immediately looks up the display name to cache on the
+            // new TrackedScope (AssetTrackerService.RegisterScope). Registering the id-to-label
+            // pairing after would mean the very first lookup finds nothing and falls back to the
+            // raw id, so the Dashboard would show "Scene-MainScene#h1234" until something else
+            // happened to refresh it later (HANDOFF_TO_SESSION_B.md E-CHAIN item 4).
+            AssetMonitorBridge.ReportScopeDisplayName(_scopeId, _displayName);
             AssetMonitorBridge.ReportScopeRegistered(_scopeId, false);
+
+            // Makes every BaseAssetScope-backed loader (Global / Scene / Hierarchy) visible in
+            // ScopeManager's directory for the first time — registered as foreign (not
+            // manager-owned): ClearAll()/ClearAllExcept() can reach this loader's cache, but only
+            // this scope's own Dispose() below may remove the entry or dispose the loader (the
+            // one-owner rule, LIFETIME_DESIGN.md §1). This is what finally makes "Global" a real
+            // directory key and ClearAllExceptGlobal() do what its name says
+            // (HANDOFF_TO_SESSION_B.md A-7).
+            ScopeManager.Instance.RegisterExternal(_scopeId, _loader, this);
         }
 
         public virtual void Activate()
@@ -102,6 +119,11 @@ namespace AddressableManager.Scopes
 
             Deactivate();
             AssetMonitorBridge.ReportScopeCleared(_scopeId);
+            // Pass _loader (not yet nulled) so ScopeManager can identity-check it against
+            // whatever is currently registered under _scopeId before removing — a foreign
+            // registration collision means someone else's entry may be sitting there instead of
+            // ours, and that must not be deleted (LIFETIME_DESIGN.md §1a).
+            ScopeManager.Instance.UnregisterExternal(_scopeId, _loader);
 
             _loader?.Dispose();
             _loader = null;

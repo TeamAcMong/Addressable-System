@@ -23,7 +23,7 @@ namespace AddressableManager.API
     /// Trade-offs: More complex, requires deep understanding
     ///
     /// Usage:
-    ///   var loader = Advanced.CreateTieredLoader("CustomScope", config);
+    ///   var loader = Advanced.CreateLoader("CustomScope", config);
     ///   var result = await loader.LoadAssetAsyncSafe<Sprite>("UI/Icon");
     /// </summary>
     public static class Advanced
@@ -47,8 +47,39 @@ namespace AddressableManager.API
         }
 
         /// <summary>
+        /// Create a loader with intelligent tiered caching (Hot/Warm/Cold + eviction).
+        /// </summary>
+        /// <remarks>
+        /// Same tiering as the retired <c>CreateTieredLoader</c>, on the loader that also has
+        /// single-flight join, the post-await thread guard, label/<c>Safe</c>/<c>Instantiate</c>
+        /// loads, <c>ReleaseAsset</c>, and reachability from
+        /// <c>AssetLoaderRegistry.InvalidateAll</c> after a CDN catalog update.
+        ///
+        /// <para>No ambiguity with <see cref="CreateLoader(string)"/> — different arity, and
+        /// <paramref name="config"/> deliberately has no default value.</para>
+        /// </remarks>
+        public static AssetLoader CreateLoader(string scopeName, TieredCacheConfig config)
+        {
+            return new AssetLoader(scopeName, config);
+        }
+
+        /// <summary>
         /// Create tiered loader with intelligent caching
         /// </summary>
+        // The message spells out the config argument because this is NOT a mechanical rename: the
+        // `config = null` default here means "tiering ON, with TieredCacheConfig.Default", while
+        // Advanced.CreateLoader(scopeName) is a pre-existing overload that means "tiering OFF" and
+        // Advanced.CreateLoader(scopeName, null) throws ArgumentNullException. A caller following a
+        // bare "use CreateLoader(scopeName, config)" from a one-argument call site therefore lands
+        // on either a silently untiered loader or an exception. CHANGELOG.md covers this at length,
+        // but the CHANGELOG is not what the compiler prints.
+        [Obsolete("Use Advanced.CreateLoader(scopeName, config) — same tiering, on the loader that " +
+                  "also has single-flight, Safe/Result loads, InstantiateAsync and catalog " +
+                  "invalidation. NOTE: config is REQUIRED there and must not be null. If you are " +
+                  "calling CreateTieredLoader(name) with no config, the equivalent is " +
+                  "Advanced.CreateLoader(name, TieredCacheConfig.Default) — plain " +
+                  "CreateLoader(name) is a different overload that disables tiering. " +
+                  "Removed in 5.0.0.", false)]
         public static TieredAssetLoader CreateTieredLoader(string scopeName, TieredCacheConfig config = null)
         {
             return new TieredAssetLoader(scopeName, config);
@@ -58,17 +89,57 @@ namespace AddressableManager.API
 
         #region Hybrid Scopes
 
+        // Storage map (see HybridScope's class docs and Documentation/LIFETIME_DESIGN.md §5 step
+        // 6 / Documentation/HANDOFF_TO_SESSION_B.md A-12 for the full picture): HybridScope is an
+        // independent cache (storage "D") from the Facade's GlobalAssetScope (storage "A", reached
+        // via AddressablesFacade.GetGlobalScope() / Simple.*/Standard.* global calls) and from
+        // ScopeManager's own "Session" entry (storage "B", reached via
+        // AddressablesFacade.GetSessionLoader() / Assets.LoadSession / Standard.LoadSession).
+        // GetHybridGlobalScope()/GetHybridSessionScope() below are named to make that explicit at
+        // the call site — GetGlobalScope()/GetSessionScope() used to share a name with
+        // AddressablesFacade's own methods while returning a completely different cache.
+
         /// <summary>
-        /// Get Global hybrid scope (singleton)
+        /// Get Global hybrid scope (singleton) — storage "D". Distinct from
+        /// <see cref="AddressableManager.Facade.AddressablesFacade.GetGlobalScope"/> (storage "A");
+        /// see this region's storage-map note.
         /// </summary>
+        public static HybridScope GetHybridGlobalScope()
+        {
+            return HybridScope.Global;
+        }
+
+        /// <summary>
+        /// Get Session hybrid scope (singleton) — storage "D". Distinct from the
+        /// <c>AddressablesFacade</c>-owned <c>"Session"</c> entry (storage "B") returned by
+        /// <see cref="AddressableManager.Facade.AddressablesFacade.GetSessionLoader"/>; see this
+        /// region's storage-map note.
+        /// </summary>
+        public static HybridScope GetHybridSessionScope()
+        {
+            return HybridScope.Session;
+        }
+
+        /// <summary>
+        /// Superseded by <see cref="GetHybridGlobalScope"/> — identical behavior, renamed so the
+        /// call site doesn't read as <see cref="AddressableManager.Facade.AddressablesFacade.GetGlobalScope"/>'s
+        /// storage. The two used to share this name while returning independent caches that both
+        /// self-reported to monitoring as "Global" (HANDOFF_TO_SESSION_B.md A-12).
+        /// </summary>
+        [Obsolete("Use GetHybridGlobalScope() instead — identical behavior, renamed so the call site " +
+                  "can't be misread as AddressablesFacade.GetGlobalScope()'s storage. Removed in 5.0.0.", false)]
         public static HybridScope GetGlobalScope()
         {
             return HybridScope.Global;
         }
 
         /// <summary>
-        /// Get Session hybrid scope (singleton)
+        /// Superseded by <see cref="GetHybridSessionScope"/> — identical behavior, renamed so the
+        /// call site doesn't read as ScopeManager's <c>"Session"</c> entry
+        /// (HANDOFF_TO_SESSION_B.md A-12).
         /// </summary>
+        [Obsolete("Use GetHybridSessionScope() instead — identical behavior, renamed so the call " +
+                  "site can't be misread as ScopeManager's \"Session\" entry. Removed in 5.0.0.", false)]
         public static HybridScope GetSessionScope()
         {
             return HybridScope.Session;
@@ -183,9 +254,71 @@ namespace AddressableManager.API
             return new ThreadSafeCacheManager<T>(config);
         }
 
+        // The AssetLoader-typed members below are the live surface; the TieredAssetLoader-typed
+        // ones after them are their [Obsolete] predecessors, kept until 5.0.0 (repo invariant 6).
+        // Every member whose signature names TieredAssetLoader must itself carry [Obsolete] —
+        // otherwise it emits CS0618 from inside the package, in a user's console, at a call site
+        // they cannot fix. The compile gate cannot catch that: it passes -nowarn:0618.
+
+        /// <summary>
+        /// Pin asset in a tiering-configured loader to prevent eviction. Pinning before the asset
+        /// is loaded works — the request is remembered and applied when the key arrives.
+        /// </summary>
+        public static void PinAsset<T>(AssetLoader loader, string address)
+        {
+            loader.PinAsset<T>(address);
+        }
+
+        /// <summary>
+        /// Unpin asset, and cancel a pin still waiting for its key.
+        /// </summary>
+        public static void UnpinAsset<T>(AssetLoader loader, string address)
+        {
+            loader.UnpinAsset<T>(address);
+        }
+
+        /// <summary>
+        /// Force tier evaluation across every cached entry, of every Type.
+        /// </summary>
+        public static void EvaluateTiers(AssetLoader loader)
+        {
+            loader.EvaluateTiers();
+        }
+
+        /// <summary>
+        /// Force an eviction pass, ranking candidates of every Type together.
+        /// </summary>
+        public static void ForceEviction(AssetLoader loader)
+        {
+            loader.ForceEviction();
+        }
+
+        /// <summary>
+        /// Get tiered cache statistics restricted to entries cached as <typeparamref name="T"/>.
+        /// </summary>
+        /// <remarks>
+        /// An all-zero struct means either "tiering is off on this loader" or "nothing of this type
+        /// is cached"; <see cref="AssetLoader.TieringEnabled"/> tells them apart. Call
+        /// <see cref="AssetLoader.GetTieredCacheStats{T}()"/> directly if you want the nullable form.
+        /// </remarks>
+        public static TieredCacheStats GetTieredCacheStats<T>(AssetLoader loader)
+        {
+            return loader.GetTieredCacheStats<T>() ?? default;
+        }
+
+        /// <summary>
+        /// Get cache statistics across every cached entry, of every Type.
+        /// </summary>
+        public static TieredCacheStats GetCombinedCacheStats(AssetLoader loader)
+        {
+            return loader.GetTieredCacheStats();
+        }
+
         /// <summary>
         /// Pin asset in tiered loader to prevent eviction
         /// </summary>
+        [Obsolete("Use Advanced.PinAsset<T>(AssetLoader, string) with a loader built by " +
+                  "Advanced.CreateLoader(scopeName, config). Removed in 5.0.0.", false)]
         public static void PinAsset<T>(TieredAssetLoader loader, string address) where T : class
         {
             loader.PinAsset<T>(address);
@@ -194,6 +327,8 @@ namespace AddressableManager.API
         /// <summary>
         /// Unpin asset in tiered loader
         /// </summary>
+        [Obsolete("Use Advanced.UnpinAsset<T>(AssetLoader, string) with a loader built by " +
+                  "Advanced.CreateLoader(scopeName, config). Removed in 5.0.0.", false)]
         public static void UnpinAsset<T>(TieredAssetLoader loader, string address) where T : class
         {
             loader.UnpinAsset<T>(address);
@@ -202,6 +337,7 @@ namespace AddressableManager.API
         /// <summary>
         /// Force tier evaluation for all caches
         /// </summary>
+        [Obsolete("Use Advanced.EvaluateTiers(AssetLoader). Removed in 5.0.0.", false)]
         public static void EvaluateTiers(TieredAssetLoader loader)
         {
             loader.EvaluateTiers();
@@ -210,6 +346,7 @@ namespace AddressableManager.API
         /// <summary>
         /// Force cache eviction
         /// </summary>
+        [Obsolete("Use Advanced.ForceEviction(AssetLoader). Removed in 5.0.0.", false)]
         public static void ForceEviction(TieredAssetLoader loader)
         {
             loader.ForceEviction();
@@ -218,6 +355,7 @@ namespace AddressableManager.API
         /// <summary>
         /// Get tiered cache statistics
         /// </summary>
+        [Obsolete("Use Advanced.GetTieredCacheStats<T>(AssetLoader). Removed in 5.0.0.", false)]
         public static TieredCacheStats GetTieredCacheStats<T>(TieredAssetLoader loader) where T : class
         {
             return loader.GetCacheStats<T>() ?? default;
@@ -226,6 +364,7 @@ namespace AddressableManager.API
         /// <summary>
         /// Get combined cache statistics
         /// </summary>
+        [Obsolete("Use Advanced.GetCombinedCacheStats(AssetLoader). Removed in 5.0.0.", false)]
         public static TieredCacheStats GetCombinedCacheStats(TieredAssetLoader loader)
         {
             return loader.GetCombinedStats();

@@ -1,0 +1,148 @@
+/*
+ * Shell chrome for CdnManagerWindow. Layout and spacing only - every colour comes from
+ * --unity-colors-* so the window matches the active Editor skin automatically (design doc §5.11).
+ * No CSS grid, ::before/::after, box-shadow, rem/em or @media - none of those exist in USS.
+ */
+
+.cdn-root {
+    flex-grow: 1;
+    background-color: var(--unity-colors-window-background);
+}
+
+.cdn-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+    flex-shrink: 0;
+}
+
+.cdn-header-title {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-header-context {
+    font-size: 11px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-right;
+}
+
+.cdn-tab-strip {
+    flex-shrink: 0;
+}
+
+.cdn-tab-toggle {
+    padding: 0 10px;
+}
+
+.cdn-tab-body {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+/*
+ * ---- Shared tab vocabulary ----
+ *
+ * These belong here rather than in a tab stylesheet because THIS is the only sheet that is
+ * always loaded. A tab's sheet is attached to that tab's root, and the shell rebuilds the
+ * tab body on every switch, so a class defined only in UpdatePreviewTab.uss simply does not
+ * exist while any other tab is showing. Three tabs were relying on exactly that: Build,
+ * Runtime Monitor and Update Preview all use .cdn-tab-page, which was defined only in
+ * LocalServerTab.uss and SettingsValidatorTab.uss, and Runtime Monitor's rows and buttons
+ * had no definition in scope at all.
+ *
+ * Tab sheets are attached below this one, so a tab that needs a different value still wins
+ * by declaring its own rule — several do, and those overrides are deliberate.
+ */
+
+.cdn-tab-page {
+    flex-grow: 1;
+    flex-direction: column;
+    padding: 8px;
+}
+
+.cdn-preview-summary {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.cdn-preview-state {
+    flex-shrink: 0;
+    flex-direction: column;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border-width: 1px;
+    border-color: var(--unity-colors-window-border);
+    border-radius: 3px;
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.cdn-state-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 0;
+}
+
+.cdn-state-key {
+    width: 150px;
+    flex-shrink: 0;
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-state-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    color: var(--unity-colors-default-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdn-state-value-bad {
+    color: var(--unity-colors-error-text);
+}
+
+.cdn-state-value-good {
+    color: var(--unity-colors-default-text);
+}
+
+.cdn-section-header {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-default-text);
+    background-color: var(--unity-colors-toolbar-background);
+    padding: 4px 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-window-border);
+}
+
+.cdn-empty-note {
+    padding: 10px 6px;
+    color: var(--unity-colors-default-text);
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.cdn-actions-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    padding-top: 6px;
+    justify-content: flex-end;
+}
+
+.cdn-btn {
+    min-width: 80px;
+    margin-left: 6px;
+}
+
+.cdn-btn-primary {
+    -unity-font-style: bold;
+}
+
+.cdn-btn-wide {
+    min-width: 160px;
+}
