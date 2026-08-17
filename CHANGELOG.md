@@ -1,6 +1,107 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.9] - 2026-08-17 - Four review findings, and the CI step that could not see a broken build
+
+An external review of the branch (Qodo, on PR #3) raised four items. Three were real and are fixed
+here; one was not, and is answered below rather than acted on. Two further defects found while
+fixing them — one that the review had half of, one that a rewritten README exposed — are fixed too.
+
+### Fixed — string comparisons that were wrong for URLs
+
+Both were the same mistake in different clothes: reaching for a `string` overload that takes no
+`StringComparison` and inheriting a default that is wrong for a URL.
+
+- **`HostRewriter.ResolveTokens` recognised `{Platform}` and then failed to replace it.** Detection
+  used `IndexOf(..., OrdinalIgnoreCase)`; substitution used the two-argument `string.Replace`, which
+  is case-**sensitive**. Any casing other than the documented all-lowercase form was found, skipped,
+  and travelled on as literal brace characters in a request path. Going out of the way to detect any
+  casing and then honouring one is the kind of half-implemented intent that reads as correct at both
+  call sites. Replacement is now case-insensitive at every occurrence, via an internal
+  `ReplaceIgnoreCase` helper rather than the three-argument `string.Replace` overload, which is not
+  available on every runtime profile this package must compile against.
+
+- **`CdnEnvironment.IsValid` rejected `HTTPS://cdn.example.com`.** URI schemes are case-insensitive
+  (RFC 3986 §3.1), and this is reachable in practice: `CdnManager` routes the `CDN_BASE_URL`
+  environment-variable override through `IsValid`, and a CI variable is typed by hand. A valid
+  override was discarded and the build stayed on the environment baked in at build time, with only a
+  validation message to say so. The scheme check is now `OrdinalIgnoreCase`.
+
+  The review flagged the scheme check. The `EndsWith("/")` immediately above it had the same defect
+  and is fixed in the same pass: the no-comparison overloads of `StartsWith` and `EndsWith` are
+  `CurrentCulture`, not merely case-sensitive, so whether a URL was considered valid could depend on
+  the machine's locale. Both are now explicit — `Ordinal` for the punctuation, `OrdinalIgnoreCase`
+  for the scheme.
+
+Covered by `Tests/Editor/CdnUrlCasingTests.cs`, which is EditMode on purpose: both methods are pure
+functions over strings, and a test that drags in a packed build and a local HTTP server to check a
+string comparison is a test nobody runs.
+
+### Fixed — batchmode automation could pass on a build that never compiled
+
+Unity exits 0 from `-executeMethod` when the assembly failed to compile. The method never runs, no
+side effect happens, and the step goes green. This repository's `CLAUDE.md` carries it as a hard
+rule, and `4.1.0-pre.6` applied that rule to `AddressableCLI` — but never to `Editor/Cdn/`.
+
+- **`CdnSetupCLI.ApplyPhaseZeroSetup` had no gate at all**, and it is the worst of the three to run
+  blind: it mutates `AddressableAssetSettings` and saves assets, so a run against a half-compiled
+  editor writes profile and schema changes derived from whatever still resolved.
+- **`CdnBuildCLI.BuildContent` and `BuildContentUpdate` had none either** — only `VerifyOutput` did.
+  A delta build also writes the `content_state.bin` that every later update diffs against, so a
+  silent no-op there poisons the baseline permanently.
+
+- **New `ci/unity-run.sh`, and both content workflows now route every Unity step through it.** The
+  in-assembly gate cannot cover the case it exists for — it lives in the assembly that is broken —
+  so the log has to be read from outside. The script scans for `error CS`, then for the `FAILURE:`
+  prefix the CDN CLIs log before exiting non-zero, then checks Unity's exit code last as the least
+  trustworthy of the three, and finally checks that the artifact the step was supposed to produce
+  exists. The two build steps pass `--expect ServerData/build-manifest.json`; a run that reports
+  success and leaves no manifest is exactly the failure an exit code hides.
+
+  Note the workflows have still never been executed — see *Not yet validated*. This closes a
+  false-green path in them by construction; it is not a report that they were run.
+
+### Not a defect — `CdnManager` and the dual-signature convention
+
+The review also reported that `CdnManager`'s public async methods expose only `UniTask` signatures
+under `UNITASK_PRESENT`, and asked for both. **No change made, and the request cannot be satisfied
+as stated.** `UniTask<CdnResult<bool>> InitializeAsync(string, CancellationToken)` and
+`Task<CdnResult<bool>> InitializeAsync(string, CancellationToken)` differ only in return type; C#
+does not overload on return type. Compiling exactly that shape with the editor's own Roslyn gives:
+
+```
+error CS0111: Type 'Probe' already defines a member called 'InitializeAsync'
+              with the same parameter types
+```
+
+The convention in this package is one signature per configuration, selected by the define — the
+`#if UNITASK_PRESENT` / `#else` form that `CdnManager` already uses and that `AssetLoader` uses at
+`:716` and `:906`. `CdnManager` is a compliant file.
+
+There *is* a real gap of this kind, and it is not in the CDN layer: `SimpleAPI.cs` contains zero
+`#if UNITASK_PRESENT` blocks and all eight of its async members return `Task` or are `async void`;
+`Standard` has two dual members and `Advanced` one. That is now documented per surface under
+[Task or UniTask](README.md#-task-or-unitask) rather than left to the blanket claim, because
+assuming the blanket claim costs a compile error. Whether to make the tiers dual is an API decision
+and is not made here.
+
+### Fixed — documentation
+
+- The `4.1.0-pre.7` entry said `HybridScope` was "Retired". It was not: the class is public and
+  carries no `[Obsolete]`; only its two defects were fixed. Corrected in place. Whether to retire it
+  is an open decision recorded in `Documentation/LIFETIME_DESIGN.md`, not something this release
+  settles.
+
+### Verification
+
+Compile gate PASS on both assemblies. Runtime verified against Unity 2022.3.62f3 in both the `Task`
+and `UniTask` configurations, 0 real errors each. **165/165 EditMode** (142 before; `CdnUrlCasingTests`
+adds 23). `ci/unity-run.sh` passes `bash -n`; both workflow files parse as YAML.
+
+`ci/unity-run.sh` itself has not been executed against a real Unity run, because the workflows it is
+wired into have never been executed — see *Not yet validated*. Its logic is checked by inspection and
+its syntax by `bash -n`; the first real exercise will be the first content build anyone runs.
+
 ## [4.1.0-pre.8] - 2026-08-17 - The minimum-Unity claim was wrong
 
 Documentation only. No runtime or editor code changed from `pre.7`; if you are already on `pre.7`
@@ -299,7 +400,9 @@ in `Documentation/LIFETIME_DESIGN.md`.
   of the process. The scope is now owned by the Facade.
 - `AddressablesFacade.OnDestroy` ran `EndSession()` and disposed the pool manager outside the
   `_instance` guard, so a duplicate Facade tore down the live one's state.
-- `HybridScope` held statics across domain reload and disposed without clearing them. Retired.
+- `HybridScope` held statics across domain reload and disposed without clearing them. Both fixed.
+  *(Corrected in `pre.9`: this line originally ended "Retired." It was not retired — the class is
+  still public and carries no `[Obsolete]`. Only the two defects were fixed.)*
 
 ### Fixed — catalog updates now reach every cache
 

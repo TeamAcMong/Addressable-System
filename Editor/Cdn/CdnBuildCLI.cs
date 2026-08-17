@@ -45,6 +45,16 @@ namespace AddressableManager.Editor.Cdn
                 Log($"Target profile: {profileName}");
                 Log("");
 
+                // Same gate VerifyOutput already carried. Unity exits 0 from -executeMethod even when
+                // the assembly failed to compile, so exit status alone cannot tell a CI step that the
+                // build it just "completed" was produced by the code in the commit.
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    LogError("FAILURE: Script compilation failed before the build started");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
                 var outcome = CdnBuildPipeline.BuildFull(profileName, Sink);
                 if (outcome.IsFailure)
                 {
@@ -80,6 +90,16 @@ namespace AddressableManager.Editor.Cdn
                 Log("=== CDN Build CLI - Content Update (task 1.2) ===");
                 Log($"Target profile: {profileName}");
                 Log("");
+
+                // See BuildContent. A delta build is the worse of the two to get wrong: it writes a
+                // new content_state.bin, so a run against a half-compiled editor poisons the baseline
+                // every later update diffs against.
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    LogError("FAILURE: Script compilation failed before the content update started");
+                    EditorApplication.Exit(1);
+                    return;
+                }
 
                 var outcome = CdnBuildPipeline.BuildUpdate(profileName, contentStateOverride, Sink);
                 if (outcome.IsFailure)

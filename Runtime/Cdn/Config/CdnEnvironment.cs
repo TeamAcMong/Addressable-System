@@ -67,7 +67,10 @@ namespace AddressableManager.Cdn
                 return false;
             }
 
-            if (baseUrl.EndsWith("/"))
+            // Ordinal, not the culture-aware default: EndsWith(string)/StartsWith(string) without a
+            // StringComparison use StringComparison.CurrentCulture, which makes the validity of a URL
+            // depend on the machine's locale. For URL punctuation that is never what is wanted.
+            if (baseUrl.EndsWith("/", StringComparison.Ordinal))
             {
                 // Left as an error rather than trimmed silently: a trailing slash produces a double
                 // slash mid-path, which some CDNs treat as a distinct cache key and others 404.
@@ -75,7 +78,13 @@ namespace AddressableManager.Cdn
                 return false;
             }
 
-            if (!baseUrl.StartsWith("http://") && !baseUrl.StartsWith("https://"))
+            // Case-insensitive because URI schemes are case-insensitive (RFC 3986 §3.1). This is
+            // reachable with a mixed-case scheme in practice: CdnManager routes the CDN_BASE_URL
+            // environment-variable override through this method, and a CI variable is typed by hand.
+            // Rejecting "HTTPS://cdn.example.com" left the build pointed at the baked-in environment
+            // with only a validation message to say so.
+            if (!baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
                 reason = $"Environment '{id}' base URL must start with http:// or https://: {baseUrl}";
                 return false;
