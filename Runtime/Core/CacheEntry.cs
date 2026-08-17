@@ -56,6 +56,21 @@ namespace AddressableManager.Core
         /// </summary>
         public bool IsPinned { get; set; }
 
+        /// <summary>
+        /// The <see cref="CalculateTierScore"/> value this entry was <em>selected</em> on during the
+        /// current eviction pass, so it is also the value the entry is <em>ordered</em> on.
+        /// </summary>
+        /// <remarks>
+        /// Written by the eviction pass immediately before sorting, and meaningless outside one.
+        /// It exists because <see cref="CalculateTierScore"/> is not stable across calls: it reads
+        /// <c>Time.realtimeSinceStartup</c> twice per call and that clock is not frame-latched, so a
+        /// comparer that recomputes it gives <c>List&lt;T&gt;.Sort</c> answers that drift while the
+        /// sort runs. Introsort detects the resulting intransitivity and throws
+        /// <c>InvalidOperationException: IComparer.Compare() method returns inconsistent results</c>.
+        /// Mirrors <c>AssetLoader.CachedAsset.SortScore</c>, which exists for the same reason.
+        /// </remarks>
+        public float SortScore { get; set; }
+
         public CacheEntry(string key, IAssetHandle<T> handle, long estimatedSize)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));

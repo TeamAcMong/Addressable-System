@@ -8,7 +8,7 @@ the lowest tier that covers your case.
 |---|---|---|
 | Simple | `Simple.Load<T>`, `Simple.Pool` | You want an asset and will let the manager decide the lifetime. |
 | Standard | `Standard.LoadGlobal/LoadSession/LoadScene` | You want scopes, batch loading and explicit release. |
-| Advanced | `Advanced.CreateTieredLoader`, named scopes, pool factories | You are managing memory yourself. |
+| Advanced | `Advanced.CreateLoader(name, config)`, named scopes, pool factories | You are managing memory yourself. |
 
 The `Assets` facade is the shortest path — `Assets.Load<T>`, `Assets.LoadSession<T>`,
 `Assets.LoadScene<T>`, `Assets.CreatePool`/`Spawn`/`Despawn` — and it returns

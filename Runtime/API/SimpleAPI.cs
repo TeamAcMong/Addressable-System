@@ -16,7 +16,7 @@ namespace AddressableManager.API
     ///
     /// Usage:
     ///   var sprite = await Simple.Load<Sprite>("UI/Icon");
-    ///   Simple.Release(sprite);
+    ///   Simple.ReleaseAddress("UI/Icon");
     /// </summary>
     public static class Simple
     {
@@ -184,8 +184,21 @@ namespace AddressableManager.API
         #region Pooling (Auto)
 
         /// <summary>
-        /// Spawn from pool (auto-creates pool if needed)
+        /// Take an instance from the pool for <paramref name="address"/>, creating the pool if this
+        /// is the first call. <b>Returns null until that pool exists.</b>
         /// </summary>
+        /// <remarks>
+        /// This used to block the main thread on an Addressables load to honour "auto-create"
+        /// (HANDOFF_TO_SESSION_B.md P-1). It no longer does, so the first call for an address starts
+        /// the pool in the background and returns null; calls after it succeed. Null also means "not
+        /// available" during shutdown. Both are logged where they happen.
+        ///
+        /// If you need an instance from the very first call, create the pool before spawning:
+        /// <code>
+        /// await Standard.CreatePool("Enemies/Orc", preloadCount: 10);
+        /// var enemy = Simple.Pool("Enemies/Orc");   // non-null
+        /// </code>
+        /// </remarks>
         public static GameObject Pool(string address)
         {
             // AddressablesFacade.Instance now legitimately returns null during shutdown
@@ -228,17 +241,73 @@ namespace AddressableManager.API
 
         #region Release
 
+        // Warn-once latch for the deprecated Release<T> below. Half of the original defect
+        // (HANDOFF_TO_SESSION_B.md A-9) was the log itself: a Debug.Log that ran in shipping
+        // builds, once per call, forever, reporting work that never happened. One warning per
+        // process names the problem without becoming per-frame spam.
+        private static bool _releaseNoOpWarned;
+
         /// <summary>
-        /// Release asset (if you have the asset reference)
-        /// Note: In Simple API, assets are usually managed automatically
+        /// Releases nothing. Kept only so 4.x code keeps compiling — see the <c>[Obsolete]</c>
+        /// message for what to call instead.
+        ///
+        /// It cannot be made to work in this shape: there is no path from an asset instance back
+        /// to the cache entry holding it. <see cref="Loaders.AssetLoader"/> keys its cache by
+        /// <c>(address, Type)</c> with no asset→handle reverse map, and Addressables offers no
+        /// reverse lookup of its own — so the address this method would need is not recoverable
+        /// from its only argument. <see cref="ReleaseAddress"/> is the same operation with the one
+        /// piece of information that makes it possible.
         /// </summary>
+        // Kept until 5.0.0 per repo invariant 6.
+        [Obsolete("Simple.Release<T>(asset) never released anything — an asset instance cannot be " +
+                  "mapped back to the cache entry holding it. Use Simple.ReleaseAddress(address) " +
+                  "for one address, Simple.ClearAll() for the whole Global cache, or " +
+                  "Standard.LoadGlobal<T>() when you want an IAssetHandle you dispose yourself. " +
+                  "Removed in 5.0.0.", false)]
         public static void Release<T>(T asset)
         {
-            // In Simple API, we don't expose handles directly
-            // Assets are managed by the Global scope
-            // Users can call this to hint that asset is no longer needed
-            // But actual release is managed by scope lifecycle
-            Debug.Log($"[Simple.Release] Release hint for asset of type {typeof(T).Name}");
+            if (_releaseNoOpWarned) return;
+            _releaseNoOpWarned = true;
+
+            Debug.LogWarning(
+                $"[Simple.Release] Released nothing for an asset of type {typeof(T).Name}: an " +
+                "asset instance cannot be mapped back to the cache entry holding it. Use " +
+                "Simple.ReleaseAddress(address), Simple.ClearAll(), or Standard.LoadGlobal<T>() " +
+                "for a disposable handle. Logged once per process.");
+        }
+
+        /// <summary>
+        /// Release everything the Global cache holds for <paramref name="address"/> — every type
+        /// it was loaded as, since the cache keys by <c>(address, Type)</c>. This is the real
+        /// counterpart to <see cref="Load{T}"/> that <c>Release&lt;T&gt;(asset)</c> only looked
+        /// like.
+        ///
+        /// Eviction is unconditional, the same documented memory-pressure semantics as
+        /// <see cref="ClearAll"/> and <c>AssetLoader.ClearCache</c>: an <c>IAssetHandle</c> some
+        /// other caller still holds for this address (from <c>Standard.LoadGlobal</c>, say) reads
+        /// <c>IsValid == false</c> afterwards. Reach for the handle APIs instead when you need
+        /// refcounted release rather than eviction.
+        ///
+        /// Stays <c>void</c> deliberately: a <c>bool</c> would be a sentinel with two unrelated
+        /// meanings (nothing cached vs. no scope) that invariant 4 forbids. Ask
+        /// <see cref="IsLoaded(string)"/> before or after if you need to know.
+        /// </summary>
+        public static void ReleaseAddress(string address)
+        {
+            if (string.IsNullOrEmpty(address))
+            {
+                Debug.LogError("[Simple.ReleaseAddress] Address is null or empty — released nothing.");
+                return;
+            }
+
+            // Same shutdown reasoning as Destroy() above: ask HasInstance before touching
+            // Instance, so a release running from another object's OnDestroy during quit cannot
+            // build a fresh DontDestroyOnLoad GameObject in the middle of teardown
+            // (LIFETIME_DESIGN.md §3.6). No scope means no cache means nothing to release — that
+            // is an answer, not a failure, so it is not logged.
+            if (!GlobalAssetScope.HasInstance) return;
+
+            GlobalAssetScope.Instance.Loader?.ReleaseAsset(address);
         }
 
         /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.SceneManagement;
 using AddressableManager.Loaders;
 using AddressableManager.Core;
 using AddressableManager.Managers;
@@ -47,12 +48,16 @@ namespace AddressableManager.Facade
         private AssetLoader _poolLoader;
         private AddressablePoolManager _poolManager;
 
-        // Periodic drain for every live TieredAssetLoader (HANDOFF_TO_SESSION_B.md L-3) — nothing
-        // else in the package ever called EvaluateTiers()/ForceEviction() outside of TieredCache<T>
-        // .Set()'s own inline trigger, which only fires while a cache is still actively growing.
-        // This Facade already has Unity lifetime (DontDestroyOnLoad), so it is the owner the design
-        // names rather than TieredCache<T> itself (no Unity lifetime, no unsubscribe path) or a
-        // MonoBehaviour per loader.
+        // Periodic drain for every live tiering-configured AssetLoader (HANDOFF_TO_SESSION_B.md
+        // L-3) — nothing else in the package ever calls EvaluateTiers()/ForceEviction() outside the
+        // insert path's own inline trigger, which only fires while a cache is still actively
+        // growing. This Facade already has Unity lifetime (DontDestroyOnLoad), so it is the owner
+        // the design names rather than the loader itself (no Unity lifetime, no unsubscribe path)
+        // or a MonoBehaviour per loader.
+        //
+        // Walks AssetLoaderRegistry, not the retired TieredAssetLoaderRegistry: tiering is a
+        // configuration of AssetLoader now, and an untiered loader's EvaluateTiers()/ForceEviction()
+        // are no-ops, so pumping every registered loader is correct and costs a virtual call each.
         private const float TieredCachePumpInterval = 5f; // seconds
         private float _tieredCachePumpElapsed;
 
@@ -121,8 +126,8 @@ namespace AddressableManager.Facade
             _poolManager = new AddressablePoolManager(_poolLoader, new UnityPoolFactory());
 
             // See the field comment on TieredCachePumpInterval — the other half of L-3, a low-memory
-            // sweep across every live TieredAssetLoader. This is the case the periodic pump above is
-            // too slow for: iOS gives the process one warning before killing it.
+            // sweep across every live tiering-configured AssetLoader. This is the case the periodic
+            // pump above is too slow for: iOS gives the process one warning before killing it.
             Application.lowMemory -= OnTieredCacheLowMemory;
             Application.lowMemory += OnTieredCacheLowMemory;
 
@@ -135,13 +140,13 @@ namespace AddressableManager.Facade
             if (_tieredCachePumpElapsed < TieredCachePumpInterval) return;
 
             _tieredCachePumpElapsed = 0f;
-            TieredAssetLoaderRegistry.PumpAll();
+            AssetLoaderRegistry.PumpAll();
         }
 
         private void OnTieredCacheLowMemory()
         {
-            Debug.LogWarning("[AddressablesFacade] Application.lowMemory — forcing eviction on every live TieredAssetLoader.");
-            TieredAssetLoaderRegistry.ForceEvictionAll();
+            Debug.LogWarning("[AddressablesFacade] Application.lowMemory — forcing eviction on every live tiering-configured AssetLoader.");
+            AssetLoaderRegistry.ForceEvictionAll();
         }
 
         #region Global Scope Operations
@@ -222,17 +227,82 @@ namespace AddressableManager.Facade
 
         #region Scene Scope Operations
 
+        // Nothing in this region loads a Unity scene. "Scene scope" is a cache whose lifetime is
+        // tied to a scene's — the asset dies when that scene unloads. Grep the package for
+        // Addressables.LoadSceneAsync / SceneInstance / LoadSceneMode and you get zero hits
+        // outside of two doc comments: there is no scene-loading capability here at all
+        // (HANDOFF_TO_SESSION_B.md A-8).
+
         /// <summary>
-        /// Get or create scene scope for current scene
+        /// Get or create the scope bound to <paramref name="scene"/>. Prefer this over the
+        /// parameterless overload from anything that lives in a specific scene:
+        /// <c>GetOrCreateSceneScope(gameObject.scene)</c>.
         /// </summary>
-        public SceneAssetScope GetOrCreateSceneScope()
+        public SceneAssetScope GetOrCreateSceneScope(Scene scene)
         {
-            _sceneScope = SceneAssetScope.GetOrCreate();
+            _sceneScope = SceneAssetScope.GetOrCreate(scene);
             return _sceneScope;
         }
 
         /// <summary>
-        /// Load asset into scene scope
+        /// Get or create the scope bound to <b>the currently active scene</b> — not the caller's
+        /// scene. A static entry point has no caller GameObject to derive one from, so this is a
+        /// choice the caller has to make: from a MonoBehaviour in an additively-loaded scene, call
+        /// <see cref="GetOrCreateSceneScope(Scene)"/> with <c>gameObject.scene</c> instead, or the
+        /// scope you get back belongs to whichever scene happens to be active and your assets are
+        /// released when <i>that</i> scene unloads (A-8).
+        /// </summary>
+        public SceneAssetScope GetOrCreateSceneScope()
+        {
+            // Identical to SceneAssetScope.GetOrCreate()'s own body; spelled out here so the
+            // active-scene choice is visible at the one call site the API surface funnels through.
+            return GetOrCreateSceneScope(SceneManager.GetActiveScene());
+        }
+
+        /// <summary>
+        /// Load an asset into the cache scoped to <paramref name="scene"/> — released when that
+        /// scene unloads. Loads an <i>asset</i>; it does not load a scene.
+        /// Returns <c>UniTask&lt;IAssetHandle&lt;T&gt;&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
+        /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadIntoSceneScopeAsync<T>(string address, Scene scene)
+#else
+        public async Task<IAssetHandle<T>> LoadIntoSceneScopeAsync<T>(string address, Scene scene)
+#endif
+        {
+            var scope = GetOrCreateSceneScope(scene);
+            return await scope.Loader.LoadAssetAsync<T>(address);
+        }
+
+        /// <summary>
+        /// Load an asset into the cache scoped to <b>the currently active scene</b>. Loads an
+        /// <i>asset</i>; it does not load a scene. See
+        /// <see cref="GetOrCreateSceneScope()"/> for why "the caller's scene" cannot be the
+        /// default here — pass <c>gameObject.scene</c> to
+        /// <see cref="LoadIntoSceneScopeAsync{T}(string, Scene)"/> when the caller lives in a
+        /// scene other than the active one.
+        /// Returns <c>UniTask&lt;IAssetHandle&lt;T&gt;&gt;</c> when UniTask is installed, otherwise <c>Task</c>.
+        /// </summary>
+#if UNITASK_PRESENT
+        public async UniTask<IAssetHandle<T>> LoadIntoSceneScopeAsync<T>(string address)
+#else
+        public async Task<IAssetHandle<T>> LoadIntoSceneScopeAsync<T>(string address)
+#endif
+        {
+            return await LoadIntoSceneScopeAsync<T>(address, SceneManager.GetActiveScene());
+        }
+
+        /// <summary>
+        /// Superseded by <see cref="LoadIntoSceneScopeAsync{T}(string)"/> — identical behaviour.
+        /// The name is one character away from Unity's own <c>Addressables.LoadSceneAsync</c>
+        /// while doing something completely different (it loads an asset into a scene-scoped
+        /// cache), which is exactly the confusion the package's own sample fell into
+        /// (<c>Assets.LoadScene&lt;Material&gt;("Scene/SpecialMaterial")</c>).
+        ///
+        /// Not marked <c>[Obsolete]</c>: <c>Assets.LoadScene&lt;T&gt;</c> still forwards here and
+        /// renaming that surface is the other half of A-8, left for whoever owns
+        /// <c>Runtime/Facade/Assets.cs</c> and <c>Samples~</c>. Deprecating this before that lands
+        /// would only emit warnings inside the package.
         /// </summary>
 #if UNITASK_PRESENT
         public async UniTask<IAssetHandle<T>> LoadSceneAsync<T>(string address)
@@ -240,13 +310,37 @@ namespace AddressableManager.Facade
         public async Task<IAssetHandle<T>> LoadSceneAsync<T>(string address)
 #endif
         {
-            var scope = GetOrCreateSceneScope();
-            return await scope.Loader.LoadAssetAsync<T>(address);
+            return await LoadIntoSceneScopeAsync<T>(address);
         }
 
         #endregion
 
         #region Pooling Operations
+
+        /// <summary>
+        /// True once <see cref="Initialize"/> has built the pool manager.
+        /// </summary>
+        /// <remarks>
+        /// Initialize() returns early — leaving <c>_poolManager</c> null — when GlobalAssetScope is
+        /// unavailable, which is the normal state during shutdown. Every member below went through
+        /// that field unguarded, so Assets.Spawn / Assets.Despawn / Assets.CreatePool threw
+        /// NullReferenceException from a teardown path rather than declining politely
+        /// (HANDOFF_TO_SESSION_B.md P-31). SimpleAPI.Pool already guarded for this; the Facade did
+        /// not, and Assets goes straight here.
+        ///
+        /// Each member now returns its neutral value and says why, which is the same
+        /// "use-after-teardown logs and returns neutral, never throws" contract the pooling layer
+        /// settled on in P-15.
+        /// </remarks>
+        private bool PoolsReady(string operation)
+        {
+            if (_poolManager != null) return true;
+
+            Debug.LogWarning($"[AddressablesFacade] {operation} ignored: the pool manager does not " +
+                             "exist. Initialize() has not run, or it returned early because the " +
+                             "global scope was already gone (normal during shutdown).");
+            return false;
+        }
 
         /// <summary>
         /// Create object pool
@@ -257,6 +351,7 @@ namespace AddressableManager.Facade
         public async Task<bool> CreatePoolAsync(string address, int preloadCount = 0, int maxSize = 100)
 #endif
         {
+            if (!PoolsReady(nameof(CreatePoolAsync))) return false;
             return await _poolManager.CreatePoolAsync(address, preloadCount, maxSize);
         }
 
@@ -265,6 +360,7 @@ namespace AddressableManager.Facade
         /// </summary>
         public GameObject Spawn(string address, Vector3 position, Quaternion rotation, Transform parent = null)
         {
+            if (!PoolsReady(nameof(Spawn))) return null;
             return _poolManager.Spawn(address, position, rotation, parent);
         }
 
@@ -273,6 +369,7 @@ namespace AddressableManager.Facade
         /// </summary>
         public GameObject Spawn(string address, Vector3 position, Transform parent = null)
         {
+            if (!PoolsReady(nameof(Spawn))) return null;
             return _poolManager.Spawn(address, position, parent);
         }
 
@@ -281,6 +378,7 @@ namespace AddressableManager.Facade
         /// </summary>
         public GameObject Spawn(string address, Transform parent = null)
         {
+            if (!PoolsReady(nameof(Spawn))) return null;
             return _poolManager.Spawn(address, parent);
         }
 
@@ -289,6 +387,7 @@ namespace AddressableManager.Facade
         /// </summary>
         public void Despawn(string address, GameObject instance)
         {
+            if (!PoolsReady(nameof(Despawn))) return;
             _poolManager.Despawn(address, instance);
         }
 
@@ -297,6 +396,7 @@ namespace AddressableManager.Facade
         /// </summary>
         public void SetPoolFactory(IPoolFactory factory)
         {
+            if (!PoolsReady(nameof(SetPoolFactory))) return;
             _poolManager.SetPoolFactory(factory);
         }
 

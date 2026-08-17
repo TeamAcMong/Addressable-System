@@ -5,9 +5,21 @@ using UnityEngine;
 namespace AddressableManager.Loaders
 {
     /// <summary>
-    /// Every live <see cref="AssetLoader"/>, so a catalog update can reach all of them.
+    /// Every live <see cref="AssetLoader"/>, so a catalog update — and the periodic tier/eviction
+    /// pump — can reach all of them.
     /// </summary>
     /// <remarks>
+    /// TWO DUTIES, ONE LIST
+    ///
+    /// <see cref="InvalidateAll"/> answers "a catalog update landed, whose caches are stale".
+    /// <see cref="PumpAll"/>/<see cref="ForceEvictionAll"/> answer "who has tiering that needs
+    /// draining". Those used to be two registries over two loader types, because
+    /// <c>TieredAssetLoader</c> was a fork of <see cref="AssetLoader"/> that shared no reachability
+    /// mechanism with it (LIFETIME_DESIGN.md "L-7: evidence", row L-3). Since tiering became a
+    /// configuration of <see cref="AssetLoader"/> there is one population, so there is one list —
+    /// and the catalog-update hole that fork had is closed by construction rather than by a second
+    /// invalidation path that would have to be kept in step with this one.
+    ///
     /// WHY THIS EXISTS
     ///
     /// After a catalog update, a handle a loader cached still wraps an operation resolved against
@@ -115,26 +127,11 @@ namespace AddressableManager.Loaders
             var keys = addresses as IList<string> ?? new List<string>(addresses);
             if (keys.Count == 0) return 0;
 
-            AssetLoader[] snapshot;
-            lock (Gate)
-            {
-                Prune();
-
-                var live = new List<AssetLoader>(Loaders.Count);
-                foreach (var reference in Loaders)
-                {
-                    if (reference.TryGetTarget(out var loader) && loader != null) live.Add(loader);
-                }
-
-                snapshot = live.ToArray();
-            }
-
-            // Outside the lock. InvalidateAddresses can end with a scope disposing itself, which
-            // calls back into Unregister — taking Gate again from inside it would deadlock on a
-            // non-reentrant lock, and this one is only reentrant by luck of Monitor semantics.
-            // Snapshotting also keeps the lock off the main thread for the duration of the walk.
+            // Outside the lock — see Snapshot()'s remarks. InvalidateAddresses can end with a scope
+            // disposing itself, which calls back into Unregister; taking Gate again from inside it
+            // would deadlock on a non-reentrant lock.
             int reached = 0;
-            foreach (var loader in snapshot)
+            foreach (var loader in Snapshot())
             {
                 try
                 {
@@ -150,6 +147,95 @@ namespace AddressableManager.Loaders
             }
 
             return reached;
+        }
+
+        /// <summary>
+        /// Every live loader, copied out under <see cref="Gate"/> and returned with the lock
+        /// released.
+        /// </summary>
+        /// <remarks>
+        /// THE LOCK MUST NOT BE HELD ACROSS THE WALK. Every caller below re-enters loader code that
+        /// can call back into <see cref="Unregister"/> — <see cref="InvalidateAll"/> through a scope
+        /// disposing itself, <see cref="PumpAll"/>/<see cref="ForceEvictionAll"/> through an
+        /// eviction that force-releases the last handle to an asset whose destruction tears down a
+        /// scope. Taking <see cref="Gate"/> again from inside that walk deadlocks a non-reentrant
+        /// lock, and <c>Monitor</c> only makes it survivable by accident of being reentrant on the
+        /// same thread. Snapshotting also keeps the lock off the main thread for the duration of
+        /// the walk, which for the pump is every 5 seconds forever.
+        /// </remarks>
+        private static AssetLoader[] Snapshot()
+        {
+            lock (Gate)
+            {
+                Prune();
+
+                var live = new List<AssetLoader>(Loaders.Count);
+                foreach (var reference in Loaders)
+                {
+                    if (reference.TryGetTarget(out var loader) && loader != null) live.Add(loader);
+                }
+
+                return live.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Periodic drain: evaluate tiers, then evict, on every live loader.
+        /// </summary>
+        /// <remarks>
+        /// WHY THIS LIVES HERE NOW (L-3, and L-7's resolution)
+        ///
+        /// This body came from <c>TieredAssetLoaderRegistry.PumpAll</c>, which existed only because
+        /// <c>TieredAssetLoader</c> was a fork that shared no reachability mechanism with
+        /// <see cref="AssetLoader"/>. Tiering is a configuration of <see cref="AssetLoader"/> now,
+        /// so the loaders that need pumping are already in this registry and the duplicate registry
+        /// is gone.
+        ///
+        /// A loader built without tiering makes both calls no-ops
+        /// (<see cref="AssetLoader.EvaluateTiers"/>/<see cref="AssetLoader.ForceEviction"/> return
+        /// immediately when tiering is off), so an untiered loader costs one virtual call per pump
+        /// and touches nothing. That is what makes it safe to walk *every* loader here rather than
+        /// keeping a separate list of the tiered ones — a second list being exactly the kind of
+        /// second book L-4 was about.
+        ///
+        /// One loader throwing must not stop the rest, matching <see cref="InvalidateAll"/>.
+        /// </remarks>
+        internal static void PumpAll()
+        {
+            foreach (var loader in Snapshot())
+            {
+                try
+                {
+                    loader.EvaluateTiers();
+                    loader.ForceEviction();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[AssetLoaderRegistry] A loader threw during the periodic " +
+                                      $"tier/eviction pump: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="Application.lowMemory"/> handler: force eviction only, on every live loader.
+        /// No tier evaluation here — under real memory pressure the goal is reclaiming bytes as fast
+        /// as possible, not re-scoring access patterns first.
+        /// </summary>
+        internal static void ForceEvictionAll()
+        {
+            foreach (var loader in Snapshot())
+            {
+                try
+                {
+                    loader.ForceEviction();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[AssetLoaderRegistry] A loader threw during the low-memory " +
+                                      $"eviction sweep: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>Drop collected entries. Caller holds <see cref="Gate"/>.</summary>

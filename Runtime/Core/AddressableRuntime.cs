@@ -21,8 +21,15 @@ namespace AddressableManager.Core
     /// three separate main-thread latches (<c>AssetLoader</c>, <c>UnityMainThreadDispatcher</c>,
     /// <c>TieredAssetLoader</c>) that disagree on default behaviour when unlatched. Consolidating
     /// them onto this one is LIFETIME_DESIGN.md §5 step 2 — a separate, not-yet-landed change.
-    /// Nothing in the package reads these two members yet; they exist here now so that step is a
-    /// one-line-per-file edit instead of a second new type.
+    ///
+    /// <para><b>These two members now have live readers</b>, so <see cref="IsMainThread"/>'s
+    /// fail-open default is load-bearing rather than theoretical:
+    /// <c>ThreadSafeCacheManager.AssertMainThread</c> and <c>.ReleaseOnMainThread</c>,
+    /// <c>AddressablePoolManager.EnsureMainThreadAsync</c>, and the message text of the assertion
+    /// itself. Fail-open is right for the assertion (it must not block edit-mode tooling that never
+    /// triggers <see cref="Init"/>) and is a deliberate trade for the two marshalling helpers, which
+    /// read it as "safe to do this inline" — see LIFETIME_DESIGN.md, "Threading: decisions still
+    /// open". Do not change the default without reading that entry.</para>
     /// </summary>
     public static class AddressableRuntime
     {
