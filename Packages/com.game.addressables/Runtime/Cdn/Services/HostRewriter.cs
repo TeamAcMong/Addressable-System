@@ -197,17 +197,53 @@ namespace AddressableManager.Cdn
         }
 
         /// <summary>Expand {platform} and {appVersion} in a configured base URL.</summary>
+        /// <remarks>
+        /// Token matching is case-insensitive in both directions. It used to detect with
+        /// <c>IndexOf(..., OrdinalIgnoreCase)</c> and then substitute with
+        /// <c>string.Replace(string, string)</c>, which is case-SENSITIVE — so <c>{Platform}</c> was
+        /// recognised and then left in place, and the literal brace text travelled on into a request
+        /// URL. Going out of the way to detect any casing and then honouring only one is the kind of
+        /// half-implemented intent that reads as correct at both call sites.
+        ///
+        /// <see cref="ReplaceIgnoreCase"/> rather than the three-argument
+        /// <c>string.Replace(string, string, StringComparison)</c> overload: that overload does not
+        /// exist on every runtime profile this package is expected to compile against, and a helper
+        /// costs nothing here — this runs once per environment switch, not per asset load.
+        /// </remarks>
         public static string ResolveTokens(string url)
         {
             if (string.IsNullOrEmpty(url)) return url;
 
-            if (url.IndexOf("{platform}", StringComparison.OrdinalIgnoreCase) >= 0)
-                url = url.Replace("{platform}", ResolvePlatformToken());
-
-            if (url.IndexOf("{appVersion}", StringComparison.OrdinalIgnoreCase) >= 0)
-                url = url.Replace("{appVersion}", Application.version);
+            url = ReplaceIgnoreCase(url, "{platform}", ResolvePlatformToken());
+            url = ReplaceIgnoreCase(url, "{appVersion}", Application.version);
 
             return url;
+        }
+
+        /// <summary>
+        /// Ordinal, case-insensitive substring replacement. Returns <paramref name="source"/>
+        /// unchanged, and allocates nothing, when the token does not occur.
+        /// </summary>
+        internal static string ReplaceIgnoreCase(string source, string token, string value)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(token)) return source;
+
+            int at = source.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return source;
+
+            value = value ?? string.Empty;
+
+            var built = new System.Text.StringBuilder(source.Length);
+            int from = 0;
+            while (at >= 0)
+            {
+                built.Append(source, from, at - from).Append(value);
+                from = at + token.Length;
+                at = source.IndexOf(token, from, StringComparison.OrdinalIgnoreCase);
+            }
+
+            built.Append(source, from, source.Length - from);
+            return built.ToString();
         }
 
         /// <summary>

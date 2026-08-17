@@ -59,15 +59,21 @@ jobs:
         run: rm -rf ServerData
 
       - name: Apply the settings contract
-        # Also the cheapest compile gate: the CLI refuses to run when scriptCompilationFailed.
+        # Every Unity step goes through ci/unity-run.sh, which scans the log for `error CS` instead of
+        # trusting the exit code — Unity exits 0 from -executeMethod when the assembly did not compile,
+        # so the method never runs and the step passes. The CLI's own scriptCompilationFailed gate
+        # cannot cover that case: it lives in the assembly that is broken.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Apply the settings contract" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
             -profile "${{ inputs.environment }}"
 
       - name: Build addressable content
+        # --expect: a build that reports success and leaves no manifest is the exact failure the exit
+        # code hides, and everything downstream reads this file.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Build addressable content" \
+            --expect "ServerData/build-manifest.json" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContent \
             -cdnProfile "${{ inputs.environment }}" \
             -buildTarget "${{ inputs.platform }}"
@@ -75,7 +81,7 @@ jobs:
       - name: Verify output before anything reaches the network
         # Gate, not a report. Everything after this touches the CDN.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Verify output" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput \
             -cdnProfile "${{ inputs.environment }}" \
             -manifest "ServerData/build-manifest.json"

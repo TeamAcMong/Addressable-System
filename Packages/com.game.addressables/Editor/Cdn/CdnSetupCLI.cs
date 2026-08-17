@@ -46,6 +46,18 @@ namespace AddressableManager.Editor.Cdn
                 Log($"Target profile: {profileName}");
                 Log("");
 
+                // Gate: Unity exits 0 from -executeMethod even when the assembly never compiled, so
+                // without this the step reports success on a build that never ran. This one is worse
+                // than a false report: the setup below mutates AddressableAssetSettings and saves
+                // assets, so running it against a half-compiled editor writes profile and schema
+                // changes derived from whatever SettingsContract happened to still resolve.
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    LogError("FAILURE: Script compilation failed before setup started");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
                 // ========== BEFORE STATE ==========
                 Log("=== BEFORE STATE ===");
                 var beforeRules = SettingsContract.BuildRules();

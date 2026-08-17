@@ -64,23 +64,32 @@ jobs:
         run: ./ci/fetch-content-state.sh
 
       - name: Apply the settings contract
+        # Every Unity step goes through ci/unity-run.sh, which scans the log for `error CS` instead of
+        # trusting the exit code — Unity exits 0 from -executeMethod when the assembly did not compile,
+        # so the method never runs and the step passes. The CLI's own scriptCompilationFailed gate
+        # cannot cover that case: it lives in the assembly that is broken.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Apply the settings contract" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnSetupCLI.ApplyPhaseZeroSetup \
             -profile "${{ inputs.environment }}"
 
       - name: Build content update
         # Gates on version match and content-update restrictions before building. A static-group
         # change fails here by design, naming the offending asset.
+        #
+        # --expect matters more here than on a full build: a delta build also writes the new
+        # content_state.bin that every later update diffs against, so a run that reports success
+        # without producing output would corrupt the baseline silently.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Build content update" \
+            --expect "ServerData/build-manifest.json" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.BuildContentUpdate \
             -cdnProfile "${{ inputs.environment }}" \
             -buildTarget "${{ inputs.platform }}"
 
       - name: Verify output before anything reaches the network
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+          ci/unity-run.sh --name "Verify output" -- \
             -executeMethod AddressableManager.Editor.Cdn.CdnBuildCLI.VerifyOutput \
             -cdnProfile "${{ inputs.environment }}" \
             -manifest "ServerData/build-manifest.json"
@@ -90,7 +99,8 @@ jobs:
         # manifest; this checks the catalog against the files on disk. A catalog referencing a
         # bundle that is not in the folder produces a 404 on a device and nothing in the log.
         run: |
-          "$UNITY" -batchmode -quit -nographics -projectPath . -logFile -             -executeMethod AddressableManager.Editor.Cdn.CatalogInspectCLI.Inspect
+          ci/unity-run.sh --name "Catalog vs bundles on disk" -- \
+            -executeMethod AddressableManager.Editor.Cdn.CatalogInspectCLI.Inspect
 
       - name: Compile against the minimum supported Unity
         # This runner uses one editor. package.json declares a lower minimum, and code that
