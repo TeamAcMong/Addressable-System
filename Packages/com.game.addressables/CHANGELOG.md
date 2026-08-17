@@ -1,6 +1,44 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.8] - 2026-08-17 - The minimum-Unity claim was wrong
+
+Documentation only. No runtime or editor code changed from `pre.7`; if you are already on `pre.7`
+and not confused about which Unity versions this package supports, you can skip it.
+
+### Fixed
+
+- **`pre.6` and `pre.7` both said the Unity floor "will drop to 2022.3" once the editor assembly
+  had been compiled there. That was never possible.** `com.unity.addressables` 2.9.1 declares
+  `unity: 2023.1` itself, so the dependency sets the floor and this package cannot go below it —
+  a fact this changelog already recorded correctly back in `pre.1` and which the later entries
+  contradicted. Both wordings are corrected in place.
+
+  What this changes for you: nothing, if you were reading `package.json`. If you were waiting for
+  2022.3 support before adopting, stop waiting — it is not coming while Addressables 2.9.1 is the
+  dependency.
+
+- **`README.md` at the repository root listed `Unity 2022.3+` and `com.unity.addressables 2.3.1+`.**
+  Both wrong, and wrong in the direction that wastes an afternoon: 2.3.1 does not compile this
+  package at all, and a 2022.3 project cannot resolve Addressables 2.9.1. The package's own
+  `README.md` — the one shipped inside the UPM package — was already correct at `2023.1` / `2.9.1`;
+  the stale copy was the one people browsing GitHub read first.
+
+### About the 2022.3 compile runs in earlier entries
+
+They are still worth running and the results still stand, but they mean something narrower than
+those entries implied. `Tools/check-min-unity-api.sh` is pointed at 2022.3.62f3 because that is the
+oldest editor installed here, not because 2022.3 is supported. Compiling clean against an editor
+*older* than the real floor is a strict superset of the check that matters, so it remains a useful
+canary for "did we reach for an API newer than we are allowed to use" — which is exactly the defect
+that made `4.1.0-pre.4` uncompilable. Pointing it at a 2023.1 editor would be the precise check.
+
+### Verification
+
+Compile gate PASS on both assemblies. The EditMode suite was **not** re-run for this release and
+does not need to be: `git diff pre.7..pre.8` touches two `.md` files and the `version` field of
+`package.json`. No `.cs` file changed.
+
 ## [4.1.0-pre.7] - 2026-08-17 - Tiering becomes a setting, not a second loader
 
 `pre.6` shipped the reference-counting fixes. This one finishes the review: the loader fork is
@@ -192,11 +230,13 @@ are **not** deprecated. `TieredCache<T>` remains a supported standalone cache vi
 
 ### Known limitations
 
-- **`unity` stays at `2023.1`.** The runtime assembly is now verified clean against 2022.3.62f3 in
-  both the `Task` and `UniTask` configurations — but the *editor* assembly cannot be verified by
-  `Tools/check-min-unity-api.sh`, which cannot reproduce Unity's editor reference set. The floor
-  will drop to 2022.3 once the editor half has been compiled inside a real 2022.3 project rather
-  than asserted. `pre.4` shipped broken because a version claim ran ahead of its evidence.
+- **`unity` stays at `2023.1`.** *(Corrected in `pre.8`: an earlier wording here said the floor
+  would drop to 2022.3 once the editor assembly had been proven there. It will not — `2023.1` is
+  `com.unity.addressables` 2.9.1's own declared floor, so the dependency fixes it. The 2022.3
+  compile runs below are a stricter-than-required canary, not a step toward supporting 2022.3.)*
+  The runtime assembly is verified clean against 2022.3.62f3 in both the `Task` and `UniTask`
+  configurations; the *editor* assembly cannot be verified by `Tools/check-min-unity-api.sh`, which
+  cannot reproduce Unity's editor reference set.
 - `TieredAssetLoader` is no longer a fork — see the deprecation section above. It forwards to an
   `AssetLoader`, so it now has single-flight joins and catalog invalidation. `ReleaseAsset`, label
   loads, the `LoadResult` variants and the dual `UniTask` signature are still not exposed *through
@@ -322,11 +362,13 @@ clean always fails, every successful update was being reported as a failure.
 
 ### Known limitations
 
-- **`unity` stays at `2023.1`.** The runtime assembly is now verified clean against 2022.3.62f3 in
-  both the `Task` and `UniTask` configurations — but the *editor* assembly cannot be verified by
-  `Tools/check-min-unity-api.sh`, which cannot reproduce Unity's editor reference set. The floor
-  will drop to 2022.3 once the editor half has been compiled inside a real 2022.3 project rather
-  than asserted. `pre.4` shipped broken because a version claim ran ahead of its evidence.
+- **`unity` stays at `2023.1`.** *(Corrected in `pre.8`: an earlier wording here said the floor
+  would drop to 2022.3 once the editor assembly had been proven there. It will not — `2023.1` is
+  `com.unity.addressables` 2.9.1's own declared floor, so the dependency fixes it. The 2022.3
+  compile runs below are a stricter-than-required canary, not a step toward supporting 2022.3.)*
+  The runtime assembly is verified clean against 2022.3.62f3 in both the `Task` and `UniTask`
+  configurations; the *editor* assembly cannot be verified by `Tools/check-min-unity-api.sh`, which
+  cannot reproduce Unity's editor reference set.
 - `TieredAssetLoader` is still a fork of `AssetLoader` missing single-flight joins, `ReleaseAsset`,
   `LoadResult` variants and dual UniTask signatures — and it is invisible to catalog invalidation,
   so caches it holds keep serving pre-update content. It is being retired in the next pre-release;

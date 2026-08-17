@@ -786,8 +786,10 @@ https://github.com/TeamAcMong/Addressable-System.git#3.5.0
 ```
 
 3. Requirements:
-   - Unity **2022.3+**
-   - `com.unity.addressables` 2.3.1+
+   - Unity **2023.1+** — this is `com.unity.addressables` 2.9.1's own declared floor, not a
+     preference. It cannot be lowered while that dependency stands.
+   - `com.unity.addressables` **2.9.1** — 2.3.1 will not compile this package; several APIs used
+     here do not exist in it.
    - TextMeshPro 3.0+ — optional (`TMP_PRESENT` define)
    - UniTask 2.3.0+ — optional (`UNITASK_PRESENT` define switches `Task<T>` ↔ `UniTask<T>`)
 
