@@ -1,11 +1,21 @@
 namespace AddressableManager.Core
 {
     /// <summary>
-    /// Byte accounting shared by every <see cref="TieredCache{T}"/> a single
-    /// <see cref="AddressableManager.Loaders.TieredAssetLoader"/> owns — one instance per loader,
-    /// not one per type.
+    /// Byte accounting for a <see cref="TieredCache{T}"/> — private to one cache by default, or
+    /// shared across a group of them via that type's internal constructor.
     /// </summary>
     /// <remarks>
+    /// WHERE THIS IS USED NOW (L-7)
+    ///
+    /// One per <see cref="TieredCache{T}"/>, for standalone callers
+    /// (<c>Advanced.CreateTieredCache&lt;T&gt;</c>). The loader-side sharing this type was built for
+    /// no longer exists: <c>AssetLoader</c> keeps a single byte total over one
+    /// <c>(address, Type)</c> dictionary, which is why the shared-budget reconciliation described
+    /// below is unnecessary there. A standalone cache has no siblings to share with — correct,
+    /// because L-4 was only ever about the several per-type caches one loader used to own, and no
+    /// loader owns them any more. The sharing mechanism is kept because the internal ctor is still
+    /// part of <see cref="TieredCache{T}"/>'s contract.
+    ///
     /// WHY THIS EXISTS (HANDOFF_TO_SESSION_B.md L-4)
     ///
     /// Before this type, each per-type <c>TieredCache&lt;T&gt;</c> tracked its own
@@ -21,10 +31,14 @@ namespace AddressableManager.Core
     /// than one type's slice of it.
     ///
     /// <see cref="TieredCache{T}"/> keeps its own local byte count alongside this (see that type's
-    /// <c>_currentCacheSize</c>) purely so <see cref="TieredCache{T}.GetStatistics"/> can still
-    /// report a per-type figure for <see cref="AddressableManager.Loaders.TieredAssetLoader.GetCombinedStats"/>
-    /// to sum — this class is the enforcement half, that field is the reporting half, and every
-    /// mutation site touches both in lockstep.
+    /// <c>_currentCacheSize</c>) purely so <see cref="TieredCache{T}.GetStatistics"/> can report a
+    /// per-instance figure when the budget is shared — this class is the enforcement half, that
+    /// field is the reporting half, and every mutation site touches both in lockstep. With an
+    /// unshared budget the two are the same number.
+    ///
+    /// <para>That "every mutation site touches both in lockstep" is a promise, not a guarantee, and
+    /// it is exactly the shape the merged loader refused to inherit: <c>AssetLoader</c>'s tiering has
+    /// one book, mutated in one method, so there is no second place that could forget.</para>
     ///
     /// Reads <see cref="TieredCacheConfig.MaxCacheSizeBytes"/> live from the shared config rather
     /// than snapshotting it at construction — the field is public and mutable, and every existing

@@ -48,9 +48,11 @@ namespace AddressableManager.Loaders
     /// </summary>
     public class AssetLoader : IDisposable
     {
-        // Cache: key = (address, Type), value = handle (owner-side interface, so an entry can be
-        // released without knowing T)
-        private readonly Dictionary<AssetCacheKey, IOwnedHandle> _assetCache = new();
+        // Cache: key = (address, Type), value = the handle (owner-side interface, so an entry can
+        // be released without knowing T) plus the metadata the tiering configuration needs. The
+        // entry is allocated whether or not this loader is tiered — see CachedAsset — so there is
+        // one code shape here, not two.
+        private readonly Dictionary<AssetCacheKey, CachedAsset> _assetCache = new();
 
         // Ledger of every handle this loader handed out, so teardown can reach the ones the cache
         // does not hold — label loads live only here.
@@ -81,6 +83,49 @@ namespace AddressableManager.Loaders
 
         // Scope name for monitoring (Editor-only, zero overhead in builds)
         private readonly string _scopeName;
+
+        #region Tiering state
+
+        // null == tiering off. The single source of truth for "is this loader tiered": every
+        // tiering branch in this class tests this field and nothing else. Set only by the
+        // (string, TieredCacheConfig) constructor, so it cannot change after the first load —
+        // see that constructor for why a settable property would be wrong.
+        private readonly TieredCacheConfig _tiering;
+
+        // Byte total across EVERY entry in _assetCache, all Types. ONE number for the whole loader,
+        // adjusted in exactly one place (RemoveCacheEntry) on the way out and one place
+        // (CacheHandle) on the way in. There is deliberately no second per-type total to reconcile
+        // it against: HANDOFF_TO_SESSION_B.md L-4 is the bug that shape produces, and the fix is
+        // not "keep both in lockstep", it is "there is only one book".
+        private long _tieredBytes;
+
+        // -1 == never evaluated. NOT initialised from Time.realtimeSinceStartup in the constructor:
+        // AssetLoader is constructed off the main thread by ThreadSafeAssetLoader, and
+        // Time.realtimeSinceStartup throws there. The first main-thread cache hit latches the clock
+        // instead — see MaybeEvaluateTiers.
+        private float _lastTierEvaluation = -1f;
+
+        private int _tierAccesses, _tierHits, _tierEvictions, _tierPromotions, _tierDemotions;
+
+        // Reused across evictions so a sweep allocates nothing steady-state. Only ever touched
+        // inside PerformEviction, which is re-entrancy-guarded (_evicting) for exactly that reason.
+        private readonly List<CachedAsset> _evictScratch = new();
+        private bool _evicting;
+
+        // Pins asked for on keys nothing is cached under yet (HANDOFF_TO_SESSION_B.md C-9).
+        // CacheHandle consumes an entry from here on insert, so the "pin the critical asset, then
+        // load it" order the README teaches actually pins something. Keyed by AssetCacheKey rather
+        // than by the plain address TieredCache<T> uses: this loader's cache spans every Type, so
+        // an address alone would pin whichever type happened to arrive first. Bounded — a caller
+        // pinning addresses it never loads would otherwise grow this for the loader's lifetime.
+        private readonly HashSet<AssetCacheKey> _pendingPins = new();
+        private const int MaxPendingPins = 256;
+
+        // Latch for PerformEviction's "eviction cannot reach its target" warning, so an unresolvable
+        // over-budget state is reported once per episode rather than on every cached load.
+        private bool _tierShortfallReported;
+
+        #endregion
 
         /// <summary>
         /// The scope name this loader was constructed with — read-only mirror of the
@@ -113,13 +158,74 @@ namespace AddressableManager.Loaders
         }
 
         /// <summary>
-        /// Create AssetLoader with optional scope name for monitoring
+        /// Create AssetLoader with optional scope name for monitoring. Tiering is off: the cache is
+        /// unbounded, nothing is evicted, and no asset size is ever estimated — byte-for-byte the
+        /// behaviour this constructor has always had. Use
+        /// <see cref="AssetLoader(string, TieredCacheConfig)"/> to turn tiering on.
         /// </summary>
         /// <param name="scopeName">Scope name for Dashboard tracking (Editor-only)</param>
         public AssetLoader(string scopeName = "Unknown")
         {
             _scopeName = scopeName;
+            InitCommon();
+        }
 
+        /// <summary>
+        /// Create an AssetLoader whose cache is tiered (Hot/Warm/Cold) and size-bounded by
+        /// <paramref name="tiering"/> — the merged replacement for
+        /// <see cref="TieredAssetLoader"/>, which was a fork of this class that never gained
+        /// single-flight join, the post-await thread guard, label/Safe/Instantiate loads,
+        /// per-address release, or reachability from a CDN catalog invalidation.
+        /// </summary>
+        /// <remarks>
+        /// WHY A CONSTRUCTOR AND NOT A SETTABLE PROPERTY
+        ///
+        /// A <c>Tiering</c> property would let a caller flip tiering on after 200 assets are already
+        /// cached with no size, no creation time and no tier. The loader would then either evict
+        /// against a byte total that omits everything loaded before the flip — HANDOFF_TO_SESSION_B.md
+        /// L-4's failure mode, re-created — or back-fill sizes by walking every cached prefab at an
+        /// arbitrary frame. Neither is acceptable and there is no third option, so tiering has to be
+        /// settled before the first load. A constructor is the only place that is structurally true.
+        ///
+        /// <para><paramref name="tiering"/> deliberately has NO default value. The one-argument
+        /// constructor above already exists, so a defaulted second parameter would make
+        /// <c>new AssetLoader("X")</c> resolve by the "fewer omitted optional parameters" tie-break
+        /// — a rule no shipped API should be betting on. A required parameter means a different
+        /// arity and no ambiguity on any compiler.</para>
+        /// </remarks>
+        /// <param name="scopeName">Scope name for Dashboard tracking (Editor-only)</param>
+        /// <param name="tiering">
+        /// Tiered cache configuration. Validated here, so a bad config fails at construction rather
+        /// than at the first eviction — the same contract <c>TieredCache&lt;T&gt;</c>'s constructor has.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="tiering"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="tiering"/> fails validation.</exception>
+        public AssetLoader(string scopeName, TieredCacheConfig tiering)
+        {
+            if (tiering == null) throw new ArgumentNullException(nameof(tiering));
+
+            if (!tiering.Validate(out var error))
+            {
+                throw new ArgumentException($"Invalid TieredCacheConfig: {error}", nameof(tiering));
+            }
+
+            _scopeName = scopeName;
+            _tiering = tiering;
+            InitCommon();
+        }
+
+        /// <summary>
+        /// The construction work both constructors must do, in the one place neither can skip.
+        /// </summary>
+        /// <remarks>
+        /// <c>_scopeName</c> and <c>_tiering</c> are assigned by each constructor rather than passed
+        /// through here because both are <c>readonly</c>, and C# only allows a readonly field to be
+        /// written from a constructor of its own type. Keeping them readonly is worth the two lines:
+        /// <c>_tiering</c> being immutable after construction is the property the remarks above turn
+        /// on.
+        /// </remarks>
+        private void InitCommon()
+        {
             System.Threading.Interlocked.CompareExchange(
                 ref _mainThreadId, System.Threading.Thread.CurrentThread.ManagedThreadId, 0);
 
@@ -127,8 +233,20 @@ namespace AddressableManager.Loaders
             // one place none of them can skip. A catalog update has to reach every live loader; five
             // of the six populations are otherwise unreachable. The registry holds a weak reference,
             // so this does not keep an abandoned loader alive.
+            //
+            // A tiering-configured loader IS an AssetLoader, so it registers here exactly like every
+            // other one. That is what closes HANDOFF_TO_SESSION_B.md §8.4's "seventh source": a
+            // TieredAssetLoader registered with a different registry and had no InvalidateAddresses
+            // at all, so a CDN catalog update could never reach anything it had cached.
             AssetLoaderRegistry.Register(this);
         }
+
+        /// <summary>
+        /// Whether this loader's cache is tiered — i.e. whether it was built with the
+        /// <see cref="AssetLoader(string, TieredCacheConfig)"/> constructor. Every tiering member
+        /// below is a no-op when this is false.
+        /// </summary>
+        public bool TieringEnabled => _tiering != null;
 
         /// <summary>
         /// Whether the caller is on Unity's main thread
@@ -308,15 +426,85 @@ namespace AddressableManager.Loaders
         /// </summary>
         private IAssetHandle<T> TryRetainCached<T>(AssetCacheKey key)
         {
-            if (!_assetCache.TryGetValue(key, out var cached)) return null;
+            // Counted before the lookup, so a complete miss counts as an access — TieredCache.TryGet
+            // does the same (TieredCache.cs:269) and a hit rate that cannot see misses is not a hit
+            // rate. Joins via TryJoinInFlight are deliberately NOT counted: there is no entry to
+            // record against at join time, and inventing one would be a second book.
+            if (_tiering != null) _tierAccesses++;
+
+            if (!_assetCache.TryGetValue(key, out var entry)) return null;
+
+            var cached = entry.Handle;
 
             // TryRetain is the atomic form of "test IsValid, then Retain()": no window in which
             // another owner can drop the last reference between the test and the increment.
-            if (cached is IAssetHandle<T> typed && cached.TryRetain()) return typed;
+            if (cached is IAssetHandle<T> typed && cached.TryRetain())
+            {
+                if (_tiering != null)
+                {
+                    entry.RecordAccess();
+                    _tierHits++;
+                    MaybeEvaluateTiers();
+                }
+
+                return typed;
+            }
+
+            // Stale. The handle is provably dead here — the only writer of _assetCache is
+            // CacheHandle<T>, keyed by (address, typeof(T)), so the type test above cannot fail for
+            // a live entry and TryRetain only refuses at count zero. RemoveCacheEntry's Dispose() is
+            // therefore the documented no-op at count 0 (AssetReferenceCounter.Release), and its
+            // IsAlive test drops the handle from _activeHandles exactly as this path always did.
+            CarryPinAcrossStaleEntry(entry);
+            RemoveCacheEntry(key, hard: false);
+            return null;
+        }
+
+        /// <summary>
+        /// The ONLY place <c>_assetCache</c> loses a single entry.
+        /// </summary>
+        /// <remarks>
+        /// <c>_tieredBytes</c> is adjusted here and nowhere else on the removal side, so the byte
+        /// total cannot drift from the dictionary's contents — there is no second place that could
+        /// forget. That is the whole point: HANDOFF_TO_SESSION_B.md L-4 exists because byte
+        /// accounting lived in N places and the ceiling lived in one, and a promise that every
+        /// mutation site does the right thing is a to-do list, not a fix.
+        ///
+        /// <para>The <c>_activeHandles</c> bookkeeping at the end is the same test
+        /// <c>InvalidateAddress</c> and <c>CacheHandle</c> each used to do inline — folded in here so
+        /// it cannot be omitted at a seventh site later. A handle that survives the decrement stays
+        /// in the teardown ledger; one that does not is dropped from it.</para>
+        /// </remarks>
+        /// <param name="key">The entry to drop. A key with no entry is a no-op.</param>
+        /// <param name="hard">
+        /// <c>true</c> — teardown/eviction-API force release, killing the asset under any other
+        /// holder. <c>false</c> — give back only the cache's own reference (the refcount contract's
+        /// default). Eviction always passes <c>false</c>: it must never free an asset a live holder
+        /// is still using.
+        /// </param>
+        /// <param name="exempt">
+        /// A handle that must not be released even though its entry is being dropped, for the case
+        /// where the very same handle object is about to be re-inserted under this key. Its bytes
+        /// are still given back, so the accounting stays exact.
+        /// </param>
+        private void RemoveCacheEntry(AssetCacheKey key, bool hard, IOwnedHandle exempt = null)
+        {
+            if (!_assetCache.TryGetValue(key, out var entry)) return;
 
             _assetCache.Remove(key);
-            if (cached != null) _activeHandles.Remove(cached);
-            return null;
+
+            _tieredBytes -= entry.EstimatedBytes;
+            if (_tieredBytes < 0) _tieredBytes = 0;   // clamp, matching CacheBudget.Give
+
+            var handle = entry.Handle;
+            if (handle == null || ReferenceEquals(handle, exempt)) return;
+
+            if (hard) handle.ForceRelease(); else handle.Dispose();
+
+            // Dispose() only decremented; a handle another owner still retains must stay reachable
+            // for teardown even though it just left _assetCache, or its Addressables operation would
+            // never be released at all.
+            if (!handle.IsAlive) _activeHandles.Remove(handle);
         }
 
         /// <summary>
@@ -327,21 +515,78 @@ namespace AddressableManager.Loaders
         private void CacheHandle<T>(AssetCacheKey key, AssetHandle<T> handle)
         {
             // An entry can only still sit here if it went stale between the miss and now. Drop the
-            // cache's reference on it rather than leaking it behind the new one.
-            if (_assetCache.TryGetValue(key, out var previous) && !ReferenceEquals(previous, handle))
-            {
-                previous?.Dispose();
-
-                // Stop tracking it only if that really was the last reference. Dispose() is a
-                // decrement now, so a caller may still be holding this handle — and a live handle
-                // removed from _activeHandles is unreachable from teardown, i.e. its Addressables
-                // operation would never be released at all.
-                if (previous != null && !previous.IsAlive) _activeHandles.Remove(previous);
-            }
+            // cache's reference on it rather than leaking it behind the new one — and give its bytes
+            // back, which is why this routes through RemoveCacheEntry rather than releasing inline.
+            // `exempt` covers re-caching the very same handle object: releasing it would give back
+            // the reference the Retain() below is about to re-take.
+            RemoveCacheEntry(key, hard: false, exempt: handle);
 
             handle.Retain();
-            _assetCache[key] = handle;
-            TrackHandle(handle);
+
+            // Everything between the Retain() above and the two registrations below runs inside a
+            // try/finally that guarantees the handle ends up reachable. The cache's reference has
+            // already been taken at this point; if anything in between threw, the handle would be in
+            // NEITHER _assetCache NOR _activeHandles — unreachable from ClearCache, TearDownAll,
+            // Dispose and InvalidateAll — while LoadAssetAsync's catch returned null, so the caller
+            // never learns a handle exists. That is a permanent, silent leak of one Addressables
+            // operation. At HEAD nothing sat in this window; the tiering merge inserted
+            // EstimateAssetSize (which walks a prefab's renderers and materials) into it.
+            bool registered = false;
+            long bytes = 0L;
+            try
+            {
+                // The _tiering guard on the estimator is load-bearing, not a micro-optimisation:
+                // EstimateGameObjectSize walks GetComponentsInChildren<MeshFilter>/<SkinnedMeshRenderer>/
+                // <Renderer> and then every texture-typed shader property of every material. Running
+                // that on every prefab load in the default, untiered configuration would be a large,
+                // silent, unrequested per-load cost across the whole package.
+                bytes = _tiering != null ? EstimateAssetSize(handle.Asset) : 0L;
+
+                var entry = new CachedAsset(key, handle, bytes);
+
+                // A pin placed before this key was ever cached applies now, on arrival (C-9). BEFORE the
+                // eviction check below: a freshly pinned entry must already be pinned by the time
+                // PerformEviction builds its candidate list, or the very entry the caller asked to
+                // protect is a candidate in the pass its own insert triggered.
+                if (_tiering != null && _pendingPins.Remove(key))
+                {
+                    entry.IsPinned = true;
+                    entry.Tier = CacheTier.Hot;
+
+                    if (_tiering.LogTierOperations)
+                    {
+                        Debug.Log($"[AssetLoader] Applied a pending pin to '{key}' as it entered the cache.");
+                    }
+                }
+
+                _assetCache[key] = entry;
+                _tieredBytes += bytes;
+                registered = true;
+            }
+            finally
+            {
+                // TrackHandle unconditionally, even on the failure path: the teardown ledger is the
+                // backstop that keeps a handle releasable when the cache did not take it.
+                TrackHandle(handle);
+
+                if (!registered)
+                {
+                    Debug.LogError(
+                        $"[AssetLoader] Failed to register '{key}' in the cache after taking a " +
+                        "reference on it. The handle is tracked for teardown so it is not leaked, " +
+                        "but it is not cached — the next load of this key will start a new operation.");
+                }
+            }
+
+            if (_tiering != null && _tiering.EnableAutoEviction && _tiering.MaxCacheSizeBytes > 0)
+            {
+                WarnIfLargerThanEvictionTarget(key, bytes);
+
+                if ((float)_tieredBytes / _tiering.MaxCacheSizeBytes >= _tiering.EvictionTriggerRatio)
+                {
+                    PerformEviction();
+                }
+            }
         }
 
         /// <summary>
@@ -611,7 +856,18 @@ namespace AddressableManager.Loaders
             }
             finally
             {
-                _inFlightProgress.Remove(cacheKey);
+                // Same main-thread guard CompleteInFlight applies to _inFlightLoads one line below,
+                // and for the same reason: _inFlightProgress is a plain Dictionary, written on the
+                // main thread at the top of this method and read from GetLoadProgress, so removing
+                // from it off-thread is an unsynchronised mutation racing those readers. This runs
+                // off the main thread exactly when AfterAwait's thread re-check fires — the case the
+                // guard in CompleteInFlight was written for. A leftover entry is harmless: its
+                // closure reads the finished operation's PercentComplete, which is 1.
+                if (IsMainThread)
+                {
+                    _inFlightProgress.Remove(cacheKey);
+                }
+
                 CompleteInFlight(cacheKey, inFlight, loaded);
             }
         }
@@ -1713,12 +1969,33 @@ namespace AddressableManager.Loaders
 
             LogVerbose($"[AssetLoader] Clearing cache ({_assetCache.Count} cached, {_activeHandles.Count} tracked)");
 
-            foreach (var handle in _assetCache.Values)
-            {
-                handle?.ForceRelease();
-            }
+            // Snapshot, then release. ForceRelease reaches Addressables.Release, which can destroy
+            // objects, which can run game code, which can re-enter this loader — the same chain
+            // PerformEviction's _evicting guard exists for. Iterating _assetCache.Values live made
+            // that a "Collection was modified" throw out of a teardown path, and the re-entrant
+            // mutation is easy to reach from here: during this loop every already-released entry is
+            // stale, so a re-entrant LoadAssetAsync hits TryRetainCached -> TryRetain() fails ->
+            // RemoveCacheEntry(hard: false) -> _assetCache.Remove(), mutating the dictionary the
+            // foreach is walking. Clearing the dictionary BEFORE releasing also means a re-entrant
+            // caller sees an empty cache rather than entries that are already dead.
+            var entries = new CachedAsset[_assetCache.Count];
+            _assetCache.Values.CopyTo(entries, 0);
 
             _assetCache.Clear();
+            _tieredBytes = 0;
+
+            // Emptying the cache drops the tiering bookkeeping with it, matching
+            // TieredCache.ForceReleaseAll (which TieredAssetLoader.ClearCache reaches through
+            // Dispose): leaving armed pins behind would re-pin whatever happened to be loaded next
+            // under those keys, long after the caller believed the cache was gone. Reset with the
+            // rest of the state, before the releases below, so a re-entrant load lands in a
+            // fully-emptied loader rather than one this call is halfway through clearing.
+            ResetTieringState();
+
+            foreach (var entry in entries)
+            {
+                entry.Handle?.ForceRelease();
+            }
 
             // Registrations whose load already finished are a second cache: a joiner still claims a
             // reference from them. Leaving them would serve the assets this call just evicted.
@@ -1820,14 +2097,26 @@ namespace AddressableManager.Loaders
 
             foreach (var key in keysToRemove)
             {
-                var handle = _assetCache[key];
-                _assetCache.Remove(key);
-                handle?.Dispose();
+                // Because the tier metadata lives IN the entry being removed, invalidation drops the
+                // handle and its bytes/tier/pin state in one indivisible step. There is no separate
+                // metadata map that could be left holding a row for an address with no handle.
+                //
+                // A pin, though, must outlive the entry that carried it. Invalidation is not the
+                // caller withdrawing its pin — it is this loader dropping a now-stale entry so the
+                // next load re-fetches against the updated catalog — so re-arming the pin as pending
+                // is what makes the reloaded entry come back protected. Without this, a CDN catalog
+                // update (CatalogService -> AssetLoaderRegistry.InvalidateAll -> here) silently
+                // unpinned every pinned asset: the entry left with IsPinned == true and nothing in
+                // _pendingPins, so the next load re-cached it as an ordinary eviction candidate and
+                // BOTH observability channels (GetTieredCacheStats().PinnedEntries and
+                // .PendingPins) read zero. Same re-arm the two stale-drop sites already do
+                // (TryRetainCached here, TieredCache/ThreadSafeCacheManager in their Set/TryGet).
+                if (_assetCache.TryGetValue(key, out var invalidated))
+                {
+                    CarryPinAcrossStaleEntry(invalidated);
+                }
 
-                // Dispose() only decremented; a handle another owner still retains must stay
-                // reachable for teardown even though it just left _assetCache, or its Addressables
-                // operation would never be released at all.
-                if (handle != null && !handle.IsAlive) _activeHandles.Remove(handle);
+                RemoveCacheEntry(key, hard: false);
             }
         }
 
@@ -1855,9 +2144,7 @@ namespace AddressableManager.Loaders
 
             foreach (var key in keysToRemove)
             {
-                var handle = _assetCache[key];
-                _assetCache.Remove(key);
-                handle?.ForceRelease();
+                RemoveCacheEntry(key, hard: true);
             }
         }
 
@@ -1872,19 +2159,33 @@ namespace AddressableManager.Loaders
             // Release everything tracked, not just the cache: label loads never enter _assetCache,
             // so clearing only that leaks the whole label's bundles. ForceRelease is idempotent, so
             // the overlap between the two collections is safe.
-            foreach (var handle in _activeHandles)
-            {
-                handle?.ForceRelease();
-            }
-
-            foreach (var handle in _assetCache.Values)
-            {
-                handle?.ForceRelease();
-            }
+            //
+            // Snapshot both collections and empty them BEFORE releasing anything, for the reason
+            // spelled out in ClearCache: ForceRelease can run game code that re-enters this loader,
+            // and re-entrant TrackHandle adds to _activeHandles while re-entrant RemoveCacheEntry
+            // removes from _assetCache — either one throws "Collection was modified" out of a live
+            // foreach. Anything a re-entrant caller manages to add after this point is its own
+            // handle in its own ledger, and Dispose's _disposed flag stops it being cached at all.
+            var tracked = _activeHandles.ToArray();
+            var entries = new CachedAsset[_assetCache.Count];
+            _assetCache.Values.CopyTo(entries, 0);
 
             _assetCache.Clear();
+            _tieredBytes = 0;
+            ResetTieringState();
+
             _activeHandles.Clear();
             _sinceCompaction = 0;
+
+            foreach (var handle in tracked)
+            {
+                handle?.ForceRelease();
+            }
+
+            foreach (var entry in entries)
+            {
+                entry.Handle?.ForceRelease();
+            }
 
             // Instances are owned by Addressables per instance, not by our reference count.
             ReleaseTrackedInstances();
@@ -1927,8 +2228,8 @@ namespace AddressableManager.Loaders
 
             if (string.IsNullOrEmpty(address)) return false;
 
-            return _assetCache.TryGetValue(new AssetCacheKey(address, typeof(T)), out var handle)
-                   && handle != null && handle.IsAlive;
+            return _assetCache.TryGetValue(new AssetCacheKey(address, typeof(T)), out var entry)
+                   && entry?.Handle != null && entry.Handle.IsAlive;
         }
 
         /// <summary>
@@ -1945,7 +2246,7 @@ namespace AddressableManager.Loaders
 
             foreach (var kvp in _assetCache)
             {
-                if (kvp.Value != null && kvp.Value.IsAlive &&
+                if (kvp.Value?.Handle != null && kvp.Value.Handle.IsAlive &&
                     string.Equals(kvp.Key.Address, address, StringComparison.Ordinal))
                 {
                     return true;
@@ -1953,6 +2254,737 @@ namespace AddressableManager.Loaders
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region Tiering
+
+        /// <summary>
+        /// Pin an asset so eviction skips it. If nothing is cached under
+        /// (<paramref name="address"/>, <typeparamref name="T"/>) yet, the request is
+        /// <em>remembered</em> and applied the moment that key is stored, so pinning before the load
+        /// works exactly as the README teaches (HANDOFF_TO_SESSION_B.md C-9). Pins still waiting for
+        /// their key are reported as <c>PendingPins</c> by <see cref="GetTieredCacheStats()"/>.
+        /// </summary>
+        /// <remarks>
+        /// A pin on a loader built without tiering cannot protect anything — nothing evicts — so it
+        /// warns rather than silently doing nothing, which is the exact shape of the bug C-9
+        /// describes.
+        /// </remarks>
+        public void PinAsset<T>(string address)
+        {
+            AssertMainThread();
+
+            if (string.IsNullOrEmpty(address)) throw new ArgumentNullException(nameof(address));
+
+            if (_tiering == null)
+            {
+                Debug.LogWarning(
+                    $"[AssetLoader] PinAsset<{typeof(T).Name}>('{address}') did nothing: this loader " +
+                    $"was built without tiering, so nothing is ever evicted and there is nothing to " +
+                    $"pin against. Construct it as new AssetLoader(scopeName, config) if you need " +
+                    $"pinning.");
+                return;
+            }
+
+            var key = new AssetCacheKey(address, typeof(T));
+
+            if (_assetCache.TryGetValue(key, out var entry))
+            {
+                entry.IsPinned = true;
+                entry.Tier = CacheTier.Hot;
+
+                if (_tiering.LogTierOperations)
+                {
+                    Debug.Log($"[AssetLoader] Pinned '{key}' (already cached).");
+                }
+
+                return;
+            }
+
+            RecordPendingPin(key);
+        }
+
+        /// <summary>
+        /// Unpin an asset to allow eviction, and cancel any pin still pending for that key.
+        /// </summary>
+        /// <remarks>
+        /// Cancelling the pending pin is not optional: with <see cref="PinAsset{T}"/> deferring, a
+        /// Pin/Unpin pair on a key that is not cached yet would otherwise leave the pin armed and
+        /// silently pin the entry when it eventually loaded.
+        /// </remarks>
+        public void UnpinAsset<T>(string address)
+        {
+            AssertMainThread();
+
+            if (string.IsNullOrEmpty(address)) throw new ArgumentNullException(nameof(address));
+            if (_tiering == null) return;
+
+            var key = new AssetCacheKey(address, typeof(T));
+
+            bool cancelledPending = _pendingPins.Remove(key);
+            bool unpinned = false;
+
+            if (_assetCache.TryGetValue(key, out var entry))
+            {
+                unpinned = entry.IsPinned;
+                entry.IsPinned = false;
+            }
+
+            if ((unpinned || cancelledPending) && _tiering.LogTierOperations)
+            {
+                Debug.Log($"[AssetLoader] Unpinned '{key}' (cached entry: {unpinned}, " +
+                          $"pending pin cancelled: {cancelledPending}).");
+            }
+        }
+
+        /// <summary>
+        /// Force an immediate tier re-evaluation across every cached entry, of every Type. No-op on
+        /// an untiered loader or when <see cref="TieredCacheConfig.EnableAutoTiering"/> is off.
+        /// </summary>
+        public void EvaluateTiers()
+        {
+            AssertMainThread();
+
+            if (_tiering == null || !_tiering.EnableAutoTiering) return;
+
+            EvaluateAndAdjustTiers();
+            _lastTierEvaluation = Time.realtimeSinceStartup;
+        }
+
+        /// <summary>
+        /// Force an immediate eviction pass. No-op on an untiered loader or when
+        /// <see cref="TieredCacheConfig.EnableAutoEviction"/> is off.
+        /// </summary>
+        /// <remarks>
+        /// Eviction gives back only the cache's own reference. An asset another owner is still
+        /// holding stays valid; this is not <see cref="ClearCache"/>.
+        /// </remarks>
+        public void ForceEviction()
+        {
+            AssertMainThread();
+
+            if (_tiering == null || !_tiering.EnableAutoEviction) return;
+
+            PerformEviction();
+        }
+
+        /// <summary>
+        /// Tiering statistics across every cached entry of every Type. Named
+        /// <c>GetTieredCacheStats</c> rather than <c>GetCacheStats</c> because
+        /// <see cref="GetCacheStats"/> already exists with a different return type and C# cannot
+        /// overload on that.
+        /// </summary>
+        /// <remarks>
+        /// On an untiered loader the entry counts are real (the cache still has entries) while every
+        /// byte and tier figure reads 0 — nothing was ever measured or tiered. Use
+        /// <see cref="TieringEnabled"/> to tell the two apart.
+        /// </remarks>
+        public TieredCacheStats GetTieredCacheStats()
+        {
+            AssertMainThread();
+
+            return BuildTieredStats(null);
+        }
+
+        /// <summary>
+        /// Tiering statistics restricted to entries cached as <typeparamref name="T"/>, or
+        /// <c>null</c> when this loader has tiering disabled.
+        /// </summary>
+        /// <remarks>
+        /// <c>null</c> means exactly one thing — tiering is off — so the answer is deterministic and
+        /// needs no extra bookkeeping. (The old <c>TieredAssetLoader.GetCacheStats&lt;T&gt;</c>
+        /// returned <c>null</c> until the first load of <c>T</c> created a per-type cache; there is
+        /// no per-type object to test for existence any more, and an all-zero struct for "tiered but
+        /// nothing of this type cached" is the honest answer.)
+        ///
+        /// <para><c>TotalEntries</c>/<c>HotEntries</c>/<c>WarmEntries</c>/<c>ColdEntries</c>/
+        /// <c>PinnedEntries</c>/<c>PendingPins</c>/<c>TotalSizeBytes</c> are exact per-<c>T</c>
+        /// figures — the entries carry their Type. <c>TotalAccesses</c>/<c>CacheHits</c>/
+        /// <c>HitRate</c>/<c>TotalEvictions</c>/<c>TotalPromotions</c>/<c>TotalDemotions</c> are
+        /// loader-wide: there is one counter set per loader now, and keeping them per-Type would
+        /// mean a Dictionary&lt;Type, counters&gt; — a second book, i.e. L-4's shape rebuilt for
+        /// statistics. These are diagnostics, not lifetime.</para>
+        /// </remarks>
+        public TieredCacheStats? GetTieredCacheStats<T>()
+        {
+            AssertMainThread();
+
+            if (_tiering == null) return null;
+
+            return BuildTieredStats(typeof(T));
+        }
+
+        /// <summary>
+        /// Build a stats snapshot over every entry, or only those whose key Type is
+        /// <paramref name="filter"/>.
+        /// </summary>
+        private TieredCacheStats BuildTieredStats(Type filter)
+        {
+            int total = 0, hot = 0, warm = 0, cold = 0, pinned = 0;
+            long bytes = 0;
+
+            foreach (var entry in _assetCache.Values)
+            {
+                if (filter != null && entry.Key.Type != filter) continue;
+
+                total++;
+                bytes += entry.EstimatedBytes;
+                if (entry.IsPinned) pinned++;
+
+                switch (entry.Tier)
+                {
+                    case CacheTier.Hot: hot++; break;
+                    case CacheTier.Warm: warm++; break;
+                    default: cold++; break;
+                }
+            }
+
+            int pending = 0;
+            if (filter == null)
+            {
+                pending = _pendingPins.Count;
+            }
+            else
+            {
+                foreach (var key in _pendingPins)
+                {
+                    if (key.Type == filter) pending++;
+                }
+            }
+
+            return new TieredCacheStats
+            {
+                TotalEntries = total,
+                HotEntries = hot,
+                WarmEntries = warm,
+                ColdEntries = cold,
+                PinnedEntries = pinned,
+                PendingPins = pending,
+
+                // Loader-wide reports the number eviction actually gates on, not a re-derived sum:
+                // if the two could ever disagree the enforced one is the one worth seeing.
+                TotalSizeBytes = filter == null ? _tieredBytes : bytes,
+                MaxSizeBytes = _tiering?.MaxCacheSizeBytes ?? 0,
+
+                TotalAccesses = _tierAccesses,
+                CacheHits = _tierHits,
+                HitRate = _tierAccesses > 0 ? (float)_tierHits / _tierAccesses : 0f,
+                TotalEvictions = _tierEvictions,
+                TotalPromotions = _tierPromotions,
+                TotalDemotions = _tierDemotions
+            };
+        }
+
+        /// <summary>
+        /// Remember a pin for a key that is not cached yet, for <see cref="CacheHandle{T}"/> to apply
+        /// on arrival. Bounded — see <see cref="MaxPendingPins"/>.
+        /// </summary>
+        private void RecordPendingPin(AssetCacheKey key)
+        {
+            if (_pendingPins.Contains(key)) return;
+
+            if (_pendingPins.Count >= MaxPendingPins)
+            {
+                // The one case where a pin is genuinely refused rather than deferred, so this is an
+                // error and is not gated behind LogTierOperations: nothing later will apply it.
+                Debug.LogError(
+                    $"[AssetLoader] Pin('{key}') was refused: {MaxPendingPins} pins are already " +
+                    $"waiting for keys that have never been cached. This key will NOT be pinned when " +
+                    $"it loads. Pinning addresses that are never loaded is the usual cause — check " +
+                    $"the addresses being passed to PinAsset.");
+                return;
+            }
+
+            _pendingPins.Add(key);
+
+            if (_tiering.LogTierOperations)
+            {
+                Debug.Log($"[AssetLoader] Pin('{key}') found nothing cached under that key; the pin " +
+                          $"is now pending and will be applied when the key is stored.");
+            }
+        }
+
+        /// <summary>
+        /// Re-arm a pin as pending when the entry carrying it is dropped as stale (its handle died
+        /// outside this cache). Without this, a pinned entry force-released by another owner comes
+        /// back unpinned on the next load with no trace.
+        /// </summary>
+        private void CarryPinAcrossStaleEntry(CachedAsset entry)
+        {
+            if (_tiering == null || entry == null || !entry.IsPinned) return;
+
+            if (_pendingPins.Count < MaxPendingPins)
+            {
+                _pendingPins.Add(entry.Key);
+            }
+        }
+
+        /// <summary>
+        /// Drop everything that only made sense for the entries just emptied out of the cache.
+        /// </summary>
+        private void ResetTieringState()
+        {
+            _pendingPins.Clear();
+            _tierShortfallReported = false;
+
+            _tierAccesses = 0;
+            _tierHits = 0;
+            _tierEvictions = 0;
+            _tierPromotions = 0;
+            _tierDemotions = 0;
+        }
+
+        /// <summary>
+        /// Interval-gated tier evaluation, run from the cache-hit path.
+        /// </summary>
+        /// <remarks>
+        /// The <c>_lastTierEvaluation &gt;= 0f</c> test is what makes the <c>-1f</c> sentinel work:
+        /// the first main-thread cache hit evaluates immediately and latches the clock, so
+        /// <c>Time.realtimeSinceStartup</c> is never read from a constructor — which is where
+        /// <c>TieredCache&lt;T&gt;</c> still reads it (TieredCache.cs:95) and where it throws for a
+        /// loader constructed off the main thread by <c>ThreadSafeAssetLoader</c>.
+        /// </remarks>
+        private void MaybeEvaluateTiers()
+        {
+            if (_tiering == null || !_tiering.EnableAutoTiering) return;
+
+            // Safe: every caller has already passed AssertMainThread() or AfterAwait().
+            float now = Time.realtimeSinceStartup;
+
+            if (_lastTierEvaluation >= 0f &&
+                now - _lastTierEvaluation < _tiering.TierEvaluationInterval)
+            {
+                return;
+            }
+
+            EvaluateAndAdjustTiers();
+            _lastTierEvaluation = now;
+        }
+
+        /// <summary>
+        /// Evaluate every cached entry, of every Type, and adjust its tier from its access pattern.
+        /// Thresholds and the promote/demote ladder are the ones <c>TieredCache&lt;T&gt;</c> uses
+        /// (TieredCache.cs:558-610), applied over one dictionary instead of one per Type.
+        /// </summary>
+        private void EvaluateAndAdjustTiers()
+        {
+            foreach (var entry in _assetCache.Values)
+            {
+                if (entry.IsPinned)
+                    continue; // Skip pinned entries
+
+                float score = entry.CalculateTierScore();
+                CacheTier oldTier = entry.Tier;
+                CacheTier newTier = oldTier;
+
+                // Determine new tier based on score
+                if (score >= _tiering.PromoteToHotThreshold)
+                {
+                    newTier = CacheTier.Hot;
+                }
+                else if (score >= _tiering.PromoteToWarmThreshold)
+                {
+                    newTier = CacheTier.Warm;
+                }
+                else if (score <= _tiering.DemoteToColdThreshold)
+                {
+                    newTier = CacheTier.Cold;
+                }
+                else if (oldTier == CacheTier.Hot && score < _tiering.DemoteToWarmThreshold)
+                {
+                    newTier = CacheTier.Warm;
+                }
+
+                // Apply tier change
+                if (newTier != oldTier)
+                {
+                    entry.Tier = newTier;
+
+                    if (newTier < oldTier) // Promotion (Hot=0, Cold=2)
+                    {
+                        _tierPromotions++;
+                        if (_tiering.LogTierOperations)
+                        {
+                            Debug.Log($"[AssetLoader] Promoted {entry.Key}: {oldTier} → {newTier} (score: {score:F2})");
+                        }
+                    }
+                    else // Demotion
+                    {
+                        _tierDemotions++;
+                        if (_tiering.LogTierOperations)
+                        {
+                            Debug.Log($"[AssetLoader] Demoted {entry.Key}: {oldTier} → {newTier} (score: {score:F2})");
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Cold first, then lowest score first — the eviction order.
+        /// </summary>
+        /// <remarks>
+        /// <c>CacheTier</c> is <c>Hot = 0, Warm = 1, Cold = 2</c>, so comparing <c>b</c> to <c>a</c>
+        /// sorts the tier descending and puts Cold at the front, reproducing
+        /// <c>OrderByDescending(e =&gt; e.Tier).ThenBy(e =&gt; e.CalculateTierScore())</c> without the
+        /// LINQ. <c>SortScore</c> is read rather than recomputed so the score each entry was
+        /// <em>selected</em> on is the score it is <em>ordered</em> on — recomputing mid-sort would
+        /// feed <see cref="List{T}.Sort"/> a comparison whose answer drifts with the clock.
+        /// </remarks>
+        private static readonly Comparison<CachedAsset> EvictionOrder = (a, b) =>
+        {
+            int byTier = b.Tier.CompareTo(a.Tier);
+            return byTier != 0 ? byTier : a.SortScore.CompareTo(b.SortScore);
+        };
+
+        /// <summary>
+        /// Evict cold/low-scoring entries until the cache is back at
+        /// <see cref="TieredCacheConfig.EvictionTargetRatio"/> of its ceiling.
+        /// </summary>
+        /// <remarks>
+        /// EVICTION SPANS EVERY TYPE. This is the one behavioural difference from
+        /// <c>TieredCache&lt;T&gt;.PerformEviction</c> (TieredCache.cs:656-735), and it is the point
+        /// of the merge. A per-type cache admits in its own remarks that its candidates "still only
+        /// ever come from this type's own entries", and relied on
+        /// <c>TieredAssetLoader.ForceEviction</c>'s round-robin over sibling caches to converge on
+        /// the real ceiling. With one dictionary the candidate set is every entry of every Type,
+        /// ranked together, in one pass — the round-robin convergence argument disappears along with
+        /// the thing that needed it.
+        ///
+        /// <para>NO LINQ. <c>_assetCache</c> is walked once to score and select, the reusable
+        /// <c>_evictScratch</c> list is sorted in place, then drained. The LINQ original allocated a
+        /// list plus three iterators on every pass, on the main thread, from inside a load.</para>
+        ///
+        /// <para>RELEASE, NOT FORCE-RELEASE. Removal is <c>RemoveCacheEntry(key, hard: false)</c> —
+        /// a decrement, matching <c>entry.Handle?.Release()</c> at TieredCache.cs:719. Eviction must
+        /// never free an asset under a live holder; that is reserved for <see cref="ClearCache"/>,
+        /// <see cref="ReleaseAsset"/> and teardown.</para>
+        ///
+        /// <para>RE-ENTRANCY. <c>RemoveCacheEntry</c> can reach <c>Addressables.Release</c>, which can
+        /// destroy objects, which can run game code, which can start a load that calls
+        /// <see cref="CacheHandle{T}"/> and triggers a nested pass. <c>_evictScratch</c> is a shared
+        /// field, so a nested pass would clear the list the outer one is mid-way through draining.
+        /// The guard makes the nested call a no-op instead; the outer pass is already evicting.</para>
+        ///
+        /// <para>An entry inserted this frame is structurally immune: it is born Hot with
+        /// <c>AccessCount = 1</c>, so its score is <c>1/(1+0) * Mathf.Log(1+1) * 100 ≈ 69.3</c>, far
+        /// above every shipped <c>EvictionScoreThreshold</c>. That is what stops a load from evicting
+        /// the handle it just produced — a safety margin, not a coincidence.</para>
+        /// </remarks>
+        private void PerformEviction()
+        {
+            long max = _tiering.MaxCacheSizeBytes;
+            if (max <= 0) return;
+
+            if (_evicting) return;
+
+            long targetSize = (long)(max * _tiering.EvictionTargetRatio);
+            long overage = _tieredBytes - targetSize;
+
+            if (overage <= 0)
+            {
+                _tierShortfallReported = false;
+                return;
+            }
+
+            _evicting = true;
+
+            try
+            {
+                _evictScratch.Clear();
+
+                // Candidates = the entries this pass can actually take. The gate is applied HERE,
+                // once, instead of inside the drain loop, so the pool can be measured before
+                // anything is drawn from it. Same victim set either way — the gate is per-entry and
+                // independent of iteration order — but the demand below can now be honest about what
+                // is reachable.
+                long reclaimable = 0;
+                foreach (var entry in _assetCache.Values)
+                {
+                    if (entry.IsPinned) continue;
+
+                    float score = entry.CalculateTierScore();
+                    if (entry.Tier != CacheTier.Cold && score >= _tiering.EvictionScoreThreshold) continue;
+
+                    entry.SortScore = score;
+                    _evictScratch.Add(entry);
+                    reclaimable += entry.EstimatedBytes;
+                }
+
+                _evictScratch.Sort(EvictionOrder);
+
+                // The cache wants `overage` bytes back; this pass can only ever produce
+                // `reclaimable`. Chase the smaller of the two, so reaching the goal and exhausting
+                // the candidates are no longer indistinguishable outcomes.
+                long amountToEvict = Math.Min(overage, reclaimable);
+
+                long evictedSize = 0;
+                int evictedCount = 0;
+
+                for (int i = 0; i < _evictScratch.Count; i++)
+                {
+                    if (evictedSize >= amountToEvict) break;
+
+                    var entry = _evictScratch[i];
+
+                    // Only book what this pass actually reclaims. The _evicting guard stops a nested
+                    // PASS, but it does not stop re-entrant ClearCache/ReleaseAsset/InvalidateAddress
+                    // (reached through Addressables.Release -> destroyed objects -> game code) from
+                    // removing entries this list still holds stale references to. RemoveCacheEntry is
+                    // a documented no-op for a key that is already gone, so counting before calling
+                    // it inflated _tierEvictions, the "eviction complete" line and the evictedSize
+                    // ReportUnreachableBudget compares against target — the three diagnostics added
+                    // so that an unreachable eviction target stops being invisible.
+                    if (!_assetCache.TryGetValue(entry.Key, out var live) || !ReferenceEquals(live, entry))
+                    {
+                        continue;
+                    }
+
+                    evictedSize += entry.EstimatedBytes;
+                    evictedCount++;
+
+                    if (_tiering.LogTierOperations)
+                    {
+                        Debug.Log($"[AssetLoader] Evicted {entry.Key} from {entry.Tier} tier " +
+                                  $"(score: {entry.SortScore:F2})");
+                    }
+
+                    // Adjusts _tieredBytes itself — that is the chokepoint, and it is why nothing
+                    // here subtracts evictedSize a second time.
+                    RemoveCacheEntry(entry.Key, hard: false);
+                }
+
+                _evictScratch.Clear();
+                _tierEvictions += evictedCount;
+
+                if (_tiering.LogTierOperations)
+                {
+                    Debug.Log(
+                        $"[AssetLoader] Eviction complete: {evictedCount} entries, {evictedSize / 1024}KB " +
+                        $"freed of {overage / 1024}KB over budget ({reclaimable / 1024}KB was reclaimable).");
+                }
+
+                ReportUnreachableBudget(targetSize, overage, evictedSize);
+            }
+            finally
+            {
+                _evicting = false;
+            }
+        }
+
+        /// <summary>
+        /// Warn when a single entry is, on its own, larger than the size eviction targets — the
+        /// admission half of HANDOFF_TO_SESSION_B.md C-13.
+        /// </summary>
+        /// <remarks>
+        /// An entry bigger than <c>MaxCacheSizeBytes * EvictionTargetRatio</c> puts the cache into a
+        /// state eviction cannot resolve while it stays cached: the trigger fires on every subsequent
+        /// insert and each pass sweeps toward a target it can never reach. Deliberately not gated
+        /// behind <c>LogTierOperations</c> — the entry is still cached, so nothing else will ever
+        /// surface it.
+        /// </remarks>
+        private void WarnIfLargerThanEvictionTarget(AssetCacheKey key, long estimatedSize)
+        {
+            if (estimatedSize <= 0) return;
+
+            long targetSize = (long)(_tiering.MaxCacheSizeBytes * _tiering.EvictionTargetRatio);
+            if (estimatedSize <= targetSize) return;
+
+            Debug.LogWarning(
+                $"[AssetLoader] '{key}' is {estimatedSize / 1024}KB on its own, larger than the " +
+                $"post-eviction target of {targetSize / 1024}KB ({_tiering.EvictionTargetRatio:P0} of " +
+                $"the {_tiering.MaxCacheSizeBytes / 1024}KB budget). It was cached, but no eviction " +
+                $"pass can bring the cache back to target while it is cached — an entry is never " +
+                $"evictable in the same pass that inserts it, and until this one cools to Cold every " +
+                $"load will run a sweep that cannot reach its target. Raise MaxCacheSizeBytes, or " +
+                $"keep an asset this size out of the tiered cache.");
+        }
+
+        /// <summary>
+        /// Report an over-budget state that no further eviction can resolve.
+        /// </summary>
+        /// <remarks>
+        /// Under the old per-type design this test had to be careful: a per-type cache routinely
+        /// finished a pass with the shared budget still over, because a sibling cache was expected to
+        /// chip at the remainder next, so warning on that would fire on healthy runs. There are no
+        /// siblings now — this pass saw every entry of every Type — so "still over target after a
+        /// pass" means exactly what it says and there is nobody else who could fix it. Latched, so it
+        /// reports once per over-budget episode rather than once per load; the latch clears as soon
+        /// as a pass ends back under target.
+        /// </remarks>
+        private void ReportUnreachableBudget(long targetSize, long overage, long evictedSize)
+        {
+            if (_tieredBytes <= targetSize)
+            {
+                _tierShortfallReported = false;
+                return;
+            }
+
+            if (_tierShortfallReported) return;
+
+            _tierShortfallReported = true;
+
+            Debug.LogWarning(
+                $"[AssetLoader:{_scopeName}] Eviction cannot reach its target: the cache still holds " +
+                $"{_tieredBytes / 1024}KB against a {targetSize / 1024}KB post-eviction target " +
+                $"({overage / 1024}KB was over budget, {evictedSize / 1024}KB freed). The rest is held " +
+                $"by entries no pass will take — pinned entries, and entries still scoring at or above " +
+                $"EvictionScoreThreshold ({_tiering.EvictionScoreThreshold:F2}), which always includes " +
+                $"anything inserted this frame. Until that changes, every load runs a sweep that " +
+                $"cannot succeed. Reported once per over-budget episode.");
+        }
+
+        /// <summary>
+        /// Estimate asset memory size for cache management — drives <c>_tieredBytes</c>, the eviction
+        /// trigger gate and every byte figure in <see cref="TieredCacheStats"/>
+        /// (HANDOFF_TO_SESSION_B.md L-5).
+        /// </summary>
+        /// <remarks>
+        /// Measured first via <see cref="UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong"/>,
+        /// which accounts for real format/mip/representation instead of the per-type formulas below —
+        /// a 2048x2048 ASTC 6x6 texture is ~0.9MB actual vs. 16MB from the RGBA32-no-mips formula,
+        /// roughly 18x off, and in the other direction an RGBA32 texture *with* mips was undercounted
+        /// by the old formula's missing +33%.
+        ///
+        /// <para><b>Guarded, not trusted unconditionally:</b> <c>GetRuntimeMemorySizeLong</c> is
+        /// documented to return 0 in non-development builds on some platforms. This implementation
+        /// could not be verified against a development-stripped build of the target platform in this
+        /// environment — that confirmation is still owed (see L-5's "(a)" requirement) — so rather
+        /// than assume either behavior, a &lt;= 0 result falls back to the same heuristic this method
+        /// used before, instead of letting eviction silently stop. That fallback is still the
+        /// documented-inaccurate formula, kept only as the honest "no better number available"
+        /// answer, not as a fix in its own right — HANDOFF_TO_SESSION_B.md tracks the eventual real
+        /// answer as W4-07 (ingesting <c>Library/com.unity.addressables/buildReports</c>).</para>
+        ///
+        /// <para><b>GameObject is a special case, not a whole-object measurement:</b>
+        /// <c>GetRuntimeMemorySizeLong</c> on a GameObject reports only the native GameObject shell
+        /// (roughly a fixed, small overhead) — unlike <c>Texture2D</c>/<c>Mesh</c>/<c>AudioClip</c>,
+        /// where the object being measured *is* the resource, it does not walk the object graph to
+        /// add up the meshes/materials/textures the prefab's components reference. Trusting that
+        /// number directly (the earlier version of this method did, via the generic branch above)
+        /// would report a few hundred bytes for a prefab that drags in a 40MB mesh — strictly worse
+        /// than the flat heuristic it replaced, because it looks like a real measurement instead of
+        /// an admitted guess. <see cref="EstimateGameObjectSize"/> walks the referenced render data
+        /// explicitly instead.</para>
+        ///
+        /// <para>Only ever called behind a <c>_tiering != null</c> test — see
+        /// <see cref="CacheHandle{T}"/>.</para>
+        /// </remarks>
+        private long EstimateAssetSize(object asset)
+        {
+            if (asset == null) return 0;
+
+            if (asset is GameObject go)
+            {
+                long aggregated = EstimateGameObjectSize(go);
+                if (aggregated > 0) return aggregated;
+
+                // Nothing measurable was found (e.g. an empty prefab with no renderers) — fall
+                // through to the flat heuristic below rather than report 0 and let this entry look
+                // free to the eviction gate.
+            }
+            else if (asset is UnityEngine.Object unityObject)
+            {
+                long measured = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(unityObject);
+                if (measured > 0) return measured;
+
+                // Falls through to the heuristic below — see the guard note above.
+            }
+
+            return asset switch
+            {
+                // (long) cast on the first operand, not because width*height*4 can overflow int here
+                // (Unity's max texture edge is 16384, so 16384*16384*4 = 1,073,741,824 < int.MaxValue)
+                // but so this stays correct if that edge ever grows.
+                Texture2D texture => (long)texture.width * texture.height * 4, // RGBA32, no mips/format — heuristic only
+                AudioClip audio => (long)audio.samples * audio.channels * 2, // 16-bit PCM estimate
+                Mesh mesh => (long)mesh.vertexCount * 32, // rough estimate
+                GameObject => 4096, // flat estimate — same number regardless of what the prefab contains
+                ScriptableObject => 1024,
+                _ => 1024
+            };
+        }
+
+        /// <summary>
+        /// Aggregate a GameObject's real memory footprint by walking the meshes, materials and
+        /// material-referenced textures its components actually use, instead of trusting a
+        /// single-instance <c>GetRuntimeMemorySizeLong(go)</c> call that only covers the native
+        /// GameObject shell (see the remarks on <see cref="EstimateAssetSize"/>).
+        /// </summary>
+        /// <remarks>
+        /// Deduplicates via asset identity (a <see cref="HashSet{T}"/> of
+        /// <see cref="UnityEngine.Object"/>) so a material or texture shared by several renderers on
+        /// the same prefab — the common case — is only counted once, matching how it is actually
+        /// resident in memory. Best-effort: any exception walking a component (e.g. a custom shader
+        /// that misbehaves under <c>Shader.GetPropertyCount</c>) is caught and logged rather than
+        /// letting a single malformed asset break caching for every other entry.
+        /// </remarks>
+        private long EstimateGameObjectSize(GameObject go)
+        {
+            long total = 0;
+
+            try
+            {
+                var seen = new HashSet<UnityEngine.Object>();
+
+                long AddAsset(UnityEngine.Object obj)
+                {
+                    if (obj == null || !seen.Add(obj)) return 0;
+                    long size = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(obj);
+                    return size > 0 ? size : 0;
+                }
+
+                // The native GameObject shell itself (components, transform, etc.) — small, but
+                // still real overhead the walk below doesn't otherwise account for.
+                total += AddAsset(go);
+
+                foreach (var meshFilter in go.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    total += AddAsset(meshFilter.sharedMesh);
+                }
+
+                foreach (var skinned in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    total += AddAsset(skinned.sharedMesh);
+                }
+
+                foreach (var renderer in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    var materials = renderer.sharedMaterials;
+                    if (materials == null) continue;
+
+                    foreach (var material in materials)
+                    {
+                        if (material == null) continue;
+                        total += AddAsset(material);
+
+                        // The bulk of a prefab's real memory usually lives in the textures its
+                        // materials reference, not the material asset itself — walk every
+                        // texture-typed shader property instead of guessing at "_MainTex".
+                        var shader = material.shader;
+                        if (shader == null) continue;
+
+                        int propertyCount = shader.GetPropertyCount();
+                        for (int i = 0; i < propertyCount; i++)
+                        {
+                            if (shader.GetPropertyType(i) != UnityEngine.Rendering.ShaderPropertyType.Texture)
+                                continue;
+
+                            var texture = material.GetTexture(shader.GetPropertyName(i));
+                            total += AddAsset(texture);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[AssetLoader] Error walking GameObject '{go.name}' for size " +
+                    $"estimation; using partial result. Error: {ex.Message}");
+            }
+
+            return total;
         }
 
         #endregion
@@ -2050,6 +3082,147 @@ namespace AddressableManager.Loaders
         public override string ToString()
         {
             return $"{Address} ({Type?.FullName})";
+        }
+    }
+
+    /// <summary>
+    /// One row of <see cref="AssetLoader"/>'s cache: the handle, plus the metadata the tiering
+    /// configuration attaches to it.
+    /// </summary>
+    /// <remarks>
+    /// NON-GENERIC ON PURPOSE, AND WHY <c>CacheEntry&lt;T&gt;</c> CANNOT SERVE HERE.
+    /// <c>_assetCache</c> is keyed by (address, Type) and stores <see cref="IOwnedHandle"/> precisely
+    /// so an entry can be released without knowing <c>T</c>.
+    /// <see cref="AddressableManager.Core.CacheEntry{T}"/> is generic and holds an
+    /// <c>IAssetHandle&lt;T&gt;</c>, so it could only be the value of this non-generic dictionary by
+    /// boxing into <c>object</c> and casting back — the reflection-adjacent shape L-8 just removed.
+    /// <c>CacheEntry&lt;T&gt;</c> also stays in live use by
+    /// <see cref="AddressableManager.Core.ThreadSafeCacheManager{T}"/>, so it is untouched.
+    ///
+    /// <para>Allocated for every cached asset whether or not the loader is tiered. One small object
+    /// per entry, against a dictionary that already allocates a bucket per entry — worth it to keep
+    /// one code shape on the read/insert/remove paths instead of two. On an untiered loader
+    /// <see cref="EstimatedBytes"/> is 0 and no tier field is ever read.</para>
+    ///
+    /// <para>Every method body below is copied from
+    /// <see cref="AddressableManager.Core.CacheEntry{T}"/> (CacheEntry.cs:76-125) so tier behaviour
+    /// is provably unchanged rather than re-derived. Do not "improve" the score formula here without
+    /// changing it there too.</para>
+    /// </remarks>
+    internal sealed class CachedAsset
+    {
+        /// <summary>
+        /// The key this entry is filed under. Not a second book: it is the same value the dictionary
+        /// is keyed by, written once at construction and never mutated. It exists so an eviction
+        /// sweep can sort entries and still know which key to remove, without the "rebuild the key
+        /// from a display string" step the per-type cache needed (TieredCache.cs:705).
+        /// </summary>
+        public readonly AssetCacheKey Key;
+
+        /// <summary>The cached handle. The cache holds its own reference on it.</summary>
+        public readonly IOwnedHandle Handle;
+
+        /// <summary>Estimated resident bytes; 0 when the loader is not tiered.</summary>
+        public readonly long EstimatedBytes;
+
+        /// <summary>Time when the entry was first cached (<c>Time.realtimeSinceStartup</c>).</summary>
+        public readonly float CreationTime;
+
+        /// <summary>Current cache tier. Starts Hot, matching CacheEntry.cs:68.</summary>
+        public CacheTier Tier;
+
+        /// <summary>Accesses so far. Starts at 1 — the load itself — matching CacheEntry.cs:67.</summary>
+        public int AccessCount;
+
+        /// <summary>Last access time (<c>Time.realtimeSinceStartup</c>).</summary>
+        public float LastAccessTime;
+
+        /// <summary>Whether eviction must skip this entry.</summary>
+        public bool IsPinned;
+
+        /// <summary>
+        /// Scratch, written only by the eviction sweep just before it sorts, so selection and
+        /// ordering use the same score. Meaningless outside <c>PerformEviction</c>.
+        /// </summary>
+        public float SortScore;
+
+        public CachedAsset(AssetCacheKey key, IOwnedHandle handle, long estimatedBytes)
+        {
+            Key = key;
+            Handle = handle;
+            EstimatedBytes = estimatedBytes;
+
+            // Main thread only — the sole construction site is AssetLoader.CacheHandle, which is
+            // reached only after a passed AfterAwait(). AssetLoader's own constructors deliberately
+            // never read the clock; see _lastTierEvaluation.
+            CreationTime = Time.realtimeSinceStartup;
+            LastAccessTime = CreationTime;
+            AccessCount = 1; // First access is the load itself
+            Tier = CacheTier.Hot; // Start in Hot tier
+            IsPinned = false;
+        }
+
+        /// <summary>
+        /// Record an access to this entry
+        /// Updates access count and last access time
+        /// </summary>
+        public void RecordAccess()
+        {
+            AccessCount++;
+            LastAccessTime = Time.realtimeSinceStartup;
+        }
+
+        /// <summary>
+        /// Get age of this entry in seconds
+        /// </summary>
+        public float GetAge()
+        {
+            return Time.realtimeSinceStartup - CreationTime;
+        }
+
+        /// <summary>
+        /// Get time since last access in seconds
+        /// </summary>
+        public float GetTimeSinceLastAccess()
+        {
+            return Time.realtimeSinceStartup - LastAccessTime;
+        }
+
+        /// <summary>
+        /// Calculate access frequency (accesses per second)
+        /// </summary>
+        public float GetAccessFrequency()
+        {
+            float age = GetAge();
+            return age > 0 ? AccessCount / age : AccessCount;
+        }
+
+        /// <summary>
+        /// Calculate a score for tier determination
+        /// Higher score = should be in higher tier (Hot)
+        /// </summary>
+        public float CalculateTierScore()
+        {
+            if (IsPinned)
+                return float.MaxValue; // Pinned entries always stay Hot
+
+            float timeSinceAccess = GetTimeSinceLastAccess();
+            float frequency = GetAccessFrequency();
+
+            // Score formula: higher frequency and recent access = higher score
+            // Recency weight: newer accesses are more valuable
+            float recencyWeight = 1.0f / (1.0f + timeSinceAccess);
+            float frequencyWeight = Mathf.Log(1.0f + frequency);
+
+            return recencyWeight * frequencyWeight * 100f;
+        }
+
+        public override string ToString()
+        {
+            return $"[{Tier}] {Key} - Accesses: {AccessCount}, " +
+                   $"Frequency: {GetAccessFrequency():F2}/s, " +
+                   $"Last access: {GetTimeSinceLastAccess():F1}s ago, " +
+                   $"Size: {EstimatedBytes / 1024}KB";
         }
     }
 

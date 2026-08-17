@@ -48,7 +48,9 @@ using AddressableManager.API;
 // One-liner loading
 var sprite = await Simple.Load<Sprite>("UI/Icon");
 
-// Auto-managed pooling
+// Auto-managed pooling. The first call for an address returns null while the pool
+// loads in the background — create it up front when you need an instance immediately.
+await Standard.CreatePool("Enemies/Orc", preloadCount: 10);
 var enemy = Simple.Pool("Enemies/Orc");
 Simple.Recycle("Enemies/Orc", enemy);
 ```
@@ -76,7 +78,7 @@ var zombie = Standard.Spawn("Enemies/Zombie");
 using AddressableManager.API;
 
 // Custom tiered loader
-var loader = Advanced.CreateTieredLoader("CustomScope", TieredCacheConfig.Aggressive);
+var loader = Advanced.CreateLoader("CustomScope", TieredCacheConfig.Aggressive);
 var result = await Advanced.LoadWithResult<Sprite>(loader, "UI/Icon");
 
 // Thread-safe loading
@@ -248,7 +250,9 @@ if (result.IsSuccess) {
 ### 🏊 Object Pooling
 
 ```csharp
-// Simple: Auto-create pool
+// Simple: auto-create. Returns null on the first call for an address (the pool is
+// loading); create it first if you need an instance straight away.
+await Standard.CreatePool("Enemies/Orc", preloadCount: 10);
 var enemy = Simple.Pool("Enemies/Orc");
 Simple.Recycle("Enemies/Orc", enemy);
 
@@ -322,7 +326,7 @@ Advanced.ClearAllNamedScopes("Session");
 ```csharp
 // Create loader with aggressive caching (mobile-friendly)
 var config = TieredCacheConfig.Aggressive; // 50MB max, quick eviction
-var loader = Advanced.CreateTieredLoader("MobileScope", config);
+var loader = Advanced.CreateLoader("MobileScope", config);
 
 // Pin critical assets to prevent eviction
 Advanced.PinAsset<Sprite>(loader, "UI/CoreIcon");
@@ -393,7 +397,9 @@ using AddressableManager.API;
 
 // Learn Simple API first
 var sprite = await Simple.Load<Sprite>("UI/Icon");
-var enemy = Simple.Pool("Enemies/Orc");
+
+await Standard.CreatePool("Enemies/Orc", preloadCount: 10);
+var enemy = Simple.Pool("Enemies/Orc");   // null on the first call without the line above
 ```
 
 ### Production Ready (Week 1)
@@ -413,7 +419,7 @@ Standard.EndSession();
 using AddressableManager.API;
 
 // Use Advanced API for fine-tuning
-var loader = Advanced.CreateTieredLoader("Optimized", TieredCacheConfig.Aggressive);
+var loader = Advanced.CreateLoader("Optimized", TieredCacheConfig.Aggressive);
 Advanced.PinAsset<Sprite>(loader, "UI/Critical");
 
 var threadSafeLoader = Advanced.CreateThreadSafeLoader("Background");
@@ -664,7 +670,7 @@ var result = await loader.LoadAssetAsyncSafe<Sprite>("UI/Icon");
 Standard.EnableValidation(ValidationMode.Development);
 
 // Step 5: Use Tiered Caching
-var loader = Advanced.CreateTieredLoader("Optimized");
+var loader = Advanced.CreateLoader("Optimized", TieredCacheConfig.Default);
 ```
 
 ### From Assets Static Class

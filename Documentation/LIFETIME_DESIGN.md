@@ -888,6 +888,43 @@ Per CLAUDE.md's three tiers — reading this document proves nothing.
 
 ## L-7: evidence for the TieredAssetLoader decision
 
+> **DECIDED 2026-08-17: DEPRECATE.** The human weighed the evidence below and chose to retire
+> `TieredAssetLoader` as a fork. Tiering is now a **configuration of `AssetLoader`**, not a second
+> loader class.
+>
+> **The new configuration surface:**
+>
+> | What | Where |
+> |---|---|
+> | `new AssetLoader(string scopeName, TieredCacheConfig tiering)` | `Runtime/Loaders/AssetLoader.cs` — second parameter **required**, no default, so `new AssetLoader("X")` is unambiguously untiered |
+> | `AssetLoader.TieringEnabled` | `Runtime/Loaders/AssetLoader.cs` |
+> | `PinAsset<T>` · `UnpinAsset<T>` · `EvaluateTiers()` · `ForceEviction()` · `GetTieredCacheStats()` · `GetTieredCacheStats<T>()` | `Runtime/Loaders/AssetLoader.cs`, `#region Tiering` |
+> | `Advanced.CreateLoader(string, TieredCacheConfig)` + six `AssetLoader`-typed siblings | `Runtime/API/AdvancedAPI.cs` |
+>
+> **Tiering is OFF by default** and every existing construction site uses the one-argument
+> constructor, so nothing that exists today changes behaviour. Turning it on by default would start
+> evicting against `Profiler.GetRuntimeMemorySizeLong`, a number L-5 requirement "(a)" records as
+> still unverified in non-development builds — see the last row of "what is still not proven" below.
+>
+> **What changed structurally:** `TieredAssetLoader` is `[Obsolete]` (warning, not error; removed in
+> 5.0.0) and is now a ~200-line forwarder onto an inner `AssetLoader`. `TieredAssetLoaderRegistry`
+> is deleted — it never shipped in a release — and the facade's pump and low-memory sweep walk
+> `AssetLoaderRegistry` instead. Row L-3 of the table below (a near-line-for-line duplicate registry)
+> and row L-4 (per-`Type` byte siloing) are therefore closed by construction rather than patched:
+> there is one registry and one byte total over one dictionary.
+>
+> **Item D below — the catalog-invalidation hole — is closed.** A `TieredAssetLoader`'s inner loader
+> is a plain `AssetLoader`, registered by `AssetLoader`'s own constructor via
+> `AssetLoaderRegistry.Register(this)`, so `AssetLoaderRegistry.InvalidateAll` now reaches it like
+> any other loader. Every existing `new TieredAssetLoader(...)` call site is fixed without its
+> author changing a line.
+>
+> `TieredCache<T>`, `ThreadSafeCacheManager<T>`, `TieredCacheConfig`, `CacheEntry<T>` and `CacheTier`
+> are **not** deprecated; `TieredCache<T>` remains supported for standalone use via
+> `Advanced.CreateTieredCache<T>`. It is simply no longer what a loader uses internally.
+>
+> The evidence that produced this decision is left below, unchanged.
+
 Not a recommendation — HANDOFF_TO_SESSION_B.md §2.1 reserves L-7 (whether to deprecate
 `TieredAssetLoader` as a fork of `AssetLoader`) for a human, and this pass did not touch that
 decision: no `[Obsolete]`, no restructuring, no deletion. This section only records what fixing
@@ -927,3 +964,304 @@ leave it missing capabilities `AssetLoader` has had all along. This is consisten
 by itself decide, W4-05's framing ("tiering thành config của loader duy nhất"): the cost observed
 here is the cost of *maintaining* the fork at parity, not the cost of *migrating* it, and this pass
 did not attempt the latter or estimate it.
+
+---
+
+## Pooling: decisions still open
+
+Written by the pass that implemented the pooling discovery report's defects (P-8, P-9, P-11..P-21,
+P-23, P-24, P-26..P-30, P-32, P-33, P-35). **Nothing in this section was decided.** Each item below
+was classified in that report as a product decision, or turned out on contact to be one; the pass
+recorded the evidence and changed nothing that would pre-empt the choice. Where a defect was
+entangled with a decision — P-9 and P-18 in particular — the defect half was fixed and the decision
+half is stated here, separately, so choosing differently later is still cheap.
+
+The same instruction that reserved these also required that no inert feature be left silently inert
+(REFACTOR_TASKS.md rule 5). Where that applied, the holding action taken is named per item and is
+explicitly not the fix.
+
+### 1. `PoolConfiguration`: wire it up, or `[Obsolete]` the whole class? (P-10)
+
+**Observed.** `Runtime/Configs/PoolConfiguration.cs` is 100% inert. Every field, both query methods
+and the whole `Validate()`/`OnValidate()` pair are unreachable from runtime behaviour. The only
+consumers anywhere in the repo are `Editor/Tools/ContextMenus.cs:83` and `:228`, which *create* the
+asset. `Assets/PoolConfig.asset` exists in this project and is read by nothing.
+
+Specifically dead: `prefabReference`, `address`, `preloadCount`, `maxSize`, `autoCreate`,
+`poolRoot`, `destroyOnFull`, `label`, `pools`, `defaultMaxSize`, `defaultPreloadCount`,
+`createAllOnStartup`, `cleanupOnSceneUnload`, `GetAutoCreatePools()`, `GetPoolByAddress()`.
+`createAllOnStartup` has no startup path to hook — nothing in this package runs at startup.
+`cleanupOnSceneUnload` now has a *near*-miss: `AddressablePoolManager` does subscribe to
+`SceneManager.sceneUnloaded` as of P-8, but only to reclaim destroyed instances; it never clears
+pools and never reads the flag.
+
+**Side A — wire it in.** Cost: a startup path has to be invented (there is none), which means
+deciding who owns it — `AddressablesFacade.Initialize`, a `RuntimeInitializeOnLoadMethod`, or an
+explicit `Assets.ApplyPoolConfig(asset)` call. Two traps must be resolved on the way:
+`PoolSettings.GetAddress()` returns `prefabReference.AssetGUID`, so a config-created pool is keyed
+by GUID while user code calls `Spawn("Enemies/Orc")` and misses every time; and `maxSize = 0` means
+"unlimited" here (matching `IPoolFactory.CreatePool`) but is now a rejected hard cap of zero on
+`DynamicPoolConfig` (P-19), so the wiring decides which convention the asset actually gets.
+Benefit: the designer-facing, one-place-for-all-pools story the class name and the
+`EDITOR_TOOLS_GUIDE.md:113-132` section already promise.
+
+**Side B — deprecate it.** Cost: `[Obsolete]` on the class plus the two `ContextMenus` entries and a
+rewrite of the guide section; existing `PoolConfig.asset` files in user projects become dead weight
+with a compiler warning attached. Benefit: no invented startup path, and the promise stops being
+made. This is the smaller change by a wide margin, which is exactly why it should not be chosen by
+default.
+
+**Holding action taken (not the fix).** The inert-ness is now visible rather than implied: a class
+doc block stating it plainly and naming both traps; `INERT:` prefixes on every `[Tooltip]` and
+`[Header]` so it reads in the Inspector; an explicit `OnValidate` warning that fires the moment a
+human edits the asset — the moment they form the belief that editing it does something; and the
+`[Obsolete]` message on `destroyOnFull` corrected, because annotating exactly one field as ignored
+asserted by omission that the other twelve were honoured. `Runtime/Configs/PoolConfiguration.cs` is
+outside the `Runtime/Pooling/**` scope this pass owned; it was touched only for this, additively,
+and no behaviour changed.
+
+### 2. `Despawn` with the wrong address: destroy, route, or refuse? (P-9)
+
+**Observed.** `Despawn("Enemies/Orc", goblin)` where `goblin` is a live instance of pool
+`"Enemies/Goblin"` destroys it. The manager *knows* the real owner — `ownerAddress` is right there
+in the guard — and could route the release to it, or refuse and leave the object alone. P-7 unified
+three previous per-adapter behaviours (`CustomPoolAdapter` warned and left it alive;
+`UnityPoolAdapter` silently adopted it) onto the most destructive of the three.
+
+- **Destroy** (current): one wrong string argument kills a healthy on-screen object. Predictable,
+  and never recycles an instance into the wrong pool.
+- **Route to the real owner**: the friendly option, and the object survives. It also means a typo
+  silently *works*, so the bug never surfaces; and it is only correct while `_instanceOwners` is
+  authoritative, which it is exactly as far as P-8's sweep keeps it honest.
+- **Refuse and leave alone**: safest for the object, but the instance stays borrowed forever, which
+  is precisely the state P-8 was written to eliminate — it would reintroduce a `ClearPool` block by
+  a different route.
+
+**Defect half, already fixed, independent of the choice.** Whatever the policy, the owning pool's
+accounting has to be corrected. Destroying a foreign live instance without telling its pool left
+that pool counting a phantom active forever, which feeds `DynamicPool.CheckForGrowth` a ratio that
+only climbs — the pool grows to `MaxSize` and `CheckForShrinkage` can never fire again.
+`ReclaimLostInstance` now tells the real owner via the new `IReclaimablePool<T>.ForgetActive`.
+
+### 3. `DynamicPoolConfig.InitialCapacity`: make it prewarm, or rename it? (P-18)
+
+**Observed.** `InitialCapacity` creates nothing. It is only the denominator of
+`usageRatio = activeCount / capacity`. `CreateDynamicPoolAsync(addr, config)` with the default
+`preloadCount: 0` produces a pool with **zero** instances that reports
+`DynamicPoolStats.CurrentCapacity == 10` and `TotalCount == 0`, and the first growth does not
+trigger until 8 instances are concurrently checked out. `DynamicPoolConfig.Fixed(20)` — doc-commented
+"Traditional pool behavior" — creates nothing, disables auto-resize, and yields a plain on-demand
+pool with a 20-cap free list.
+
+- **Make it prewarm**: the name becomes true. But every existing `CreateDynamicPoolAsync` call in
+  every project silently starts instantiating `InitialCapacity` GameObjects at creation time — ten
+  by default, on the main thread, per pool. That is a behaviour change large enough to be a release
+  note, not a bug fix.
+- **Rename** (`InitialCapacityBudget`, or fold into a `GrowthBudget` concept): honest and cheap at
+  runtime, but renaming a public serialized field is a source break and needs invariant 6's
+  `[Obsolete]` shim on the old name until 5.0.0.
+
+**Holding action taken (not the fix).** Only the lies were removed: the field, `MinSize`,
+`DynamicPoolStats.CurrentCapacity` and `Fixed()` now document what they actually do; the pool
+creation log says "resize budget" and states that nothing exists yet instead of printing
+`(capacity: 10)` next to an empty pool; and `DynamicPool_InitialCapacity_CreatesNothing` pins the
+current behaviour so that changing it has to be deliberate.
+
+### 4. Pool creation's `bool`: add a `LoadResult`-shaped sibling? (P-22)
+
+**Observed.** `CreatePoolAsync`/`CreateDynamicPoolAsync` return `true` for three distinct successes
+("created", "already existed", "lost a race and someone else's pool exists") and `false` for
+"disposed manager", "invalid config", "load failed", and "threw". It reaches `Assets.CreatePool`,
+`Standard.CreatePool`, `Standard.CreateDynamicPool`, `Advanced.CreateDynamicPool`, and the sample at
+`Samples~/ApiExamples/AddressablesExamples.cs:218`, which prints "Pool creation failed (prefab not
+found)" for every one of the failure meanings. This is invariant 4's shape on the pooling public
+API.
+
+Invariant 6 forbids deleting the `bool` overload before 5.0.0, so the decision is only whether to
+add a `LoadResult`-shaped sibling now (and `[Obsolete]` the `bool` pointing at it) or to leave the
+API alone until 5.0.0 and carry the ambiguity. Not decided here; the surface is on the
+`Runtime/API` boundary this pass did not own.
+
+**Related defect half, already fixed.** One `false` was outright wrong rather than merely ambiguous:
+a preload that threw made the method return `false` while `_pools[address]` held a working pool, so
+`RunAutoCreate` logged "Auto-create failed", `SpawnAsync` returned `null`, and the very next
+synchronous `Spawn()` succeeded. Preload failures are now logged and swallowed by `PreloadInto`, and
+a committed pool reports `true` (P-13).
+
+### 5. `SetPoolFactory` mid-session: document, or rebuild? (P-25)
+
+**Observed.** Existing pools keep the adapter they were built with. P-11/P-12/P-14/P-15 removed the
+observable divergences between the two *shipped* adapters, but a third-party `IPoolFactory` is
+unconstrained, so a mid-session swap can still leave one manager whose pools disagree through the
+same `IObjectPool<T>` interface. Rebuilding on swap would mean destroying and re-creating every
+pooled instance mid-game — the opposite of what pooling is for — and would have to decide what
+happens to instances currently borrowed.
+
+**Holding action taken (not the fix).** The log no longer announces a switch that mostly did not
+happen: when any pool already exists, `SetPoolFactory` says so and states that only new pools use
+the new factory, and the XML doc says it in the API surface. Refusing the swap outright once a pool
+exists is the other candidate and was not chosen.
+
+### 6. Where the pool maintenance clock should live (P-17)
+
+**Observed.** `DynamicPool`'s shrink is a two-step state machine that could only advance inside
+`Release()`, so a pool that went idle — the one case shrinking exists for — never shrank. Fixing it
+needs a clock. This pass added `PoolMaintenancePump`, a manager-owned `DontDestroyOnLoad`
+MonoBehaviour ticking `RunMaintenance()` (P-8 sweep + P-17 shrink evaluation) once a second.
+
+That is now the **second** pump in the package: `AddressablesFacade` already runs a 5s
+`TieredAssetLoaderRegistry.PumpAll()` plus an `Application.lowMemory` hook (L-3). Folding pooling
+maintenance into the facade's pump would mean one clock instead of two — but it would also mean
+pooling maintenance only runs for facade users, and `AddressablePoolManager` is public,
+constructible and usable without the facade (`Advanced.CreatePoolManager(loader)`), so that would
+recreate the inert-feature shape for those users. A registry mirroring
+`TieredAssetLoaderRegistry` would resolve it properly and is the third option. Not decided;
+`RunMaintenance()` and `EvaluateAutoResize()` are public precisely so a host can take the clock over.
+
+Also unaddressed by design: nothing hooks `Application.lowMemory` to force a pool shrink, the way
+L-3 does for the tiered cache. That is the same decision.
+
+### 7. The four disagreeing default `maxSize` values (P-33)
+
+**Observed.** The same concept had four defaults: `Assets.CreatePool` 100,
+`Facade.CreatePoolAsync` 100, `IPoolFactory.CreatePool` 100, `Standard.CreatePool` 50, a bare
+literal `50` hard-coded in `RunAutoCreate`, `DynamicPoolConfig.MaxSize` 100, and
+`PoolConfiguration.defaultMaxSize` 50 (inert). The `Simple.Pool` path was silently capped at 50
+with no configuration hook of any kind.
+
+**Fixed within this pass's scope.** The hard-coded literal is gone: `AddressablePoolManager` now has
+one `public const int DefaultMaxPoolSize = 100` used by `CreatePoolAsync` and by auto-create, and
+`EnableAutoCreatePools(config, maxSize)` gives the previously-unreachable auto-create cap a hook.
+**Still disagreeing, outside this pass's files:** `Standard.CreatePool`'s 50
+(`Runtime/API/StandardAPI.cs:170`) and `PoolConfiguration.defaultMaxSize`'s 50. Unifying those is a
+one-line change each and a product call about whether 50 or 100 is the house default.
+
+### 8. Not a decision — handed off, not done
+
+Two report items are defects with no product question attached that this pass could not touch,
+because they are outside `Runtime/Pooling/**` and other agents held those files:
+
+- **P-31** — `AddressablesFacade.cs:260, 268, 276, 284, 292, 300` use a bare `_poolManager.` while
+  `:307`, `:312`, `:371` use `?.`. `Initialize()` legitimately returns early with
+  `_poolManager == null` when `GlobalAssetScope` is unavailable during shutdown, so
+  `Assets.Spawn`/`Assets.Despawn`/`Assets.CreatePool` throw `NullReferenceException` at shutdown.
+  `SimpleAPI.cs:194-195` already guards for exactly this. Fix: `?.` (and a neutral return) on all
+  six.
+- **P-34** — `README.md:52`, `:252` and `:396` still show
+  `var enemy = Simple.Pool("Enemies/Orc"); Simple.Recycle("Enemies/Orc", enemy);` returning an
+  instance. Post-P-1 the first call for any address *always* returns `null`, so the documented
+  two-liner produces a warning, a `null`, and a second warning from `Despawn`'s guard.
+  `README.md:125` ("Auto Grow/Shrink") and `:256-263` (`InitialCapacity = 10` as meaningful) are the
+  P-17 and P-18 wordings and should be revisited in the same pass.
+
+---
+
+## Threading and blast-radius: decisions still open
+
+Written by the pass that fixed the Wave F review findings (the refcount/lifetime, threading/
+re-entrancy and contract/invariant lenses). **Nothing in this section was decided.** Each item is
+either a product decision the reviewing pass surfaced but had no authority to settle, or a residual
+whose only remaining fix is a restructure that needs a human to sanction it. Everything else those
+three reviews raised was fixed in code.
+
+### 1. `Simple.ReleaseAddress` and `Standard.ClearCache(scopeName)` widen who can reach `ForceRelease`
+
+Both are new *reachability*, not new call sites — the hard release they end in already existed and
+already had this semantic.
+
+- `Simple.ReleaseAddress(address)` (`SimpleAPI.cs`) reaches `AssetLoader.ReleaseAsset` ->
+  `EvictAddress` -> `RemoveCacheEntry(key, hard: true)` -> `handle.ForceRelease()`.
+- `Standard.ClearCache(scopeName)` (`StandardAPI.cs`) reaches `AssetLoader.ClearCache()` ->
+  `entry.Handle?.ForceRelease()` over every entry. Before this wave that method was a
+  log-and-return stub, so this route is entirely new.
+
+The consequence in both cases: `var h = await Standard.LoadGlobal<Sprite>("UI/Icon");` gives `h` a
+refcount of 2 (caller + cache). An unrelated system calling either API drives the counter to 0
+regardless of holders; `h.IsValid` reads `false` and `h.Asset` reads `null` while the caller still
+owns a reference it never gave back. There is no callback and no way to detect it beforehand.
+
+**Why this was not "fixed".** It is deliberate and documented at both call sites, and it follows the
+ownership rule this document already sets out: the section 6 table says a foreign (scope-owned)
+entry gets `loader.ClearCache()` and nothing stronger, which is exactly what `Standard.ClearCache`
+does — the open question is not *which method* but *what `ClearCache` means*.
+`AssetLoader.ClearCache`'s own remarks argue the hard release is required for a memory-pressure API
+to reclaim anything at all. Changing it to a decrement would make both APIs unable to free memory in
+the presence of any holder, which is the failure A-4 was raised about.
+
+**The decision for a human,** stated once: is "clear/release under memory pressure" allowed to
+invalidate handles other systems hold? This design says yes and both APIs say so in their XML docs.
+If the answer is no, the fix is not at these two call sites — it is `AssetLoader.ClearCache` and
+`ReleaseAsset` becoming decrements, plus a separate explicitly-named `ForceClearCache` for teardown,
+and the two tiers' docs rewritten to match. Do not change one end without the other.
+
+Worth weighing: `Simple.*` is the tier documented "for beginners", and it is the tier whose caller is
+least likely to know that the `Standard`-tier handle it just invalidated exists at all.
+
+### 2. `AddressableRuntime.IsMainThread` fails **open**, and two callers use it to decide whether to act inline
+
+`AddressableRuntime.cs` — `IsMainThread => MainThreadId == 0 || Thread.CurrentThread.ManagedThreadId
+== MainThreadId`. Unlatched (before `Init`'s `RuntimeInitializeOnLoadMethod` has run — edit mode, and
+EditMode tests) it reads `true` on **every** thread, deliberately.
+
+Fail-open is right for `ThreadSafeCacheManager.AssertMainThread`: an assertion that fires in edit
+mode, where nothing ever latches, would block tooling for no benefit. It is a genuine trade for the
+two callers that read the same predicate as "safe to do the unsafe thing inline":
+
+- `ThreadSafeCacheManager.ReleaseOnMainThread` — unlatched, a worker-thread `Remove`/`Clear`/
+  `Dispose` takes the inline `handle.Release()` branch, i.e. `Addressables.Release` from a worker.
+- `AddressablePoolManager.EnsureMainThreadAsync` — unlatched, returns `Task.CompletedTask` and the
+  caller proceeds off-thread into `_pools` and Unity APIs.
+
+**Why this was not flipped.** Both branches are bad when unlatched, and the alternative is arguably
+worse: in edit mode there is no `Update()` pumping `UnityMainThreadDispatcher`, so "marshal instead"
+means the action is queued and *never runs* — a guaranteed leak in place of a possible race, and the
+release path even logs "the asset will stay loaded" while the action sits in the queue. This pass
+narrowed the window instead of changing the default: `UnityMainThreadDispatcher` now latches its own
+main-thread id from `SubsystemRegistration` and creates its pump at `BeforeSceneLoad`, so in play
+mode the unlatched window no longer exists in practice.
+
+**The decision for a human:** should `AddressableRuntime` also latch in the editor (an
+`#if UNITY_EDITOR` `[InitializeOnLoadMethod]` alongside `Init`), which would make "unlatched" mean
+"genuinely nothing has started" and let the two helpers above fail *closed* safely? That is a small
+change with a wide blast radius across edit-mode tooling and EditMode tests, so it is recorded
+rather than taken.
+
+### 3. Residual: `UnityPoolAdapter` suppression is scoped to a region, not to a pop
+
+`UnityPoolAdapter._suppressOnGetDepth` was changed from a `bool` to a depth counter this pass, which
+fixes the half that was reachable by mutation: a nested `Prewarm`/`TrimExcessMeasured` no longer
+clears the outer region's suppression halfway through and fires the caller's `onGet` on instances
+the outer loop is about to `Release()` (the P-11 defect returning).
+
+The other half is **not** fixed and cannot be with this seam. Suppression covers a span of time, so
+a *genuine* `Get()` that nests inside a `Prewarm` region — reachable when a pooled prefab's `Awake`
+spawns from the same address on the same adapter — is suppressed too, and its caller receives an
+instance that never got `SetActive(true)`/`TrackActive`. `Despawn` then finds no owner in
+`_instanceOwners` and the pool's active count is wrong from then on.
+
+Per-pop scoping is the correct fix and `UnityEngine.Pool.ObjectPool<T>` gives no seam for it: it
+invokes `createFunc` (hence `Awake`, hence the nested `Get`) **before** `actionOnGet` for the outer
+pop, so a "consume on first callback" token is consumed by the nested pop rather than the outer one.
+The options are (a) stop routing `Prewarm`/`TrimExcess` through `Get()` and drive the inner pool's
+free list directly, (b) have `AddressablePoolManager` stop depending on `onGet` firing and do
+`SetActive`/`TrackActive` idempotently after `pool.Get()` returns — it already does exactly this for
+`ApplyPendingPlacement`, which is the precedent — or (c) accept it and document. Option (b) looks
+cheapest and most consistent, but it changes who owns activation for every pool implementation
+including third-party `IObjectPool<T>`s, so it is a decision rather than a patch.
+
+### 4. Release hygiene: this wave's notes went into an already-tagged CHANGELOG section
+
+All of Wave F's CHANGELOG content was written into `## [4.1.0-pre.6]`, a heading that exists at HEAD
+(`release: 4.1.0-pre.6`, pushed to `origin/feat/cdn-system`) and whose version `package.json` already
+carries. There is no `[Unreleased]` heading. Note also that the `4.1.0-pre.6` **tag** points at a
+different commit (`df19080`) that is *not* an ancestor of HEAD, so the release appears to have been
+cut twice and the tag is stranded on the orphaned one.
+
+This pass corrected the statements in that section that had become false (the
+`Standard.ClearCache`/`Simple.Release`/`Standard.LoadScene` "still stubs" bullet, the
+`TieredCache.Pin()` no-op bullet, the `ThreadSafeCacheManager` "still advertises any thread" bullet,
+the `TieredAssetLoader` "dual UniTask signatures" claim, and the test count) and left the section
+structure alone. **Whether the wave's content should be re-cut under a new `[4.1.0-pre.7]` heading,
+and what to do about the stranded tag, is a release-process decision** — with a divergent tag in
+play, re-cutting a pushed release section unilaterally is exactly the kind of thing that should not
+happen without the human who owns the release deciding it.

@@ -1,6 +1,220 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.7] - 2026-08-17 - Tiering becomes a setting, not a second loader
+
+`pre.6` shipped the reference-counting fixes. This one finishes the review: the loader fork is
+retired, the pooling layer gets the twenty-odd defects that never made it into the original work
+order, and the three API stubs `pre.6` shipped with are gone.
+
+**The headline is a deprecation, and it is source-compatible.** `TieredAssetLoader` still compiles
+and still runs; it is now a forwarder. See below for the one migration that is not a rename.
+
+### Fixed — the three stubs `pre.6` shipped
+
+- **`Simple.Release<T>` was a single `Debug.Log`.** A caller believed they had released something.
+  The address is not recoverable from an asset instance — `AssetLoader._assetCache` is keyed
+  `(address, Type)` with no reverse map, and Addressables offers no reverse lookup — so the method
+  is `[Obsolete]` rather than quietly reimplemented, and **`Simple.ReleaseAddress(string)`** is added
+  as the one that actually works. It is deliberately not a `Release(string)` overload: a non-generic
+  `Release(string)` would out-rank `Release<T>` in overload resolution and silently re-bind existing
+  `Simple.Release(someString)` call sites.
+- **`Standard.ClearCache(scopeName)` was a log-then-return stub.** Implemented, now that scopes
+  register with `ScopeManager`. An unregistered scope id logs an error naming the id *and*
+  enumerating the live scopes, instead of a message that read like success.
+- **`Standard.LoadScene<T>` never loaded a scene.** It loaded an asset and bound it to the *active*
+  scene rather than the caller's — verified against current code, not taken from the review. There
+  is no scene-loading capability anywhere in the package. It is `[Obsolete]`, pointing at the new
+  **`Standard.LoadIntoSceneScope<T>(address)`** and **`(address, Scene)`**, which say what they do
+  and let the caller name the scene. The parameterless form now passes
+  `SceneManager.GetActiveScene()` explicitly, so that choice is visible at the call site.
+
+### Fixed — pooling, the part the review never wrote down
+
+The handoff's reviewer verified 66 items but the summary was truncated after item 43; the pooling
+group was cut mid-sentence with a note that at least three or four items remained. Re-derived from
+the code, that turned out to be **twenty-two**. The ones that bite in a real game:
+
+- **A pooled instance destroyed by a scene load poisoned its pool permanently.** `Despawn` bailed on
+  the destroyed object before untracking it, so `ClearPool` refused forever, the template handle was
+  never released, and `DynamicPool` — reading an `activeCount` that could only climb — grew to
+  `MaxSize` and never shrank again. There is now a sweep, driven by `sceneUnloaded`, a maintenance
+  pump, and `ClearPool` itself.
+- **`preloadCount` meant three different things** across the two create methods and the two
+  adapters, and the dynamic path fired the caller's `onGet` while the other did not. One code path
+  now, one meaning.
+- **Auto grow/shrink only worked under continuous churn.** Shrink was evaluated on `Release`, so a
+  wave that spawned 40, despawned 40 and then went quiet kept all 40 resident for the session. A
+  pump now evaluates on a clock.
+- **`Get()` activated the instance before positioning it**, so `OnEnable` ran at the *previous*
+  user's position — a `playOnAwake` particle system emitted a frame at the last despawn site, and
+  anything reading `transform.position` in `OnEnable` read stale data. Pose is applied first now.
+- **Preload logs reported the requested count, not the achieved one.** `CreatePoolAsync("X",
+  preloadCount: 50, maxSize: 10)` logged `"Preloaded 50/50"` with ten pooled and forty destroyed.
+  `IMeasuredResizablePool<T>` returns what actually happened, and every log reports that.
+- Use-after-`Dispose` was a thrown `ObjectDisposedException` on one pool type and a `null` on
+  another, through the same `IObjectPool<T>`. One contract now: log and return neutral, never throw.
+- `ClearPool` had no way to report *why* it did nothing, so shutdown code looping over addresses
+  could not tell that every call had refused. `TryClearPool` returns a named outcome.
+- Also: per-address `[Pools]` holders leaked on clear; an auto-create landing after a teardown
+  resurrected a pool; a dead caller-supplied `poolRoot` was dereferenced unguarded; `MaxSize = 0` and
+  `ShrinkFactor = 0` were accepted and then quietly meant something else; `ResizePool` refused pools
+  it could in fact resize.
+
+- **`Assets.Spawn`, `Assets.Despawn` and `Assets.CreatePool` threw `NullReferenceException` during
+  shutdown.** `AddressablesFacade.Initialize()` legitimately leaves the pool manager null when the
+  global scope is already gone, and six Facade members went through that field unguarded.
+
+### Fixed — threading
+
+- **`UnityMainThreadDispatcher.EnqueueAndWait` could hard-hang the main thread** — no timeout, no
+  log — by waiting on a queue only its own `Update()` could drain. The thread id now latches at
+  `SubsystemRegistration` and the pump is created at `BeforeSceneLoad`, which removes the root cause;
+  the wait is bounded and guarded besides.
+- **`ThreadSafeCacheManager` advertised "safe from any thread" while every operation reached Unity
+  API.** An off-thread `Set()` retained a reference and *then* threw on `Time.realtimeSinceStartup`,
+  leaking it from a stack that named neither the class nor the thread. See *Changed* for the
+  contract that replaced the claim. `_disposed` is now `volatile` and re-checked inside the lock —
+  the window `Dispose`'s own comment claimed to have closed was still open.
+
+### Fixed — cache
+
+- **`Pin()` on a key that is not cached is no longer a silent no-op**, which mattered because the
+  documentation taught pin-before-load. A pin now waits for the key and is applied when it arrives.
+- **An insert larger than the budget could not trigger the eviction that would make room for it** —
+  `PerformEviction` ran from inside `Set()` and could not see the entry being inserted.
+
+### Deprecated — `TieredAssetLoader` is now a configuration of `AssetLoader`
+
+**Tiering is a setting on the one loader, not a second loader class.** `TieredAssetLoader` was a
+fork of `AssetLoader` that existed only to add tiered caching, and it silently lacked everything
+`AssetLoader` had: single-flight join, the post-await thread guard, label loads, the `*Safe`/
+`LoadResult` variants, `InstantiateAsync`/`ReleaseInstance`, and `ReleaseAsset`. It is `[Obsolete]`
+(a warning, not an error), still works, and is removed in 5.0.0. It is now a thin forwarder onto an
+`AssetLoader` built with the same config.
+
+```csharp
+// Before
+var loader = new TieredAssetLoader("Battle", TieredCacheConfig.Aggressive);
+var tex    = await loader.LoadAssetAsync<Texture2D>("Boss/Diffuse");
+loader.PinAsset<Texture2D>("Boss/Diffuse");
+var stats  = loader.GetCombinedStats();
+loader.Dispose();
+
+// After
+var loader = new AssetLoader("Battle", TieredCacheConfig.Aggressive);
+var tex    = await loader.LoadAssetAsync<Texture2D>("Boss/Diffuse");
+loader.PinAsset<Texture2D>("Boss/Diffuse");
+var stats  = loader.GetTieredCacheStats();
+loader.Dispose();
+```
+
+The only two renames are `GetCombinedStats()` → `GetTieredCacheStats()` and
+`GetCacheStats<T>()` → `GetTieredCacheStats<T>()`, both forced by an `AssetLoader.GetCacheStats()`
+that already existed with a different return type. Everything else is a type-name substitution.
+
+Factory form: `Advanced.CreateTieredLoader(name, cfg)` → `Advanced.CreateLoader(name, cfg)`. The
+seven `Advanced.*` members that take a `TieredAssetLoader` are `[Obsolete]` too, each with a
+non-obsolete `AssetLoader` sibling of the same name.
+
+**One migration is not a mechanical rename.** `Advanced.CreateTieredLoader("X")` with no config
+meant *tiering on, with `TieredCacheConfig.Default`*. `Advanced.CreateLoader("X")` is the
+pre-existing overload and means *tiering off*. Write `Advanced.CreateLoader("X",
+TieredCacheConfig.Default)` to keep the old behaviour — otherwise you get a loader that never
+evicts, silently. Tiering is **off** by default on `AssetLoader`, so nothing that exists today
+changes behaviour; only the two-argument constructor turns it on.
+
+**What the move fixes, beyond removing a fork:**
+
+- **A tiered loader's cache could never be invalidated after a CDN catalog update.** It was not an
+  `AssetLoader`, registered with a different registry, and had no `InvalidateAddresses` — so
+  `AssetLoaderRegistry.InvalidateAll`, which `CatalogService` calls after `UpdateCatalogs`, could
+  not reach it by any path. Its entries went on serving handles resolved against the previous
+  catalog for the rest of the session. Because the shim's inner loader is a plain `AssetLoader`, it
+  registers in the registry the invalidation walk uses, and **every existing
+  `new TieredAssetLoader(...)` call site is now reached after a catalog update without its author
+  changing a line.**
+- **Eviction now ranks candidates of every `Type` together in one pass.** It used to keep one cache
+  per `Type`, where a cache could only evict its own entries and relied on a round-robin over
+  siblings to converge on the shared ceiling.
+- `TieredAssetLoaderRegistry` (added earlier today, never in a release) is deleted; the periodic
+  tier/eviction pump and the `Application.lowMemory` sweep now walk `AssetLoaderRegistry`. An
+  untiered loader's `EvaluateTiers()`/`ForceEviction()` are no-ops, so pumping every loader is
+  correct and costs one virtual call each.
+
+`TieredCache<T>`, `ThreadSafeCacheManager<T>`, `TieredCacheConfig`, `CacheEntry<T>` and `CacheTier`
+are **not** deprecated. `TieredCache<T>` remains a supported standalone cache via
+`Advanced.CreateTieredCache<T>`; it is simply no longer what a loader uses internally.
+
+### Changed
+
+- **`TieredAssetLoader.LoadAssetAsync<T>` keeps returning `Task<IAssetHandle<T>>`** in every
+  project, UniTask installed or not. No signature on this class changed. An earlier draft of this
+  release made it return `UniTask<IAssetHandle<T>>` under `UNITASK_PRESENT` to match the rest of the
+  package; that was reverted before shipping, because a warning-level `[Obsolete]` promises source
+  compatibility until 5.0.0 and a return type that changes with an unrelated package's presence
+  breaks `Task<T> t = loader.LoadAssetAsync<Sprite>(a);` and every `Task.WhenAll` call site with a
+  hard compile error — on the same line as the deprecation warning that was supposed to be the
+  migration signal. `Standard.LoadScene<T>` was already held at `Task` for exactly this reason.
+  Under UniTask the shim pays one `AsTask()` conversion per load; that cost is the reason to
+  migrate, and the replacement (`Advanced.CreateLoader(name, cfg)` → `AssetLoader`) has a genuinely
+  dual `LoadAssetAsync<T>` with no conversion at all.
+
+- `TieredAssetLoader.GetCacheStats<T>()` no longer returns `null` before the first load of `T`.
+  There is no per-type cache object to test for existence any more; through this class it now always
+  returns a struct, all-zero when nothing of `T` is cached. Test `TotalEntries == 0` instead of a
+  null check. Its `TotalAccesses`/`CacheHits`/`HitRate`/`TotalEvictions`/`TotalPromotions`/
+  `TotalDemotions` are now loader-wide rather than per-`Type`; the entry counts and byte figures
+  remain exact per-`Type`. Keeping the counters per-`Type` would have meant a second book, which is
+  the bug class this whole change removes.
+
+- **`ThreadSafeCacheManager<T>.Set` and `.TryGet` now throw `InvalidOperationException` off the main
+  thread.** Both reach `Time.realtimeSinceStartup` and `IAssetHandle.IsValid`, neither callable off
+  it at any price, so an off-thread call already failed — deeper in, after `TryRetain()` had taken a
+  reference that then leaked, from a stack naming neither this class nor the calling thread. The
+  class doc now states a two-group thread contract: `Set`/`TryGet` are main-thread-only; `Remove`,
+  `Clear`, `Dispose`, `Pin`/`Unpin`, `ContainsKey`, `Count`, `CurrentSize`, `GetStatistics` and
+  `ResetStatistics` are callable from any thread and marshal their handle releases to the main
+  thread. If you were calling `Set`/`TryGet` from a worker, wrap it in
+  `UnityMainThreadDispatcher.Enqueue`.
+
+- **The any-thread group no longer throws `ObjectDisposedException` after `Dispose()`** — each
+  returns its neutral value (`Remove`/`TryPin`/`TryUnpin` → `false`, `GetStatistics` → an all-zero
+  snapshot, `Clear` → no-op). Publishing an "any thread" contract invites a worker to hold the
+  object across a `Dispose` it cannot observe, and the lock it would have taken is no longer
+  disposed for the same reason.
+
+- **`CachePinOutcome` and `PinWithOutcome(key)`** are added to `TieredCache<T>` and
+  `ThreadSafeCacheManager<T>`. `TryPin` returns `false` both for a pin that was *deferred* (it will
+  be applied when the key loads) and for one that was *refused* (the pending-pin list is full; it
+  never will be) — opposite meanings behind one `bool`, distinguishable before only in the log.
+  `TryPin` keeps its signature; prefer `PinWithOutcome` when the difference matters.
+
+### Known limitations
+
+- **`unity` stays at `2023.1`.** The runtime assembly is now verified clean against 2022.3.62f3 in
+  both the `Task` and `UniTask` configurations — but the *editor* assembly cannot be verified by
+  `Tools/check-min-unity-api.sh`, which cannot reproduce Unity's editor reference set. The floor
+  will drop to 2022.3 once the editor half has been compiled inside a real 2022.3 project rather
+  than asserted. `pre.4` shipped broken because a version claim ran ahead of its evidence.
+- `TieredAssetLoader` is no longer a fork — see the deprecation section above. It forwards to an
+  `AssetLoader`, so it now has single-flight joins and catalog invalidation. `ReleaseAsset`, label
+  loads, the `LoadResult` variants and the dual `UniTask` signature are still not exposed *through
+  this wrapper* — its own signatures are frozen until 5.0.0; call them on an `AssetLoader` directly.
+- **`TieredCache<T>`'s constructor reads `Time.realtimeSinceStartup`**, which throws off the main
+  thread, so a standalone cache cannot be constructed from a background thread. The merged tiering
+  inside `AssetLoader` avoids this by construction (it latches the clock on first use, not at
+  construction); the standalone type was left as-is.
+
+### Verification
+
+Both assemblies compile. Runtime verified against Unity 2022.3.62f3 in both the `Task` and `UniTask`
+configurations — the second is the one that shipped broken as `pre.4` — with 0 real errors in each.
+142/142 EditMode tests pass (64 before this release; the five new fixtures add 78).
+
+Not verified: `Profiler.GetRuntimeMemorySizeLong` in a non-development build (it can return 0 on some
+platforms, which would leave eviction permanently idle), and the two pooling paths that need a real
+`LoadSceneMode.Single` transition to reproduce.
 
 ## [4.1.0-pre.6] - 2026-08-17 - Reference counting, one ownership rule, and pools that keep their own books
 
