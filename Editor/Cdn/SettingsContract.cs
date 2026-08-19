@@ -137,6 +137,17 @@ namespace AddressableManager.Editor.Cdn
         // (infra §2); this contract enforces it by requiring dedicated catalog variables rather than
         // allowing reuse of the bundle path variables. The separation is critical because bundles are
         // immutable and cached for a year, while catalogs are mutable and per-app-version.
+        /// <summary>
+        /// Whether this assembly was compiled with ENABLE_JSON_CATALOG - i.e. whether the build will
+        /// actually emit a JSON catalog, regardless of what the settings bool says.
+        /// </summary>
+        private static bool JsonCatalogDefineActive =>
+#if ENABLE_JSON_CATALOG
+            true;
+#else
+            false;
+#endif
+
         public const string RemoteCatalogBuildPathVariable = "Remote.CatalogBuildPath";
         public const string RemoteCatalogLoadPathVariable = "Remote.CatalogLoadPath";
 
@@ -395,13 +406,23 @@ namespace AddressableManager.Editor.Cdn
                 isSatisfied: () => !settings.UniqueBundleIds,
                 fix: () => { settings.UniqueBundleIds = false; EditorUtility.SetDirty(settings); }));
 
+            // In Addressables 2.9.x the catalog FORMAT is decided at compile time by the
+            // ENABLE_JSON_CATALOG scripting define. settings.EnableJsonCatalog is a UI mirror that
+            // Unity's own inspector keeps in sync by also calling UpdateSymbolsForBuildTarget for every
+            // build target. Reading and writing only the bool therefore produced two false verdicts:
+            // a project whose define is set but whose bool is false reported "satisfied" while every
+            // build emitted catalog.json, and the auto-fix "corrected" the bool without touching the
+            // define, so the rule went green and the build did not change. The define is what the
+            // editor assembly itself was compiled with, so it can simply be asked.
             rules.Add(new SettingsRule(
                 id: "settings.EnableJsonCatalog",
-                description: "Binary catalog is smaller. The Catalog Inspector tab (task 5.9) needs AddressablesTools on a version that reads binary catalogs.",
-                readCurrent: () => FormatBool(settings.EnableJsonCatalog),
-                expectedDisplay: "false",
-                isSatisfied: () => !settings.EnableJsonCatalog,
-                fix: () => { settings.EnableJsonCatalog = false; EditorUtility.SetDirty(settings); }));
+                description: "Binary catalog is smaller. The Catalog Inspector tab (task 5.9) needs AddressablesTools on a version that reads binary catalogs. In Addressables 2.9+ the format is set by the ENABLE_JSON_CATALOG scripting define, not by this bool alone.",
+                readCurrent: () => $"bool={FormatBool(settings.EnableJsonCatalog)}, define={(JsonCatalogDefineActive ? "ENABLE_JSON_CATALOG present" : "absent")}",
+                expectedDisplay: "bool=false, define=absent",
+                isSatisfied: () => !settings.EnableJsonCatalog && !JsonCatalogDefineActive,
+                fix: JsonCatalogDefineActive
+                    ? (Action)null   // removing a scripting define triggers a full recompile - a human call
+                    : () => { settings.EnableJsonCatalog = false; EditorUtility.SetDirty(settings); }));
 
             // Correction #3 (asset audit): design doc §5.1 wants this bounded; not in the original §9 table.
             rules.Add(new SettingsRule(
@@ -640,6 +661,41 @@ namespace AddressableManager.Editor.Cdn
                         schema.InternalIdNamingMode = BundledAssetGroupSchema.AssetNamingMode.Filename;
                         EditorUtility.SetDirty(schema);
                     },
+                    isGroupScoped: true,
+                    groupName: groupName));
+
+                // The gap CatalogVerifier structurally cannot close. That verifier only proves the
+                // files on disk match the manifest the same build just wrote - a closed loop. If ONE
+                // group of several is still bound to Local.* while the rest are Remote.*, the remote
+                // folder still contains the other groups' bundles, the count is non-zero, every hash
+                // matches, and the build passes while that group's content is silently baked into the
+                // player instead of published. Only a per-group path assertion can catch it, and only a
+                // human can say which groups are meant to be remote - so this rule reports rather than
+                // guesses, and a genuinely-local group is marked as such by name.
+                rules.Add(new SettingsRule(
+                    id: $"group:{groupName}:RemotePathsConsistent",
+                    description: $"Group '{groupName}': BuildPath and LoadPath must both be remote or both be local. A group with one of each builds to a place its catalog does not point at, and no other check in this package can see it.",
+                    readCurrent: () =>
+                    {
+                        var schema = group.GetSchema<BundledAssetGroupSchema>();
+                        if (schema == null) return "(no schema)";
+                        return $"build={schema.BuildPath.GetName(settings) ?? "(unset)"}, load={schema.LoadPath.GetName(settings) ?? "(unset)"}";
+                    },
+                    expectedDisplay: "both Remote.* or both Local.*",
+                    isSatisfied: () =>
+                    {
+                        var schema = group.GetSchema<BundledAssetGroupSchema>();
+                        if (schema == null) return false;
+
+                        string build = schema.BuildPath.GetName(settings);
+                        string load = schema.LoadPath.GetName(settings);
+                        if (string.IsNullOrEmpty(build) || string.IsNullOrEmpty(load)) return false;
+
+                        bool buildRemote = build.StartsWith("Remote.", StringComparison.Ordinal);
+                        bool loadRemote = load.StartsWith("Remote.", StringComparison.Ordinal);
+                        return buildRemote == loadRemote;
+                    },
+                    fix: null,   // which side is correct is the human's call, not the validator's
                     isGroupScoped: true,
                     groupName: groupName));
 

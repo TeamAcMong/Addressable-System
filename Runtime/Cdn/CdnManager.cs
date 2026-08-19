@@ -56,6 +56,25 @@ namespace AddressableManager.Cdn
         private static DownloadService _downloads;
         private static CacheService _cache;
 
+        /// <summary>
+        /// Set while a catalog update is being applied, so a second overlapping apply is refused
+        /// instead of running concurrently.
+        /// </summary>
+        /// <remarks>
+        /// There was no guard of any kind. ApplyUpdateAsync checked only that _catalog was non-null,
+        /// and CatalogService checked only that it was initialised, so two overlapping calls - a boot
+        /// flow plus a "check for updates" button is enough - both reached Addressables.UpdateCatalogs.
+        /// Addressables builds a fresh UpdateCatalogsOperation per call and mutates shared
+        /// ResourceLocatorInfo state with no interlock, and both applies then race this class's own
+        /// CleanObsoleteAsync. Refusing the second is right rather than queueing it: by the time the
+        /// first finishes, the second caller's CatalogUpdateInfo describes a catalog state that no
+        /// longer exists, so it should be re-checked rather than applied.
+        ///
+        /// int + Interlocked rather than a bool: this is the only cross-thread-safe way to make
+        /// test-and-set atomic, and callers may well be on different threads.
+        /// </remarks>
+        private static int _updateInFlight;
+
         /// <summary>Whether the CDN layer has initialised successfully.</summary>
         public static bool IsInitialized => _catalog != null && _catalog.IsInitialized;
 
@@ -166,7 +185,17 @@ namespace AddressableManager.Cdn
             if (_catalog == null)
                 return FromResult(CdnResult<IReadOnlyList<string>>.Failure(NotInitialized()));
 
-            return ApplyUpdateAndCleanAsync(update, cancellationToken);
+            if (Interlocked.CompareExchange(ref _updateInFlight, 1, 0) != 0)
+            {
+                return FromResult(CdnResult<IReadOnlyList<string>>.Failure(new CdnError(
+                    CdnErrorCode.Unknown,
+                    "A catalog update is already being applied",
+                    hint: "Wait for the in-flight ApplyUpdateAsync to finish, then call CheckForUpdateAsync " +
+                          "again - the CatalogUpdateInfo you are holding describes the pre-update state and " +
+                          "must not be applied on top of the result.")));
+            }
+
+            return ApplyUpdateGuardedAsync(update, cancellationToken);
         }
 
         /// <summary>
@@ -291,6 +320,24 @@ namespace AddressableManager.Cdn
         }
 
         // ========== internals ==========
+
+#if UNITASK_PRESENT
+        private static async UniTask<CdnResult<IReadOnlyList<string>>> ApplyUpdateGuardedAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#else
+        private static async Task<CdnResult<IReadOnlyList<string>>> ApplyUpdateGuardedAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#endif
+        {
+            try
+            {
+                return await ApplyUpdateAndCleanAsync(update, cancellationToken);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _updateInFlight, 0);
+            }
+        }
 
         private static CdnError NotInitialized() => new CdnError(
             CdnErrorCode.Unknown,

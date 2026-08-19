@@ -14,7 +14,13 @@
       "priority": 100,
       "skipExisting": false,
       "targetGroupName": "HighQuality",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a HighQuality folder\",\"_pattern\":\"Assets/**/HighQuality/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -25,7 +31,13 @@
       "priority": 90,
       "skipExisting": false,
       "targetGroupName": "Mobile",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a Mobile folder\",\"_pattern\":\"Assets/**/Mobile/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     }
@@ -37,9 +49,16 @@
       "enabled": true,
       "priority": 100,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a HighQuality folder\",\"_pattern\":\"Assets/**/HighQuality/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Add 'pc' label to high quality assets\",\"_labels\":[\"platform_pc\"]}"
     },
     {
       "ruleName": "Mobile Platform Label",
@@ -47,9 +66,16 @@
       "enabled": true,
       "priority": 90,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a Mobile folder\",\"_pattern\":\"Assets/**/Mobile/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Add 'mobile' label to mobile-optimized assets\",\"_labels\":[\"platform_mobile\"]}"
     },
     {
       "ruleName": "Android Platform",
@@ -57,9 +83,16 @@
       "enabled": true,
       "priority": 80,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Add 'android' label\",\"_labels\":[\"platform_android\"]}"
     },
     {
       "ruleName": "iOS Platform",
@@ -67,9 +100,16 @@
       "enabled": true,
       "priority": 70,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Add 'ios' label\",\"_labels\":[\"platform_ios\"]}"
     }
   ],
   "versionRules": []

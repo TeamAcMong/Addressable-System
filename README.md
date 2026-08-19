@@ -1025,11 +1025,13 @@ await Task.Run(() =>
 cache.Dispose();
 ```
 
-> `Set()` on either cache can **release the handle you just passed in** — it takes its own reference
-> via `TryRetain()`, and a dead handle cannot be retained. Both are `void`, so `IsValid` flipping to
-> `false` is your only signal. Check it before reading or handing off a handle you just cached.
-> Conversely, after `Dispose()` the any-thread group returns neutral values (`false`, all-zero
-> stats, no-op) rather than throwing.
+> `Set()` on either cache **never releases the handle you passed in**. It takes its own reference via
+> `TryRetain()` when it stores the entry, and leaves your reference alone on every path — including
+> when the key is already cached and your handle is ignored. So the rule is uniform: **you keep your
+> reference and you release it when you are done.** (A dead handle is refused rather than stored;
+> `Set()` is `void`, so check `IsValid` if you need to know whether it was stored.)
+> After `Dispose()` the any-thread group returns neutral values (`false`, all-zero stats, no-op)
+> rather than throwing.
 
 Also note: the standalone `TieredCache<T>` returned by `Advanced.CreateTieredCache<T>` is **not**
 thread-safe at all, and no loader uses it internally any more.

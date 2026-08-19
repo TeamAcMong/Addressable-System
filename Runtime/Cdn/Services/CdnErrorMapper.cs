@@ -102,20 +102,27 @@ namespace AddressableManager.Cdn
             string url = !string.IsNullOrEmpty(webResult.Url) ? webResult.Url : fallbackUrl;
             bool looksLikeBundle = LooksLikeBundle(url);
 
+            // Checked BEFORE the status branch, not inside `status == 0`. A bundle that downloads
+            // fine over HTTP and then fails CRC/hash validation in DownloadHandlerAssetBundle reports
+            // DataProcessingError with ResponseCode 200, because a complete HTTP response really did
+            // arrive. Testing it only under status == 0 meant the single most important corruption
+            // case fell through every branch to Unclassified() -> CdnErrorCode.Unknown, which
+            // IsRetryableByDefault treats as NOT retryable and which no auto-repair path matches. The
+            // real status is kept for diagnostics rather than forced to 0.
+            if (webResult.Result == UnityEngine.Networking.UnityWebRequest.Result.DataProcessingError)
+            {
+                return new CdnError(
+                    CdnErrorCode.BundleCrcMismatch,
+                    "The response arrived but could not be processed, which usually means a corrupt bundle",
+                    hint: "Clear the cached dependency for this key and retry once. If it recurs, the " +
+                          "object on the CDN is corrupt and re-uploading is the fix.",
+                    url: url, httpStatusCode: (int)status, exception: remote);
+            }
+
             // 0 means the request never got a response: DNS failure, connection refused, timeout at
             // the transport layer. Distinguished from a served error, which has a real status.
             if (status == 0)
             {
-                if (webResult.Result == UnityEngine.Networking.UnityWebRequest.Result.DataProcessingError)
-                {
-                    return new CdnError(
-                        CdnErrorCode.BundleCrcMismatch,
-                        "The response arrived but could not be processed, which usually means a corrupt bundle",
-                        hint: "Clear the cached dependency for this key and retry once. If it recurs, the " +
-                              "object on the CDN is corrupt and re-uploading is the fix.",
-                        url: url, httpStatusCode: 0, exception: remote);
-                }
-
                 return new CdnError(
                     CdnErrorCode.Timeout,
                     $"No response from the server ({webResult.Error})",

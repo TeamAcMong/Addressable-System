@@ -379,7 +379,7 @@ namespace AddressableManager.Editor.Cdn
             // If profile already exists, just validate its variables exist; don't overwrite values.
             if (!string.IsNullOrEmpty(profileId))
             {
-                EnsureProfileVariablesExist(settings, profileId);
+                EnsureProfileVariablesExist(settings, profileId, profileName);
                 return;
             }
 
@@ -420,21 +420,58 @@ namespace AddressableManager.Editor.Cdn
             settings.profileSettings.SetValue(profileId, AddressableAssetSettings.kRemoteBuildPath, BundlePathDefaults.BuildPathValue);
         }
 
-        private static void EnsureProfileVariablesExist(AddressableAssetSettings settings, string profileId)
+        /// <summary>The catalog load path a given profile is supposed to use.</summary>
+        private static string CatalogLoadPathFor(string profileName)
         {
-            // This method checks that a profile has both catalog variables. If they're missing (e.g., because
-            // an old profile was created before catalog variables existed), we add them. We do NOT overwrite
-            // existing values — manual edits are preserved.
+            switch (profileName)
+            {
+                case ProfileNames.Local:   return CatalogPathDefaults.LocalLoadPathValue;
+                case ProfileNames.Dev:     return CatalogPathDefaults.DevLoadPathValue;
+                case ProfileNames.Staging: return CatalogPathDefaults.StagingLoadPathValue;
+                case ProfileNames.Prod:    return CatalogPathDefaults.ProdLoadPathValue;
+                default:                   return null;
+            }
+        }
 
+        private static void EnsureProfileVariablesExist(
+            AddressableAssetSettings settings, string profileId, string profileName)
+        {
+            // Fill in variables a pre-existing profile is missing. Deliberate edits are preserved - but
+            // "non-empty" is NOT the same as "deliberate", and treating it that way was a real trap.
+            //
+            // AddressableAssetProfileSettings.CreateValue pushes its default into EVERY existing
+            // profile. EnsureCatalogVariablesExist runs first and creates Remote.CatalogLoadPath with
+            // the LOCAL (http://localhost:8080/...) value, so on a project that already had Dev/
+            // Staging/Prod profiles, all of them silently acquired a localhost catalog path. This
+            // method then saw a non-empty string and left it alone - and a Prod build baked
+            // http://localhost:8080 as its remote catalog URL, which fails only once it is on a device.
             if (string.IsNullOrEmpty(settings.profileSettings.GetValueByName(profileId, RemoteCatalogBuildPathVariable)))
             {
                 settings.profileSettings.SetValue(profileId, RemoteCatalogBuildPathVariable, CatalogPathDefaults.BuildPathValue);
             }
 
-            if (string.IsNullOrEmpty(settings.profileSettings.GetValueByName(profileId, RemoteCatalogLoadPathVariable)))
+            string expected = CatalogLoadPathFor(profileName);
+            string current = settings.profileSettings.GetValueByName(profileId, RemoteCatalogLoadPathVariable);
+
+            if (string.IsNullOrEmpty(current))
             {
-                // This should not happen in normal usage (EnsureCatalogVariablesExist ran first), but handle it gracefully.
-                settings.profileSettings.SetValue(profileId, RemoteCatalogLoadPathVariable, CatalogPathDefaults.LocalLoadPathValue);
+                settings.profileSettings.SetValue(
+                    profileId, RemoteCatalogLoadPathVariable, expected ?? CatalogPathDefaults.LocalLoadPathValue);
+                return;
+            }
+
+            // Only correct the one value that cannot have been chosen on purpose for this profile: the
+            // seeded localhost default sitting on a non-Local profile. Anything else is left untouched.
+            if (expected != null
+                && profileName != ProfileNames.Local
+                && current == CatalogPathDefaults.LocalLoadPathValue)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[CdnProfileManager] Profile '{profileName}' had the localhost catalog load path, which is " +
+                    "what creating the variable seeds into every profile - not a deliberate setting. Corrected to " +
+                    $"'{expected}'. If you really wanted localhost here, set it again after this run.");
+
+                settings.profileSettings.SetValue(profileId, RemoteCatalogLoadPathVariable, expected);
             }
         }
     }

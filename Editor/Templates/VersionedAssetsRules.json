@@ -14,7 +14,13 @@
       "priority": 100,
       "skipExisting": false,
       "targetGroupName": "CoreAssets",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -25,7 +31,13 @@
       "priority": 90,
       "skipExisting": false,
       "targetGroupName": "DLC",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/DLC\",\"_pattern\":\"Assets/DLC/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     }
@@ -37,9 +49,16 @@
       "enabled": true,
       "priority": 100,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/UI\",\"_pattern\":\"Assets/UI/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Mark static content for build-time inclusion\",\"_labels\":[\"content_static\"]}"
     },
     {
       "ruleName": "Dynamic Content Label",
@@ -47,9 +66,16 @@
       "enabled": true,
       "priority": 90,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Mark dynamic content for remote updates\",\"_labels\":[\"content_dynamic\"]}"
     }
   ],
   "versionRules": [
@@ -59,7 +85,13 @@
       "enabled": true,
       "priority": 100,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/UI\",\"_pattern\":\"Assets/UI/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "BuildNumberVersionProvider",
       "versionProviderPath": ""
     },
@@ -69,7 +101,13 @@
       "enabled": false,
       "priority": 90,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "GitCommitVersionProvider",
       "versionProviderPath": ""
     },
@@ -79,7 +117,13 @@
       "enabled": false,
       "priority": 80,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "DateVersionProvider",
       "versionProviderPath": ""
     }

@@ -85,9 +85,20 @@ namespace AddressableManager.Cdn
             {
                 if (environment == null) continue;
 
+                // Both forms. The configured string still holds {platform}/{appVersion}, and only the
+                // ACTIVE environment ever gets resolved (Apply -> ResolveTokens). Seeding the raw form
+                // alone meant an origin belonging to a non-active environment could never StartsWith-
+                // match a baked catalog URL, so Rewrite() fell through to "origin not configured" and
+                // returned the URL untouched: a build baked against environment A kept fetching from A
+                // while the facade cheerfully reported B as current.
                 AddKnownOrigin(environment.BaseUrl);
+                AddKnownOrigin(ResolveTokens(environment.BaseUrl));
+
                 foreach (string failover in environment.FailoverUrls)
+                {
                     AddKnownOrigin(failover);
+                    AddKnownOrigin(ResolveTokens(failover));
+                }
             }
 
             _knownOrigins.Sort((a, b) => b.Length.CompareTo(a.Length));
