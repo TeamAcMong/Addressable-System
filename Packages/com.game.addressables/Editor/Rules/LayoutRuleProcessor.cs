@@ -213,6 +213,33 @@ namespace AddressableManager.Editor.Rules
         // (HANDOFF_TO_SESSION_B.md E-PAIR-1).
         private const string ExcludedAddressableDataPrefix = "Assets/AddressableAssetsData/";
 
+        /// <summary>
+        /// The single definition of "an asset rules may be applied to".
+        /// </summary>
+        /// <remarks>
+        /// Made public and shared because the import-triggered path did not apply it. ApplyRules()
+        /// filtered through GetAllAssetPaths, but ApplyRulesToAssets() takes whatever list it is
+        /// handed and filters nothing, and AddressableAutoProcessor handed it importedAssets +
+        /// movedAssets verbatim. Three consequences, all silent:
+        ///
+        /// - FOLDERS. Unity reports newly created and moved folders in those arrays, and PathFilter is
+        ///   pure string matching with no extension or type requirement, so a PathFilter-only rule made
+        ///   the FOLDER addressable. Addressables then expands a folder entry into every asset beneath
+        ///   it, so one folder import could sweep an entire directory into a rule's group.
+        /// - Paths outside Assets/ (Packages/...), which a project does not own.
+        /// - Assets/AddressableAssetsData/ itself - the rule system rewriting the addressable settings
+        ///   it is driven by.
+        /// </remarks>
+        public static bool IsRuleEligibleAsset(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            if (AssetDatabase.IsValidFolder(path)) return false;
+            if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) return false;
+            if (path.StartsWith(ExcludedAddressableDataPrefix, StringComparison.OrdinalIgnoreCase)) return false;
+
+            return true;
+        }
+
         private List<string> GetAllAssetPaths()
         {
             var paths = new List<string>();
@@ -222,11 +249,7 @@ namespace AddressableManager.Editor.Rules
             foreach (var guid in allGuids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path))
-                    continue;
-
-                if (path.StartsWith(ExcludedAddressableDataPrefix, StringComparison.OrdinalIgnoreCase))
-                    continue;
+                if (!IsRuleEligibleAsset(path)) continue;
 
                 paths.Add(path);
             }

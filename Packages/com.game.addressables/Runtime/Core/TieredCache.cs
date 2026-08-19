@@ -162,17 +162,16 @@ namespace AddressableManager.Core
         /// entry could never be served back out by <see cref="TryGet"/> anyway.
         ///
         /// If <paramref name="key"/> already has a <em>live</em> entry, this call does not replace
-        /// it — only the access time is bumped. The handle passed in this call is not stored, so
-        /// unless it is the exact object already cached, this call releases the reference it was
-        /// given back to the caller (i.e. it does not adopt it and does not leak it); the caller
-        /// must not use that handle as if the cache had taken ownership of it.
+        /// it — only the access time is bumped, and <paramref name="handle"/> is left completely
+        /// untouched: not stored, not retained, and <b>not released</b>.
         ///
-        /// <para><b>IMPORTANT:</b> because this call can release the caller's own
-        /// <paramref name="handle"/> reference as that "losing" duplicate (e.g. two concurrent loads
-        /// for the same key), <paramref name="handle"/> may already be invalid by the time this call
-        /// returns — check <c>IsValid</c> before reading or handing off <paramref name="handle"/>
-        /// afterwards. When <c>_config.LogTierOperations</c> is enabled, every such rejection is
-        /// logged so the loss is observable even without checking <c>IsValid</c>.</para>
+        /// <para><b>The ownership rule is uniform on every path: the caller keeps its own reference
+        /// and releases it when done.</b> This method used to release the caller's handle on the
+        /// duplicate path, which gave one void method two opposite contracts — and a caller that did
+        /// the documented thing then over-released. That was invisible for a singly-owned handle
+        /// (Release at zero is a no-op) and unloaded the asset out from under AssetLoader in the
+        /// normal case, where the loader's cache holds a second reference. It also could not be
+        /// detected: after the release the count was still 1, so <c>IsValid</c> read true.</para>
         ///
         /// If the existing entry's handle has died without going through this cache (e.g.
         /// force-released by its owning loader), it is treated the same way <see cref="TryGet"/>
@@ -201,21 +200,30 @@ namespace AddressableManager.Core
             // logging — see that field's doc) is unaffected.
             var cacheKey = new AssetCacheKey(key, typeof(T));
 
-            // If entry exists and is still alive, just update access. The handle passed in is not
-            // stored — release the reference we were given back unless it is the very object already
-            // cached.
+            // If the entry exists and is still alive, just record the access. The handle passed in is
+            // NOT stored - and it is NOT released either.
+            //
+            // It used to be released here, which gave Set() two opposite ownership outcomes behind one
+            // void return: on the fresh-key path below the cache takes its own reference via TryRetain
+            // and the caller keeps the birth reference, while on this path the caller's reference was
+            // spent. A caller doing the documented thing - Set(...) then Release() when it is done -
+            // therefore released a reference it no longer owned. Release() at zero is a no-op, so this
+            // was invisible for a handle with one owner; for the normal case, where AssetLoader's cache
+            // holds a second reference, the extra Release decremented the LOADER's reference and
+            // Addressables unloaded an asset the loader still had listed as cached.
+            //
+            // A void method can only express one contract, so it expresses the uniform one: the caller
+            // always keeps its own reference, on every path.
             if (_cache.TryGetValue(cacheKey, out var existingEntry))
             {
                 if (existingEntry.Handle.IsValid)
                 {
                     existingEntry.RecordAccess();
-                    if (!ReferenceEquals(existingEntry.Handle, handle))
+                    if (!ReferenceEquals(existingEntry.Handle, handle) && _config.LogTierOperations)
                     {
-                        if (_config.LogTierOperations)
-                        {
-                            Debug.LogWarning($"[TieredCache] Set() rejected a duplicate handle for already-cached key '{key}'; the caller's handle was released and is no longer valid.");
-                        }
-                        handle.Release();
+                        Debug.LogWarning(
+                            $"[TieredCache] Set() ignored a duplicate handle for already-cached key '{key}'. " +
+                            "The cached handle was kept; your handle is untouched and is still yours to release.");
                     }
                     return;
                 }

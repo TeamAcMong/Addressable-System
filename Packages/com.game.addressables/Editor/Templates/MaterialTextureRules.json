@@ -14,7 +14,13 @@
       "priority": 110,
       "skipExisting": false,
       "targetGroupName": "Materials",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Material assets\",\"_extensions\":\".mat\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -25,7 +31,13 @@
       "priority": 100,
       "skipExisting": false,
       "targetGroupName": "Materials",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Material assets\",\"_extensions\":\".mat\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -36,7 +48,13 @@
       "priority": 90,
       "skipExisting": false,
       "targetGroupName": "Textures_High",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Texture assets\",\"_extensions\":\".png,.jpg,.jpeg,.tga,.psd\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -47,7 +65,13 @@
       "priority": 80,
       "skipExisting": false,
       "targetGroupName": "Textures_Normal",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Texture assets\",\"_extensions\":\".png,.jpg,.jpeg,.tga,.psd\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -58,7 +82,13 @@
       "priority": 70,
       "skipExisting": false,
       "targetGroupName": "Textures_Low",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Texture assets\",\"_extensions\":\".png,.jpg,.jpeg,.tga,.psd\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     }
@@ -70,9 +100,16 @@
       "enabled": true,
       "priority": 100,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Material assets\",\"_extensions\":\".mat\",\"_matchAny\":true}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Label PBR materials\",\"_labels\":[\"material_pbr\"]}"
     },
     {
       "ruleName": "Diffuse Texture Label",
@@ -80,9 +117,16 @@
       "enabled": true,
       "priority": 90,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Texture assets\",\"_extensions\":\".png,.jpg,.jpeg,.tga,.psd\",\"_matchAny\":true}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Label diffuse/albedo textures\",\"_labels\":[\"texture_diffuse\"]}"
     },
     {
       "ruleName": "Normal Map Label",
@@ -90,9 +134,16 @@
       "enabled": true,
       "priority": 80,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/Levels\",\"_pattern\":\"Assets/Levels/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Label normal maps\",\"_labels\":[\"texture_normal\"]}"
     },
     {
       "ruleName": "Quality Level - High",
@@ -100,9 +151,16 @@
       "enabled": true,
       "priority": 70,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a HighQuality folder\",\"_pattern\":\"Assets/**/HighQuality/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"High quality assets\",\"_labels\":[\"quality_high\"]}"
     },
     {
       "ruleName": "Quality Level - Medium",
@@ -110,9 +168,16 @@
       "enabled": true,
       "priority": 60,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/Levels\",\"_pattern\":\"Assets/Levels/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Medium quality assets\",\"_labels\":[\"quality_medium\"]}"
     },
     {
       "ruleName": "Quality Level - Low",
@@ -120,9 +185,16 @@
       "enabled": true,
       "priority": 50,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/Levels\",\"_pattern\":\"Assets/Levels/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Low quality assets\",\"_labels\":[\"quality_low\"]}"
     }
   ],
   "versionRules": []

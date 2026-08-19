@@ -27,10 +27,19 @@ namespace AddressableManager.Editor.Automation
         {
             if (_isProcessing) return;
 
-            // Collect all affected assets
+            // Collect all affected assets, through the SAME filter the project-wide path uses.
+            // These arrays contain folders, Packages/ paths and Addressables' own data assets, none of
+            // which a rule may be applied to - see LayoutRuleProcessor.IsRuleEligibleAsset.
             var affectedAssets = new HashSet<string>();
-            affectedAssets.UnionWith(importedAssets);
-            affectedAssets.UnionWith(movedAssets);
+            foreach (string path in importedAssets)
+            {
+                if (LayoutRuleProcessor.IsRuleEligibleAsset(path)) affectedAssets.Add(path);
+            }
+
+            foreach (string path in movedAssets)
+            {
+                if (LayoutRuleProcessor.IsRuleEligibleAsset(path)) affectedAssets.Add(path);
+            }
 
             if (affectedAssets.Count == 0) return;
 
@@ -131,8 +140,7 @@ namespace AddressableManager.Editor.Automation
             // the "Force Process All Assets" menu item (HANDOFF_TO_SESSION_B.md E-PAIR-1).
             var allAssets = AssetDatabase.FindAssets("", new[] { "Assets" })
                 .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                .Where(path => !string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
-                .Where(path => !path.StartsWith("Assets/AddressableAssetsData/"))
+                .Where(LayoutRuleProcessor.IsRuleEligibleAsset)
                 .ToList();
 
             Debug.Log($"[AddressableAutoProcessor] Force processing {allAssets.Count} assets");

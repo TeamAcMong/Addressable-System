@@ -30,6 +30,12 @@ namespace AddressableManager.Cdn
     public static class CdnRequestDecorator
     {
         private static bool _installed;
+
+        /// <summary>
+        /// The rewriter the installed hooks resolve against. A field, not a captured parameter, so a
+        /// repeat <see cref="Install"/> actually takes effect.
+        /// </summary>
+        private static IHostRewriter _activeRewriter;
         private static Action<UnityWebRequest> _previousWebRequestOverride;
         private static Func<IResourceLocation, string> _previousIdTransform;
 
@@ -76,7 +82,11 @@ namespace AddressableManager.Cdn
             if (_installed)
             {
                 // Idempotent rather than an error: a second Initialize on a warm domain is normal
-                // in the Editor, and failing there would be noise.
+                // in the Editor, and failing there would be noise. But it must still REBIND: CdnManager
+                // builds a brand-new HostRewriter on every InitializeAsync, so a first attempt that
+                // installed the hooks and then failed later (offline, bad catalog) left every request
+                // permanently pointed at the first environment while the facade reported the second.
+                _activeRewriter = rewriter;
                 return CdnResult<bool>.Success(true);
             }
 
@@ -91,6 +101,11 @@ namespace AddressableManager.Cdn
                           "in the first scene — initialised it earlier. Move that after CDN init.");
             }
 
+            // Rebind the rewriter even on a repeat Install (see the _installed branch): the hooks below
+            // must resolve the CURRENT rewriter per request, not the one captured by whichever call
+            // happened to install first.
+            _activeRewriter = rewriter;
+
             _previousWebRequestOverride = Addressables.WebRequestOverride;
             _previousIdTransform = Addressables.InternalIdTransformFunc;
 
@@ -104,7 +119,21 @@ namespace AddressableManager.Cdn
 
                 if (request == null) return;
 
-                request.timeout = timeoutSeconds;
+                // NOT on bundle downloads. UnityWebRequest.timeout is a cap on the whole transfer,
+                // while the 30s this package configures everywhere is Addressables' BUNDLE timeout,
+                // which is an IDLE timer - AssetBundleProvider resets it on every byte received and
+                // never aborts a transfer that is still progressing. Addressables therefore leaves
+                // request.timeout unset for bundles on purpose and sets it only for small catalog,
+                // hash and text files. Setting it here applied wall-clock semantics to a number chosen
+                // for idle semantics, so any bundle taking longer than 30 seconds - a large bundle, a
+                // slow phone, a bad network - was aborted mid-download at full speed. Unity's bundle
+                // cache only commits completed downloads, so every retry restarted from zero and hit
+                // the same wall: a permanently un-downloadable bundle on exactly the connections that
+                // need a CDN most.
+                if (!(request.downloadHandler is DownloadHandlerAssetBundle))
+                {
+                    request.timeout = timeoutSeconds;
+                }
 
                 string token = authHeaderProvider?.Invoke();
                 if (!string.IsNullOrEmpty(token))
@@ -120,7 +149,8 @@ namespace AddressableManager.Cdn
                     ? _previousIdTransform(location)
                     : location.InternalId;
 
-                return rewriter.Rewrite(id);
+                var active = _activeRewriter;
+                return active != null ? active.Rewrite(id) : id;
             };
 
             _installed = true;
@@ -143,6 +173,7 @@ namespace AddressableManager.Cdn
 
             _previousWebRequestOverride = null;
             _previousIdTransform = null;
+            _activeRewriter = null;
             _installed = false;
         }
 
@@ -160,6 +191,7 @@ namespace AddressableManager.Cdn
             _installed = false;
             _previousWebRequestOverride = null;
             _previousIdTransform = null;
+            _activeRewriter = null;
         }
     }
 }

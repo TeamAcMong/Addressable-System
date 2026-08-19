@@ -14,7 +14,13 @@
       "priority": 120,
       "skipExisting": false,
       "targetGroupName": "UI",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Texture assets\",\"_extensions\":\".png,.jpg,.jpeg,.tga,.psd\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "FileNameAddressProvider",
       "addressProviderPath": ""
     },
@@ -25,7 +31,13 @@
       "priority": 110,
       "skipExisting": false,
       "targetGroupName": "Prefabs",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Prefab assets\",\"_extensions\":\".prefab\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -36,7 +48,13 @@
       "priority": 100,
       "skipExisting": false,
       "targetGroupName": "Characters",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Animation assets\",\"_extensions\":\".anim,.controller\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     },
@@ -47,7 +65,13 @@
       "priority": 90,
       "skipExisting": false,
       "targetGroupName": "Audio",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "ExtensionFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Audio assets\",\"_extensions\":\".wav,.mp3,.ogg\",\"_matchAny\":true}"
+        }
+      ],
       "addressProviderType": "FileNameAddressProvider",
       "addressProviderPath": ""
     },
@@ -58,7 +82,13 @@
       "priority": 80,
       "skipExisting": false,
       "targetGroupName": "Localization",
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "addressProviderType": "PathAddressProvider",
       "addressProviderPath": ""
     }
@@ -70,9 +100,16 @@
       "enabled": true,
       "priority": 150,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Assets that should always be loaded\",\"_labels\":[\"always_load\"]}"
     },
     {
       "ruleName": "Level Content",
@@ -80,9 +117,16 @@
       "enabled": true,
       "priority": 140,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/Levels\",\"_pattern\":\"Assets/Levels/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Per-level assets for streaming\",\"_labels\":[\"level_content\"]}"
     },
     {
       "ruleName": "Platform - PC",
@@ -90,9 +134,16 @@
       "enabled": true,
       "priority": 130,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a HighQuality folder\",\"_pattern\":\"Assets/**/HighQuality/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"PC-specific high quality assets\",\"_labels\":[\"platform_pc\"]}"
     },
     {
       "ruleName": "Platform - Mobile",
@@ -100,9 +151,16 @@
       "enabled": true,
       "priority": 120,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under a Mobile folder\",\"_pattern\":\"Assets/**/Mobile/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Mobile-optimized assets\",\"_labels\":[\"platform_mobile\"]}"
     },
     {
       "ruleName": "DLC Content",
@@ -110,9 +168,16 @@
       "enabled": true,
       "priority": 110,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/DLC\",\"_pattern\":\"Assets/DLC/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Downloadable content marker\",\"_labels\":[\"content_dlc\"]}"
     },
     {
       "ruleName": "Language - English",
@@ -120,9 +185,16 @@
       "enabled": true,
       "priority": 100,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"English localization\",\"_labels\":[\"lang_en\"]}"
     },
     {
       "ruleName": "Language - Spanish",
@@ -130,9 +202,16 @@
       "enabled": true,
       "priority": 90,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Spanish localization\",\"_labels\":[\"lang_es\"]}"
     },
     {
       "ruleName": "Language - Japanese",
@@ -140,9 +219,16 @@
       "enabled": true,
       "priority": 80,
       "appendToExisting": true,
-      "filters": [],
-      "labelProviderType": "FolderLabelProvider",
-      "labelProviderPath": ""
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Everything under Assets - narrow this before enabling\",\"_pattern\":\"Assets/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
+      "labelProviderType": "ConstantLabelProvider",
+      "labelProviderPath": "",
+      "labelProviderJson": "{\"_description\":\"Japanese localization\",\"_labels\":[\"lang_ja\"]}"
     }
   ],
   "versionRules": [
@@ -152,7 +238,13 @@
       "enabled": true,
       "priority": 100,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/UI\",\"_pattern\":\"Assets/UI/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "BuildNumberVersionProvider",
       "versionProviderPath": ""
     },
@@ -162,7 +254,13 @@
       "enabled": false,
       "priority": 90,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/UI\",\"_pattern\":\"Assets/UI/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "GitCommitVersionProvider",
       "versionProviderPath": ""
     },
@@ -172,7 +270,13 @@
       "enabled": false,
       "priority": 80,
       "skipExisting": false,
-      "filters": [],
+      "filters": [
+        {
+          "filterType": "PathFilter",
+          "filterAssetPath": "",
+          "filterJson": "{\"_enabled\":true,\"_invert\":false,\"_description\":\"Anything under Assets/UI\",\"_pattern\":\"Assets/UI/**\",\"_matchMode\":5,\"_caseSensitive\":false}"
+        }
+      ],
       "versionProviderType": "DateVersionProvider",
       "versionProviderPath": ""
     }
