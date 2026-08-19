@@ -149,7 +149,25 @@ namespace AddressableManager.Editor.Automation
 
                 EditorUtility.ClearProgressBar();
 
-                Debug.Log($"[AddressableAutoProcessor] {ruleData.name}: Complete - " +
+                // Surface errors the same way ProcessPendingAssets already does. Reporting only the
+                // counters made a run that validated nothing and applied nothing print
+                // "Complete - 0 addresses, 0 labels applied" with no error anywhere in the console -
+                // which is exactly what a rule set with an unassigned AddressProvider produces.
+                foreach (var error in result.Errors)
+                {
+                    Debug.LogError($"[AddressableAutoProcessor] {ruleData.name}: {error}");
+                }
+
+                foreach (var warning in result.Warnings)
+                {
+                    Debug.LogWarning($"[AddressableAutoProcessor] {ruleData.name}: {warning}");
+                }
+
+                string status = result.Success
+                    ? "Complete"
+                    : $"Complete with {result.Errors.Count} error(s)";
+
+                Debug.Log($"[AddressableAutoProcessor] {ruleData.name}: {status} - " +
                     $"{result.AddressesApplied} addresses, {result.LabelsApplied} labels applied");
             }
         }

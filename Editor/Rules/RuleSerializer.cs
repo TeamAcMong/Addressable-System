@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 using AddressableManager.Editor.Filters;
 using AddressableManager.Editor.Providers;
@@ -39,6 +40,11 @@ namespace AddressableManager.Editor.Rules
             public int priority;
             public bool skipExisting;
             public string targetGroupName;
+            // Serialized as an asset path, following addressProviderPath's convention. Without this
+            // an export/import round-trip silently drops the rule's group template and the rule
+            // reverts to inheriting the DefaultGroup's schemas - the same silent-misconfiguration
+            // failure the template exists to prevent, reached through a supported workflow.
+            public string targetGroupTemplatePath;
             public List<FilterExport> filters = new List<FilterExport>();
             public string addressProviderType;
             public string addressProviderPath;
@@ -113,6 +119,9 @@ namespace AddressableManager.Editor.Rules
                         priority = rule.Priority,
                         skipExisting = rule.SkipExisting,
                         targetGroupName = rule.TargetGroupName,
+                        targetGroupTemplatePath = rule.TargetGroupTemplate != null
+                            ? AssetDatabase.GetAssetPath(rule.TargetGroupTemplate)
+                            : "",
                         addressProviderType = rule.AddressProvider?.GetType().Name ?? "",
                         addressProviderPath = rule.AddressProvider != null ? AssetDatabase.GetAssetPath(rule.AddressProvider) : ""
                     };
@@ -265,7 +274,39 @@ namespace AddressableManager.Editor.Rules
                             TargetGroupName = ruleImport.targetGroupName
                         };
 
-                        // Load filters
+                        // Group template. A path that no longer resolves must be loud: silently
+                        // leaving it null puts the rule back on DefaultGroup-inheritance, which is
+                        // exactly the outcome that looks like success and ships the wrong content.
+                        if (!string.IsNullOrEmpty(ruleImport.targetGroupTemplatePath))
+                        {
+                            var template = AssetDatabase.LoadAssetAtPath<AddressableAssetGroupTemplate>(
+                                ruleImport.targetGroupTemplatePath);
+                            if (template != null)
+                            {
+                                rule.TargetGroupTemplate = template;
+                            }
+                            else
+                            {
+                                Debug.LogWarning(
+                                    $"[RuleSerializer] Group template not found at " +
+                                    $"'{ruleImport.targetGroupTemplatePath}' for rule '{ruleImport.ruleName}'. " +
+                                    "The rule will inherit the DefaultGroup's schemas instead - if this group " +
+                                    "is meant to be remote or label-split, reassign the template before applying.");
+                            }
+                        }
+
+                        // Load filters.
+                        //
+                        // A filter that does not resolve CANNOT be skipped quietly. Filters are ANDed
+                        // (AddressRule.IsMatch), so dropping one strictly WIDENS what the rule matches:
+                        // PathFilter("Assets/UI") + ExtensionFilter(".png") imported without the
+                        // PathFilter becomes "every .png in the project", which then gets its address
+                        // rewritten and its entry moved into the rule's target group - while the import
+                        // dialog reports success. Downstream cannot catch it either: AddressRule.Validate
+                        // only requires at least one filter, and IsMatch's match-all guard fires only
+                        // when the list is empty.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
                             if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
@@ -277,7 +318,8 @@ namespace AddressableManager.Editor.Rules
                                 }
                                 else
                                 {
-                                    Debug.LogWarning($"[RuleSerializer] Filter not found: {filterExport.filterAssetPath}");
+                                    degraded = true;
+                                    Debug.LogError($"[RuleSerializer] Filter not found: {filterExport.filterAssetPath}");
                                 }
                             }
                         }
@@ -288,12 +330,30 @@ namespace AddressableManager.Editor.Rules
                             rule.AddressProvider = AssetDatabase.LoadAssetAtPath<AddressProviderBase>(ruleImport.addressProviderPath);
                             if (rule.AddressProvider == null)
                             {
-                                Debug.LogWarning($"[RuleSerializer] Address provider not found: {ruleImport.addressProviderPath}");
+                                degraded = true;
+                                Debug.LogError($"[RuleSerializer] Address provider not found: {ruleImport.addressProviderPath}");
                             }
                         }
 
-                        ruleData.AddAddressRule(rule);
-                        successCount++;
+                        if (degraded)
+                        {
+                            // Imported but disarmed. Dropping the rule entirely would lose the user's
+                            // work; importing it live would let it match far more than it was written
+                            // to. Disabled + counted as a failure is the only option that neither
+                            // loses data nor acts on a rule nobody has re-approved.
+                            rule.Enabled = false;
+                            ruleData.AddAddressRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Address rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters/providers could not be resolved, and a rule missing a filter " +
+                                "matches MORE than it was written to. Reattach the missing assets, then re-enable it.");
+                        }
+                        else
+                        {
+                            ruleData.AddAddressRule(rule);
+                            successCount++;
+                        }
                     }
                     catch (Exception ex)
                     {

@@ -39,6 +39,10 @@ namespace AddressableManager.Editor.Rules
         [Tooltip("Auto-apply rules when assets are imported")]
         [SerializeField] private bool _autoApplyOnImport = false;
 
+        [Tooltip("Apply rules in list order instead of sorting them by Priority. Set by " +
+                 "CompositeLayoutRuleData when its 'Respect Source Order' is on.")]
+        [SerializeField] private bool _preserveRuleOrder = false;
+
         [Tooltip("Auto-apply rules when this asset is modified")]
         [SerializeField] private bool _autoApplyOnModified = false;
 
@@ -88,6 +92,24 @@ namespace AddressableManager.Editor.Rules
         {
             get => _autoApplyOnImport;
             set => _autoApplyOnImport = value;
+        }
+
+        /// <summary>
+        /// Apply rules in list order rather than sorting them by <c>Priority</c>.
+        /// </summary>
+        /// <remarks>
+        /// This exists so CompositeLayoutRuleData's "Respect Source Order" can actually reach the
+        /// processor. Without it that setting was inert: the composite carefully preserved the order
+        /// its sources were listed in, handed the merged data to LayoutRuleProcessor, and the processor
+        /// re-sorted by Priority in all three of its rule loops - discarding exactly the ordering the
+        /// setting exists to protect. The user saw a toggle that did nothing.
+        ///
+        /// Defaults to false, so a plain LayoutRuleData keeps sorting by Priority as before.
+        /// </remarks>
+        public bool PreserveRuleOrder
+        {
+            get => _preserveRuleOrder;
+            set => _preserveRuleOrder = value;
         }
 
         /// <summary>

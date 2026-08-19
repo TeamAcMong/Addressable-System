@@ -99,12 +99,22 @@ namespace AddressableManager.Editor.Rules
                 rule?.Setup();
             }
 
+            // Iterate in the SAME order LayoutRuleProcessor will. This used to walk AddressRules in
+            // declaration order while the processor sorted by Priority, so "first matching rule" could
+            // pick a different rule here than at apply time - a preview that disagreed with the run it
+            // was previewing, which is worse than no preview.
+            var orderedRules = ruleData.AddressRules.Where(r => r != null && r.Enabled).ToList();
+            if (!ruleData.PreserveRuleOrder)
+            {
+                orderedRules = orderedRules.OrderByDescending(r => r.Priority).ToList();
+            }
+
             // Simulate address generation
             foreach (var assetPath in assetPaths)
             {
-                foreach (var rule in ruleData.AddressRules)
+                foreach (var rule in orderedRules)
                 {
-                    if (rule != null && rule.Enabled && rule.IsMatch(assetPath))
+                    if (rule.IsMatch(assetPath))
                     {
                         string address = rule.GenerateAddress(assetPath);
                         if (!string.IsNullOrEmpty(address))
