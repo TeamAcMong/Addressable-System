@@ -31,6 +31,31 @@ namespace AddressableManager.Editor.Rules
         private readonly AddressableAssetSettings _settings;
         private bool _verboseLogging;
 
+        /// <summary>
+        /// True when this run changed at least one entry label, including a removal.
+        /// </summary>
+        /// <remarks>
+        /// The save block keys off the applied-counters, but a run can legitimately dirty group assets
+        /// without moving any of them: stripping a stale "version:" label increments nothing. Saving on
+        /// the counters alone would leave those removals sitting dirty-but-unsaved until something else
+        /// happened to trigger a save.
+        /// </remarks>
+        private bool _labelsTouched;
+
+        /// <summary>
+        /// address -> the asset paths a run assigned it to, used to catch duplicates before they ship.
+        /// </summary>
+        /// <remarks>
+        /// Two entries sharing one address makes one of the assets permanently unreachable: Addressables
+        /// resolves a single-asset load to one location and the other is simply never returned. Nothing
+        /// else on the write path catches it - AddressableAssetEntry.SetAddress accepts any duplicate
+        /// (it only rejects '[' and ']'), RuleValidator checks duplicate rule NAMES rather than
+        /// generated addresses, and RuleConflictDetector is only ever reached from read-only surfaces
+        /// (the CLI's detect command, the inspector button, the Layout Viewer). So the apply path had no
+        /// duplicate check at all and reported full success either way.
+        /// </remarks>
+        private readonly Dictionary<string, string> _addressOwners = new Dictionary<string, string>(StringComparer.Ordinal);
+
         public LayoutRuleProcessor(LayoutRuleData ruleData)
         {
             _ruleData = ruleData ?? throw new ArgumentNullException(nameof(ruleData));
@@ -50,6 +75,8 @@ namespace AddressableManager.Editor.Rules
         public ProcessResult ApplyRules(Action<float, string> progressCallback = null)
         {
             var result = new ProcessResult();
+            _labelsTouched = false;
+            _addressOwners.Clear();
 
             try
             {
@@ -90,8 +117,9 @@ namespace AddressableManager.Editor.Rules
                 // spurious diffs/merge conflicts in a shared project for no actual change
                 // (HANDOFF_TO_SESSION_B.md §4.5 "Also").
                 progressCallback?.Invoke(0.95f, "Saving changes...");
-                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0)
+                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0 || _labelsTouched)
                 {
+                    FlushLabelEvent();
                     EditorUtility.SetDirty(_settings);
                     AssetDatabase.SaveAssets();
                 }
@@ -120,6 +148,8 @@ namespace AddressableManager.Editor.Rules
         public ProcessResult ApplyRulesToAssets(List<string> assetPaths, Action<float, string> progressCallback = null)
         {
             var result = new ProcessResult();
+            _labelsTouched = false;
+            _addressOwners.Clear();
 
             try
             {
@@ -139,8 +169,9 @@ namespace AddressableManager.Editor.Rules
                 ProcessVersionRules(assetPaths, result, progressCallback);
 
                 // Save - only if something was actually applied (see ApplyRules() above).
-                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0)
+                if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0 || _labelsTouched)
                 {
+                    FlushLabelEvent();
                     EditorUtility.SetDirty(_settings);
                     AssetDatabase.SaveAssets();
                 }
@@ -214,8 +245,15 @@ namespace AddressableManager.Editor.Rules
             // Sort rules by priority (higher first)
             var sortedRules = _ruleData.AddressRules
                 .Where(r => r != null && r.Enabled)
-                .OrderByDescending(r => r.Priority)
-                .ToList();
+.ToList();
+
+            // Priority is the default ordering, but CompositeLayoutRuleData can ask for its source
+            // order to survive (see LayoutRuleData.PreserveRuleOrder). Sorting unconditionally here is
+            // what made that setting inert.
+            if (!_ruleData.PreserveRuleOrder)
+            {
+                sortedRules = sortedRules.OrderByDescending(r => r.Priority).ToList();
+            }
 
             Log($"Processing {sortedRules.Count} address rules");
 
@@ -278,14 +316,63 @@ namespace AddressableManager.Editor.Rules
                     return;
                 }
 
-                // Create or update entry
+                // Create or update entry.
+                //
+                // postEvent:true, not false. AddressableScenesManager subscribes to
+                // OnModificationGlobal and exists to enforce Unity's invariant that a scene cannot be
+                // both addressable and enabled in EditorBuildSettings - with postEvent:false it never
+                // runs, so a scene made addressable by a rule stays in the build list and ships twice.
+                // The per-entry Groups-window rebuild that made postEvent:false the right call for
+                // labels does not apply at the same volume here: only entries actually created or
+                // moved reach this line, not every label on every entry.
                 if (entry == null)
                 {
-                    entry = _settings.CreateOrMoveEntry(guid, targetGroup, false, false);
+                    entry = _settings.CreateOrMoveEntry(guid, targetGroup, false, true);
                 }
                 else if (entry.parentGroup != targetGroup)
                 {
-                    _settings.MoveEntry(entry, targetGroup, false, false);
+                    // Relocation of an entry this rule did not create. It is legitimate when a rule owns
+                    // the layout, and destructive when someone placed the asset by hand - MoveEntry also
+                    // resets ReadOnly. Nothing distinguishes the two cases, and the only guard is
+                    // SkipExisting, which defaults to false and whose tooltip talks only about addresses.
+                    // Until there is an explicit opt-in, the move still happens (changing that silently
+                    // would break layouts that rely on it) but it stops being invisible.
+                    string previousGroup = entry.parentGroup != null ? entry.parentGroup.Name : "(none)";
+
+                    if (!rule.AllowGroupMove)
+                    {
+                        result.Warnings.Add(
+                            $"Rule '{rule.RuleName}' left '{assetPath}' in group '{previousGroup}' " +
+                            $"instead of moving it to '{targetGroup.Name}': the rule has 'Allow Group " +
+                            "Move' turned off. The address was still applied.");
+                    }
+                    else
+                    {
+                        result.Warnings.Add(
+                            $"Rule '{rule.RuleName}' moved '{assetPath}' from group '{previousGroup}' to " +
+                            $"'{targetGroup.Name}'. If that group was configured by hand, turn off the " +
+                            "rule's 'Allow Group Move' to keep rules from relocating entries they did " +
+                            "not create.");
+
+                        _settings.MoveEntry(entry, targetGroup, false, true);
+                    }
+                }
+
+                if (_addressOwners.TryGetValue(address, out var firstOwner))
+                {
+                    // Reported, not silently skipped: which of the two assets "should" own the address
+                    // is a human call, and writing it anyway at least keeps the run's behaviour
+                    // unchanged for anyone already depending on it. What must not happen is the run
+                    // finishing green.
+                    result.Errors.Add(
+                        $"Duplicate address '{address}': generated for both '{firstOwner}' and " +
+                        $"'{assetPath}' by rule '{rule.RuleName}'. Two entries sharing one address makes " +
+                        "one of the assets unreachable at runtime - narrow the rule's filters or use an " +
+                        "address provider that includes more of the path.");
+                }
+                else
+                {
+                    _addressOwners[address] = assetPath;
                 }
 
                 if (entry != null)
@@ -312,8 +399,15 @@ namespace AddressableManager.Editor.Rules
 
             var sortedRules = _ruleData.LabelRules
                 .Where(r => r != null && r.Enabled)
-                .OrderByDescending(r => r.Priority)
-                .ToList();
+.ToList();
+
+            // Priority is the default ordering, but CompositeLayoutRuleData can ask for its source
+            // order to survive (see LayoutRuleData.PreserveRuleOrder). Sorting unconditionally here is
+            // what made that setting inert.
+            if (!_ruleData.PreserveRuleOrder)
+            {
+                sortedRules = sortedRules.OrderByDescending(r => r.Priority).ToList();
+            }
 
             Log($"Processing {sortedRules.Count} label rules");
 
@@ -329,13 +423,22 @@ namespace AddressableManager.Editor.Rules
                     progressCallback?.Invoke(progress, $"Processing labels ({processed}/{total})...");
                 }
 
-                // Collect labels from all matching rules
-                var labelsToApply = new HashSet<string>();
+                // Collect labels from all matching rules.
+                //
+                // LabelRule.AppendToExisting is honoured here. It was serialized, exported, imported and
+                // drawn in the Layout Rule Editor, but nothing ever read it: labels were only ever
+                // added, so turning it off changed nothing at all. "Replace" is a per-asset decision -
+                // if ANY matching rule asks to replace, the entry's rule-owned labels are rebuilt from
+                // scratch instead of accumulated.
+                var labelsToApply = new HashSet<string>(StringComparer.Ordinal);
+                bool replaceExisting = false;
 
                 foreach (var rule in sortedRules)
                 {
                     if (rule.IsMatch(assetPath))
                     {
+                        if (!rule.AppendToExisting) replaceExisting = true;
+
                         var labels = rule.GenerateLabels(assetPath);
                         if (labels != null)
                         {
@@ -350,14 +453,20 @@ namespace AddressableManager.Editor.Rules
                     }
                 }
 
-                if (labelsToApply.Count > 0)
+                if (labelsToApply.Count > 0 || replaceExisting)
                 {
-                    ApplyLabels(assetPath, labelsToApply.ToList(), result);
+                    ApplyLabels(assetPath, labelsToApply.ToList(), result, replaceExisting);
                 }
             }
         }
 
-        private void ApplyLabels(string assetPath, List<string> labels, ProcessResult result)
+        /// <param name="replaceExisting">
+        /// When true, labels this run did not ask for are stripped from the entry first. "version:"
+        /// labels are deliberately exempt: they are owned by the version-rule path, and a label rule
+        /// clobbering them would silently break version queries for an entry that no version rule even
+        /// matched.
+        /// </param>
+        private void ApplyLabels(string assetPath, List<string> labels, ProcessResult result, bool replaceExisting = false)
         {
             try
             {
@@ -370,19 +479,46 @@ namespace AddressableManager.Editor.Rules
                     return;
                 }
 
+                if (replaceExisting)
+                {
+                    var wanted = new HashSet<string>(labels, StringComparer.Ordinal);
+                    var stale = entry.labels
+                        .Where(l => !wanted.Contains(l) && !l.StartsWith("version:", StringComparison.Ordinal))
+                        .ToList();
+
+                    foreach (var oldLabel in stale)
+                    {
+                        if (entry.SetLabel(oldLabel, false, false, false))
+                        {
+                            _labelsTouched = true;
+                            LogVerbose($"Removed label '{oldLabel}' from {assetPath} (rule replaces instead of appends)");
+                        }
+                    }
+                }
+
                 foreach (var label in labels)
                 {
-                    // Add label to settings if it doesn't exist
-                    if (!_settings.GetLabels().Contains(label))
+                    // entry.SetLabel is the only mutator that dirties the owning GROUP asset, and the
+                    // group asset - not AddressableAssetSettings.asset - is where an entry's labels are
+                    // serialized (m_SerializedLabels). Writing through entry.labels instead skipped
+                    // SetDirty entirely, so the labels never reached disk even when the in-memory write
+                    // took; on Addressables 2.9+ the property returns a COPY (m_Labels.ToHashSet()) and
+                    // the write does not even take. Same call, both problems.
+                    //
+                    // force:true registers the label on the settings object, so the manual AddLabel this
+                    // used to do first is now redundant. postEvent:false is deliberate: each event makes
+                    // the Groups window rebuild its whole entry tree, which across thousands of entries
+                    // in one synchronous loop is a hard editor stall. One BatchModification event is
+                    // fired after the run instead. Persistence does not depend on postEvent -
+                    // AddressableAssetGroup.SetDirty gates EditorUtility.SetDirty on groupModified.
+                    //
+                    // The counter now follows SetLabel's return value rather than being incremented
+                    // unconditionally. An unconditional counter is what let this report "3591 labels
+                    // applied" while none of them stuck.
+                    if (entry.SetLabel(label, true, true, false))
                     {
-                        _settings.AddLabel(label, false);
-                    }
-
-                    // Add label to entry
-                    if (!entry.labels.Contains(label))
-                    {
-                        entry.labels.Add(label);
                         result.LabelsApplied++;
+                        _labelsTouched = true;
                         LogVerbose($"Applied label '{label}' to {assetPath}");
                     }
                 }
@@ -404,8 +540,15 @@ namespace AddressableManager.Editor.Rules
             // Sort rules by priority (higher first)
             var sortedRules = _ruleData.VersionRules
                 .Where(r => r != null && r.Enabled)
-                .OrderByDescending(r => r.Priority)
-                .ToList();
+.ToList();
+
+            // Priority is the default ordering, but CompositeLayoutRuleData can ask for its source
+            // order to survive (see LayoutRuleData.PreserveRuleOrder). Sorting unconditionally here is
+            // what made that setting inert.
+            if (!_ruleData.PreserveRuleOrder)
+            {
+                sortedRules = sortedRules.OrderByDescending(r => r.Priority).ToList();
+            }
 
             Log($"Processing {sortedRules.Count} version rules");
 
@@ -470,24 +613,26 @@ namespace AddressableManager.Editor.Rules
                 // Format version as label: "version:1.0.0"
                 string versionLabel = $"version:{version}";
 
-                // Remove existing version labels
+                // Remove existing version labels. This removal has to go through SetLabel for the
+                // same reason the additions below do - and it is the easiest of the three to miss.
+                // Fixing only the additions would make the writes start landing while the removals
+                // stayed dead, so every version bump would leave the previous "version:x.y.z" label
+                // attached and a load-by-version query would return assets of several versions at once.
                 var existingVersionLabels = entry.labels.Where(l => l.StartsWith("version:")).ToList();
                 foreach (var oldLabel in existingVersionLabels)
                 {
-                    entry.labels.Remove(oldLabel);
+                    if (oldLabel == versionLabel) continue;   // already correct, leave it alone
+                    if (entry.SetLabel(oldLabel, false, false, false))
+                    {
+                        _labelsTouched = true;
+                    }
                 }
 
-                // Add version label to settings if it doesn't exist
-                if (!_settings.GetLabels().Contains(versionLabel))
+                // Add version label to entry (force:true registers it on the settings object).
+                if (entry.SetLabel(versionLabel, true, true, false))
                 {
-                    _settings.AddLabel(versionLabel, false);
-                }
-
-                // Add version label to entry
-                if (!entry.labels.Contains(versionLabel))
-                {
-                    entry.labels.Add(versionLabel);
                     result.VersionsApplied++;
+                    _labelsTouched = true;
                     LogVerbose($"Applied version '{version}' to {assetPath}");
                 }
             }
@@ -495,6 +640,23 @@ namespace AddressableManager.Editor.Rules
             {
                 result.Errors.Add($"Error applying version rule to {assetPath}: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Fires exactly one settings-level modification event for a run's worth of label writes.
+        /// </summary>
+        /// <remarks>
+        /// Every individual SetLabel is issued with postEvent:false, which keeps the Groups window from
+        /// rebuilding its entry tree once per entry. Something still has to tell the window and the
+        /// settings locator that the label tables moved, or the current session keeps serving a stale
+        /// key->entry index and a load-by-label in Play Mode misses the assets that were just labeled.
+        /// </remarks>
+        private void FlushLabelEvent()
+        {
+            if (!_labelsTouched) return;
+
+            _settings.SetDirty(AddressableAssetSettings.ModificationEvent.BatchModification, null, true, true);
+            _labelsTouched = false;
         }
 
         private void Log(string message)

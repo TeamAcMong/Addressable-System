@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review 4.1.0-pre.9 — com.game.addressables</title>
+<style>
+:root{
+  --ground:#EDEFF2; --surface:#FFFFFF; --surface-2:#E2E6EB; --sunken:#D9DEE4;
+  --ink:#12171B; --ink-2:#39434B; --muted:#6A757E;
+  --line:#CDD5DB; --line-strong:#AEB9C2;
+  --accent:#3B4E63; --accent-soft:#DCE3EB;
+  --crit:#9B2620; --high:#A8620F; --med:#28607D; --ok:#2F6444; --unk:#6A757E;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --shadow:0 1px 2px rgba(18,30,40,.05),0 10px 26px -20px rgba(18,30,40,.32);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1216; --surface:#161C22; --surface-2:#1D252C; --sunken:#121920;
+    --ink:#E7ECF0; --ink-2:#B6C1CA; --muted:#818D97;
+    --line:#26303A; --line-strong:#3A4753;
+    --accent:#8FA6BE; --accent-soft:#1A2530;
+    --crit:#E08278; --high:#D9A94F; --med:#6FB3D4; --ok:#71B489; --unk:#818D97;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 14px 32px -22px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1216; --surface:#161C22; --surface-2:#1D252C; --sunken:#121920;
+  --ink:#E7ECF0; --ink-2:#B6C1CA; --muted:#818D97;
+  --line:#26303A; --line-strong:#3A4753;
+  --accent:#8FA6BE; --accent-soft:#1A2530;
+  --crit:#E08278; --high:#D9A94F; --med:#6FB3D4; --ok:#71B489; --unk:#818D97;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 14px 32px -22px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px 100px}
+.col{max-width:74ch}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+h1{font-size:clamp(30px,5vw,50px);font-weight:800;letter-spacing:-.034em;line-height:1.05}
+h2{font-size:clamp(20px,2.5vw,26px);font-weight:750;letter-spacing:-.02em;line-height:1.22}
+h3{font-size:17px;font-weight:720;letter-spacing:-.01em}
+h4{font-size:14px;font-weight:700}
+p{margin:0}
+strong{font-weight:680}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:4px;padding:.08em .34em;color:var(--ink);
+  word-break:break-word}
+a{color:var(--accent);text-underline-offset:3px}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--muted)}
+.lede{font-size:18px;line-height:1.55;color:var(--ink-2)}
+.note{font-size:14.5px;line-height:1.56;color:var(--muted)}
+header{padding:64px 0 30px;border-bottom:1px solid var(--line);
+  display:flex;flex-direction:column;gap:16px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.meta b{color:var(--ink-2);font-weight:600}
+section{padding:46px 0 0;display:flex;flex-direction:column;gap:17px}
+.stack{display:flex;flex-direction:column;gap:12px}
+
+/* nav */
+nav{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;
+  display:flex;flex-direction:column;gap:9px;box-shadow:var(--shadow)}
+nav ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:14.5px}
+nav a{color:var(--ink-2);text-decoration:none}
+nav a:hover{color:var(--accent);text-decoration:underline}
+
+/* tally */
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.tally div{background:var(--surface);padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px}
+.tally .v{font-family:var(--mono);font-size:25px;font-weight:700;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;line-height:1.05}
+.tally .u{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.tally .c{font-size:12.5px;color:var(--ink-2);line-height:1.4}
+.t-crit .v{color:var(--crit)} .t-high .v{color:var(--high)}
+.t-med .v{color:var(--med)} .t-unk .v{color:var(--unk)}
+
+/* finding card */
+.find{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line-strong);
+  border-radius:0 10px 10px 0;padding:22px 24px;display:flex;flex-direction:column;gap:14px;
+  box-shadow:var(--shadow)}
+.find.crit{border-left-color:var(--crit)}
+.find.high{border-left-color:var(--high)}
+.find.med{border-left-color:var(--med)}
+.find.unk{border-left-color:var(--unk)}
+.find-head{display:flex;flex-direction:column;gap:7px}
+.kind{font-family:var(--mono);font-size:10.5px;font-weight:650;letter-spacing:.14em;text-transform:uppercase}
+.find.crit .kind{color:var(--crit)} .find.high .kind{color:var(--high)}
+.find.med .kind{color:var(--med)} .find.unk .kind{color:var(--unk)}
+.site{font-family:var(--mono);font-size:13.5px;font-weight:650;color:var(--ink);word-break:break-all}
+.verdict{font-size:16.5px;line-height:1.5;color:var(--ink)}
+
+pre{margin:0;background:var(--sunken);border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.6px;line-height:1.62;color:var(--ink-2)}
+pre b{color:var(--ink);font-weight:680}
+pre .bad{color:var(--crit);font-weight:600}
+pre .good{color:var(--ok);font-weight:600}
+pre .c1{color:var(--muted)}
+
+.patch{background:var(--accent-soft);border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.patch .lbl{font-family:var(--mono);font-size:10.5px;font-weight:650;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent)}
+.patch p{font-size:14.5px;line-height:1.56;color:var(--ink-2)}
+
+.callout{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
+  border-radius:0 9px 9px 0;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.callout.warn{border-left-color:var(--high)}
+.callout .lbl{font-family:var(--mono);font-size:10.5px;font-weight:650;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent)}
+.callout.warn .lbl{color:var(--high)}
+
+ul.clean{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+ul.clean>li{padding-left:18px;position:relative;color:var(--ink-2);font-size:15px;line-height:1.55}
+ul.clean>li::before{content:"—";position:absolute;left:0;color:var(--line-strong);font-family:var(--mono)}
+ul.clean>li strong{color:var(--ink)}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:640px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;background:var(--surface-2);border-bottom:1px solid var(--line-strong)}
+tbody tr:last-child td{border-bottom:none}
+td.path{font-family:var(--mono);font-size:12.4px;word-break:break-all}
+
+.pill{font-family:var(--mono);font-size:10px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;
+  border-radius:100px;padding:2px 9px;white-space:nowrap;border:1px solid currentColor;display:inline-block}
+.p-crit{color:var(--crit)} .p-high{color:var(--high)} .p-med{color:var(--med)}
+.p-ok{color:var(--ok)} .p-unk{color:var(--unk)}
+
+footer{margin-top:70px;padding-top:20px;border-top:1px solid var(--line)}
+@media (max-width:640px){
+  .wrap{padding:0 17px 70px}
+  header{padding:44px 0 26px}
+  .find{padding:18px}
+}
+@media print{
+  body{background:#fff;color:#000}
+  .find,nav,.callout,.tablewrap{box-shadow:none;break-inside:avoid}
+  section{break-inside:avoid-page}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">com.game.addressables · 4.1.0-pre.9 · main @ 396b64e</div>
+  <h1>Review lỗ hổng thiết kế</h1>
+  <p class="lede col">Thẩm định lại ba lỗ hổng đã báo trong <em>“Ba lỗ hổng câm”</em>, cộng những gì tìm thêm được khi quét cùng lớp lỗi. Cả ba đều là bug thật — nhưng <strong>hai trong ba bản vá đề xuất là sai</strong>, và có hai lỗi mới nặng hơn cả ba lỗ hổng gốc.</p>
+  <div class="meta">
+    <span><b>3/3</b> lỗ hổng gốc: bug có thật</span>
+    <span><b>2/3</b> bản vá: sai hoặc thiếu</span>
+    <span><b>2</b> lỗi mới mức critical</span>
+    <span><b>Vòng 2:</b> 50 mục điều tra, 11 sống sót</span>
+    <span><b>ĐÃ VÁ</b> · gate PASS · 165/165 test</span>
+  </div>
+</header>
+
+<section>
+  <nav class="col">
+    <div class="eyebrow">Mục lục</div>
+    <ol>
+      <li><a href="#pp">Phương pháp — và phần tôi không làm được</a></li>
+      <li><a href="#f1">Lỗ hổng 1 — label không bám</a></li>
+      <li><a href="#f2">Lỗ hổng 2 — cấu hình group vô chủ</a></li>
+      <li><a href="#f3">Lỗ hổng 3 — điểm mở rộng đóng</a></li>
+      <li><a href="#new">Lỗi mới</a></li>
+      <li><a href="#r2">Vòng 2 — quét drift API &amp; chốt backlog</a></li>
+      <li><a href="#unver">Chưa xác minh</a></li>
+      <li><a href="#order">Thứ tự vá</a></li>
+      <li><a href="#thesis">Luận điểm cấu trúc</a></li>
+    </ol>
+  </nav>
+</section>
+
+<!-- ══════════ PHƯƠNG PHÁP ══════════ -->
+<section id="pp">
+  <div class="stack col">
+    <div class="eyebrow">Phạm vi &amp; độ tin cậy</div>
+    <h2>Phương pháp — và phần tôi không làm được</h2>
+  </div>
+
+  <p class="col">Review chạy trên <code>main</code> sau khi <code>feat/cdn-system</code> đã merge (PR #3). Nội dung package giống <strong>từng byte</strong> với commit đã thẩm định — <code>git diff c045dc4 HEAD -- Packages/</code> rỗng — và merge không nuốt gì của main cũ.</p>
+
+  <div class="callout warn col">
+    <div class="lbl">Đọc trước khi tin phần còn lại</div>
+    <p class="note"><strong>Đợt quét thứ hai chết sạch 7/7 agent vì hết hạn mức tuần.</strong> Đó là đợt lẽ ra trả lời câu “còn bao nhiêu lỗi cùng loại <code>labels</code> nữa trong package” và review toàn hệ CDN vừa merge. <strong>Câu đó hiện chưa có câu trả lời</strong> — đừng đọc sự im lặng thành sạch.</p>
+    <p class="note">Thêm một khuyết điểm của chính quy trình: tầng thẩm định đối kháng lấy 8 finding đầu <em>theo thứ tự mảng chứ không theo mức nặng</em>, nên cả 4 finding <code>critical</code> lọt lưới. Tôi đã tự kiểm tay 4 cái đó — kết quả ghi rõ cái nào xác nhận, cái nào không.</p>
+  </div>
+
+  <div class="tally">
+    <div class="t-crit"><div class="v">33</div><div class="u">Tổng finding</div><div class="c">4 critical · 10 high · 16 medium · 2 low</div></div>
+    <div class="t-high"><div class="v">8</div><div class="u">Đã đối kháng</div><div class="c">7 sống sót, 1 bị bác</div></div>
+    <div class="t-med"><div class="v">4</div><div class="u">Tôi kiểm tay</div><div class="c">3 xác nhận, 1 không đủ cơ sở</div></div>
+    <div class="t-unk"><div class="v">20+</div><div class="u">Chưa ai kiểm</div><div class="c">liệt kê ở mục 6</div></div>
+  </div>
+
+  <p class="note col">Hai bản Addressables đều có sẵn trên máy nên mọi khẳng định về API đều đọc từ nguồn, không suy đoán: <code>2.3.1</code> tại <code>Library/PackageCache/com.unity.addressables@5d870284b3d9</code>, <code>2.9.1</code> tại <code>E:/Git Pj/Icon Match/Library/PackageCache/com.unity.addressables@2.9.1</code>.</p>
+</section>
+
+<!-- ══════════ F1 ══════════ -->
+<section id="f1">
+  <div class="find crit">
+    <div class="find-head">
+      <div class="kind">Lỗ hổng 1 · bug có thật · cơ chế thiếu một tầng · bản vá sai liều</div>
+      <div class="site">Editor/Rules/LayoutRuleProcessor.cs:384 · :477 · :489</div>
+    </div>
+
+    <p class="verdict">Cơ chế bạn nêu giờ chứng minh được dứt điểm. Nhưng bên dưới nó còn một tầng <strong>không phụ thuộc version</strong> — và bản vá trong artifact thiếu một site, sai một tham số.</p>
+
+    <h3>Chứng minh cơ chế — không còn “UNVERIFIED”</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Bản</th><th><code>entry.labels</code></th><th>Unity tự ghi label qua</th></tr></thead>
+        <tbody>
+          <tr><td class="path">2.3.1</td><td class="path">get { return m_Labels; } — <strong>sống</strong></td><td class="path">entry.labels.Remove(...)</td></tr>
+          <tr><td class="path">2.9.1</td><td class="path">get { return m_Labels.ToHashSet(); } — <strong>bản sao</strong></td><td class="path">entry.RemoveLabel(...) / entry.SetLabel(...)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">2.9.1 thêm hẳn <code>internal bool RemoveLabel</code> (<code>AddressableAssetEntry.cs:239</code>) rồi chuyển <strong>mọi lệnh ghi</strong> của chính Unity sang nó — <code>CreateKeyList</code> :276, <code>SetLabel</code> :225, <code>RenameLabel</code> <code>AddressableAssetSettings.cs:1780-1781</code> — trong khi lệnh <strong>đọc</strong> vẫn để nguyên <code>entry.labels.Contains(...)</code>. Đó chính xác là dấu vết của refactor “getter trả bản sao”. Và <code>package.json:26</code> nay khai <code>com.unity.addressables: 2.9.1</code>, nên không còn lý lẽ “chạy được trên 2.3.1”.</p>
+
+    <h3>Tầng bên dưới — đúng cả trên 2.3.1</h3>
+    <p><code>m_Labels</code> không được serialize. Cái được serialize là <code>m_SerializedLabels</code>, nằm trong <strong>file .asset của từng group</strong>, không nằm trong <code>AddressableAssetSettings.asset</code>. Đường duy nhất làm group asset dirty là:</p>
+    <pre>SetLabel → entry.SetDirty → parentGroup.SetDirty(…, <b>groupModified:true</b>) → EditorUtility.SetDirty(group)</pre>
+    <p><code>LayoutRuleProcessor</code> chỉ <code>EditorUtility.SetDirty(_settings)</code> + <code>SaveAssets()</code> (<code>:95</code>, <code>:144</code>) — group không dirty, <code>SaveAssets</code> bỏ qua. Nên <strong>ngay cả trên 2.3.1 label cũng không xuống đĩa.</strong></p>
+    <p class="note">Bằng chứng đối chứng nằm trong cùng một hàm: đường address dùng <code>entry.SetAddress(...)</code> (<code>:290</code>) → dirty group → address <strong>có</strong> persist. Cùng file, hai đường, một sống một chết.</p>
+    <p class="note">Hệ quả thứ ba: bỏ <code>SetDirty</code> cũng bỏ <code>m_CurrentHash = default</code>, nên hash entry/group/settings đứng yên → <code>SettingsHash</code> trong build và cache <code>FindAssetEntry</code> không thấy thay đổi.</p>
+
+    <div class="callout col">
+      <div class="lbl">Vì sao nó lúc được lúc không</div>
+      <p class="note">Nếu cùng lượt chạy có rule address chạm group G thì G dirty, và label trong G <em>đi ké</em> mà sống. Mất trắng chỉ chắc chắn với rule-set chỉ-label hoặc chỉ-version. Đó là lý do triệu chứng trông thất thường.</p>
+    </div>
+
+    <div class="patch">
+      <div class="lbl">Vá — ba dòng, không phải hai</div>
+      <pre><span class="good">:384  entry.SetLabel(label,        true,  true,  false);</span>
+<span class="good">:477  entry.SetLabel(oldLabel,     false, false, false);</span>   <span class="bad">← ARTIFACT BỎ SÓT</span>
+<span class="good">:489  entry.SetLabel(versionLabel, true,  true,  false);</span></pre>
+      <p><strong>Tham số thứ 4 phải là <code>false</code>.</strong> <code>postEvent:true</code> × 3591 entry = 3591 lần <code>m_EntryTree.Reload()</code> + <code>Repaint()</code> trong một vòng lặp đồng bộ → treo editor. Code batch của chính Unity dùng <code>postEvent:false</code> rồi bắn <em>một</em> event ở cuối.</p>
+      <p>Persistence không mất gì: <code>EditorUtility.SetDirty(group)</code> tại <code>AddressableAssetGroup.cs:677</code> gác theo <code>groupModified</code>, <strong>không</strong> theo <code>postEvent</code> — đã kiểm trên 2.9.1.</p>
+      <p><code>force:true</code> trùng với <code>_settings.AddLabel(label, false)</code> ngay hai dòng trên (<code>:378</code>, <code>:483</code>) — bỏ một trong hai, đừng giữ cả hai.</p>
+      <p>Cuối <code>ApplyRules</code>, bắn một event gộp: <code>_settings.SetDirty(ModificationEvent.BatchModification, null, true, false);</code></p>
+      <p><strong>Và:</strong> chỉ tăng <code>LabelsApplied</code> khi <code>SetLabel</code> trả <code>true</code>. Bộ đếm vô điều kiện chính là thứ đã giấu lỗi này ngay từ đầu.</p>
+    </div>
+
+    <div class="callout warn col">
+      <div class="lbl">Nếu vá thiếu :477</div>
+      <p class="note"><code>SetLabel</code> sống dậy trong khi dòng xoá vẫn chết ⇒ label <code>version:</code> cũ <strong>tích tụ vĩnh viễn</strong>: mỗi lần bump version, entry giữ thêm một <code>version:x.y.z</code> nữa, query theo version trả về asset của nhiều version cùng lúc. Bản vá như artifact đề nghị <strong>tự sinh ra một bug mới</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ F2 ══════════ -->
+<section id="f2">
+  <div class="find crit">
+    <div class="find-head">
+      <div class="kind">Lỗ hổng 2 · bug có thật · bản vá KHÔNG CHẠY</div>
+      <div class="site">Editor/Rules/AddressRule.cs:29 · :195-196</div>
+    </div>
+
+    <p class="verdict">Cơ chế đúng, và chính xác hơn artifact viết. Nhưng bản vá đề xuất là <strong>no-op</strong>, và nó còn tái sinh đúng cái bug mà test trong package được viết ra để chặn.</p>
+
+    <h3>Cơ chế — chính xác hơn một bậc</h3>
+    <p><code>EnsureSchemas</code> không gắn schema mặc định, nó <strong>deep-copy giá trị</strong> của DefaultGroup:</p>
+    <pre>group.AddSchema(schema) → AddressableAssetGroupSchemaSet.cs:80 → <b>Object.Instantiate(schema)</b></pre>
+    <p><code>Object.Instantiate</code> trên ScriptableObject sao nguyên mọi serialized field: <code>BundleMode</code>, <code>BuildPath</code>, <code>LoadPath</code>, <code>StaticContent</code>, <code>IncludeInBuild</code>. DefaultGroup của project stock là “Default Local Group” → PackTogether + Local. <strong>Một bước giải thích trọn cả hai triệu chứng bạn đo.</strong> Nhánh fallback (schema mới tinh) cũng rơi vào đúng cặp giá trị sai đó — nên vấn đề không phải “copy nhầm nguồn”, mà đúng như artifact nói: rule sở hữu việc tạo, không ai sở hữu cấu hình.</p>
+
+    <div class="callout col">
+      <div class="lbl">Xác nhận thực địa, ở một project khác</div>
+      <p class="note"><code>D:/GitRepo/Enhanced-UI-Framework</code> dùng <code>com.game.addressables 4.0.1</code> + Addressables 2.9.1. <strong>Mọi</strong> group do rule tạo (<code>MasterData</code>, <code>UIPrefabs</code>, <code>UnitPortrait</code>, <code>UnitThumbnail</code>) đều <code>m_BundleMode: 0</code> (PackTogether) và <code>m_LoadPath</code> trỏ <code>{Addressables.RuntimePath}</code> (Local) — trong khi profile của project đó <em>có sẵn</em> biến remote (<code>ServerData/[BuildTarget]</code>) mà không group nào chạm tới. Đúng chữ ký hỏng bạn mô tả, ở một project bạn không đo. Không phải trùng hợp.</p>
+    </div>
+
+    <h3>Vì sao bản vá đề xuất không chạy</h3>
+    <p><code>ApplyToAddressableAssetGroup</code> lặp <code>foreach (schema in group.Schemas)</code> — nó <strong>áp preset lên schema đã có</strong>, không gắn schema mới. Mà <code>CreateGroup(name, false, false, true, null)</code> không truyền <code>types</code> ⇒ <code>group.Schemas</code> <strong>rỗng</strong> ⇒ vòng lặp không chạy lần nào.</p>
+    <p>Tệ hơn: vì bản vá đi nhánh template <em>thay cho</em> <code>EnsureSchemas</code>, group mới ra đời với <strong>zero schema</strong> — tái sinh đúng cái bug mà <code>Scene.asset</code> từng ship và <code>Tests/Editor/AddressRuleGroupSchemaTests.cs</code> được viết ra để chặn.</p>
+
+    <div class="patch">
+      <div class="lbl">Cách gọi đúng — lấy từ chính Groups window của Unity</div>
+      <pre><span class="c1">// AddressableAssetsSettingsGroupTreeView.cs:1082-1083 làm đúng thứ tự này</span>
+if (_targetGroupTemplate != null)
+{
+    newGroup = settings.CreateGroup(_targetGroupName, false, false, true,
+                                    null, <span class="good">_targetGroupTemplate.GetTypes()</span>);
+    _targetGroupTemplate.ApplyToAddressableAssetGroup(newGroup);
+    <span class="good">AddressableGroupSchemaUtility.EnsureSchemas(newGroup, settings);</span>  <span class="c1">// lưới an toàn</span>
+}
+else
+{
+    newGroup = settings.CreateGroup(_targetGroupName, false, false, true, null);
+    AddressableGroupSchemaUtility.EnsureSchemas(newGroup, settings);
+}</pre>
+      <p>Lưới an toàn <strong>không tuỳ chọn</strong>: <code>ApplyToAddressableAssetGroup</code> chạy qua <code>Preset.CanBeAppliedTo</code> (khớp theo type), nên một template thiếu <code>BundledAssetGroupSchema</code> sẽ lặng lẽ để schema đó ở giá trị mặc định class.</p>
+    </div>
+
+    <div class="patch">
+      <div class="lbl">Và RuleSerializer làm rơi field — bản vá thiếu phần này thì hỏng qua đường JSON</div>
+      <p>Serialization của Unity thì ổn: <code>AddressRule</code> đã giữ sẵn hai ref ScriptableObject (<code>_addressProvider</code>, <code>_filters</code>) và sống trong một ScriptableObject.</p>
+      <p>Nhưng <code>RuleSerializer</code> <strong>không</strong> dùng <code>JsonUtility</code> trên <code>AddressRule</code> — nó có DTO whitelist viết tay, <code>AddressRuleExport</code> dừng ở <code>targetGroupName</code> (<code>RuleSerializer.cs:41</code>). Export→Import làm rơi field mới, rule âm thầm quay về hành vi copy-DefaultGroup — đúng kiểu hỏng-im-lặng cũ, giờ qua một workflow được hỗ trợ chính thức.</p>
+      <pre>a) <code>public string targetGroupTemplatePath;</code>  → AddressRuleExport, RuleSerializer.cs:33-45
+b) export  → RuleSerializer.cs:108-118   (theo lối addressProviderPath sẵn có)
+c) import  → RuleSerializer.cs:258-266   (kèm LogWarning "not found" như provider)
+d) 3 file  → Editor/Templates/*.json     (hoặc ghi rõ là kế thừa DefaultGroup)</pre>
+    </div>
+
+    <div class="callout col">
+      <div class="lbl">Phương án rẻ hơn — đáng đặt lên bàn trước khi làm cả bộ trên</div>
+      <p class="note">Vì failure mode là “sai mà im”, chỉ cần <code>GetOrCreateTargetGroup</code> <strong>log to</strong> mỗi khi nó <em>tạo</em> group thay vì <em>tìm thấy</em>, nêu rõ đã copy schema từ đâu — hoặc đẩy thành <code>ProcessResult</code> error. Biến vụ misship 2803 icon thành một dòng đỏ trong report Apply Layout Rules, không đụng gì tới serialization. Phần lớn giá trị, một phần nhỏ rủi ro.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ F3 ══════════ -->
+<section id="f3">
+  <div class="find med">
+    <div class="find-head">
+      <div class="kind">Lỗ hổng 3 · đúng một nửa · bản vá sai primitive</div>
+      <div class="site">Editor/Cdn/SettingsContract.cs:27 · :65 · :149 · :353</div>
+    </div>
+
+    <p class="verdict">Mọi số dòng khớp chính xác. Nhưng hai phát biểu bị nói quá, và <code>public static event</code> là primitive sai — nó hỏng đúng theo kiểu false-green mà package đang cố chống.</p>
+
+    <p class="note">Xác nhận: <code>public sealed class SettingsRule</code> <code>:27</code> · ctor public <code>:65</code> · <code>BuildRules()</code> <code>:149</code> / <code>BuildRules(settings)</code> <code>:164</code> · <code>AddGroupRules</code> <strong>private</strong> <code>:353</code>. Đúng 8 rule per-group (<code>:368 :383 :409 :425 :441 :465 :488 :504</code>), và <strong>không có</strong> <code>BundleMode</code> / <code>BuildPath</code> / <code>LoadPath</code> / <code>StaticContent</code>.</p>
+
+    <h3>Hai chỗ nói quá</h3>
+    <ul class="clean">
+      <li><strong>“Rõ ràng để bên ngoài dựng”</strong> là suy diễn. Doc comment <code>:110-114</code> nêu đúng hai consumer nội bộ và viện dẫn Invariant 2. <code>public</code> ở đây nhiều khả năng là “cross-namespace trong cùng package, chưa ai siết lại”.</li>
+      <li><strong>Bề mặt public không chết hẳn.</strong> <code>FormatReport</code> và <code>Evaluate</code> đều public, bên ngoài <em>đã</em> có thể <code>BuildRules().Concat(myRules)</code>. Phát biểu đúng là: <strong>điểm ráp bị đóng</strong>, không phải “type không dùng được”.</li>
+    </ul>
+
+    <div class="callout warn col">
+      <div class="lbl">Consumer thứ tư mà artifact bỏ sót</div>
+      <p class="note"><code>CdnSetupCLI.cs:63 / :81 / :119</code> — một CLI <strong>batchmode</strong> gọi <code>rule.Fix()</code> cho mọi rule chưa thoả rồi <code>SaveAssets()</code>. Nghĩa là rule do project cắm vào sẽ được <strong>tự động fix, không người trông</strong>. Đó chính là lý do primitive phải chọn cẩn thận, chứ không phải chi tiết phụ.</p>
+    </div>
+
+    <h3>Vì sao <code>static event</code> sai</h3>
+    <ul class="clean">
+      <li><strong>Chí mạng:</strong> event bị xoá sạch mỗi lần domain reload. Subscriber không đăng ký từ <code>[InitializeOnLoadMethod]</code> sẽ biến mất im lặng — và “rule vắng mặt” đọc thành <strong>xanh</strong> ở cả bốn consumer.</li>
+      <li><code>GetInvocationList()</code> ném NRE khi chưa ai đăng ký — tức trạng thái mặc định.</li>
+      <li>Một provider ném là sập cả <code>BuildRules()</code> → sập <code>CatalogVerifier</code> và <code>CdnSetupCLI</code>.</li>
+      <li>Không chống trùng <code>Id</code>; thứ tự phụ thuộc build order nên report diff nhiễu.</li>
+    </ul>
+
+    <div class="patch">
+      <div class="lbl">Dùng TypeCache</div>
+      <pre>[AttributeUsage(AttributeTargets.Method)]
+public sealed class SettingsRuleProviderAttribute : Attribute { }
+
+TypeCache.GetMethodsWithAttribute&lt;SettingsRuleProviderAttribute&gt;()
+   .Where(m =&gt; m.IsStatic)
+   .OrderBy(...)                     <span class="c1">// thứ tự tường minh, ổn định</span>
+<span class="c1">// + try/catch từng provider  → một provider hỏng không giết contract</span>
+<span class="c1">// + HashSet&lt;string&gt; theo Id   → chặn trùng id với rule built-in</span>
+<span class="c1">// + kiểm signature tường minh → sai signature phải LogError, không im</span></pre>
+      <p>Unity dựng lại TypeCache trước mọi user code sau mỗi domain reload ⇒ không có gì để đăng ký lại, không có gì để mất. Lớp lỗi silent-green biến mất.</p>
+      <p class="note">Phương án thay thế hợp gu package hơn: một ScriptableObject base (như <code>AssetFilterBase</code> / <code>AddressProviderBase</code>) tìm bằng <code>AssetDatabase.FindAssets</code> — CI nhìn thấy được rule nào đang bật, đổi lại kém tiện cho batchmode. Chọn TypeCache nếu ưu tiên zero-config; chọn SO nếu ưu tiên “CI phải thấy rule nào đang chạy”.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ NEW ══════════ -->
+<section id="new">
+  <div class="stack col">
+    <div class="eyebrow">Lỗi mới</div>
+    <h2>Hai cái nặng hơn cả ba lỗ hổng gốc</h2>
+    <p>Bốn finding <code>critical</code> lọt tầng đối kháng, tôi tự kiểm tay. Ba xác nhận, một không đủ cơ sở.</p>
+  </div>
+
+  <div class="find crit">
+    <div class="find-head">
+      <div class="kind">Critical · đã tự kiểm · xác nhận</div>
+      <div class="site">Editor/Rules/AddressRule.cs:180 + Editor/Rules/LayoutRuleProcessor.cs:274</div>
+    </div>
+    <p class="verdict">Tên group chứa <code>/</code> hoặc <code>\</code> ⇒ tạo <strong>một group mới cho mỗi asset khớp rule</strong>.</p>
+    <pre><span class="c1">// Unity chuẩn hoá tên khi tạo — AddressableAssetSettings.cs:2705-2706 (2.9.1)</span>
+var cleanedName = potentialName.Replace('/', '-').Replace('\\', '-');
+<span class="c1">// rồi nối số nếu tên đã tồn tại → "Icons-Small", "Icons-Small1", "Icons-Small2"…</span>
+
+<span class="c1">// nhưng AddressRule.cs:180 tra bằng CHUỖI GỐC</span>
+var group = settings.FindGroup(_targetGroupName);   <span class="bad">// so g.Name == "Icons/Small" → không bao giờ khớp</span></pre>
+    <p>Và <code>GetOrCreateTargetGroup</code> được gọi trong <code>ApplyAddressRule</code>, tức <strong>mỗi asset một lần</strong> (<code>LayoutRuleProcessor.cs:274</code>):</p>
+    <pre>asset 1 → FindGroup("Icons/Small") null → tạo "Icons-Small"
+asset 2 → FindGroup("Icons/Small") null → tạo "Icons-Small1"
+asset N →                               → tạo "Icons-Small(N-1)"</pre>
+    <p>3591 icon ⇒ <strong>3591 group, mỗi group một entry, mỗi group một bundle</strong>, cộng vài nghìn file <code>.asset</code> schema. <code>AddressesApplied</code> đếm lên đủ, không lỗi nào. Với hệ đặt tên group theo category — đúng thứ đang làm — đây là mìn.</p>
+    <div class="patch">
+      <div class="lbl">Vá</div>
+      <p>Chuẩn hoá <code>_targetGroupName</code> bằng cùng luật <code>/</code>→<code>-</code> <strong>trước</strong> khi <code>FindGroup</code>; hoặc bỏ hẳn việc định danh bằng tên và giữ GUID group. Kèm validate trong <code>AddressRule.Validate()</code> để rule có tên chứa <code>/</code> báo lỗi ngay trong editor.</p>
+    </div>
+  </div>
+
+  <div class="find crit">
+    <div class="find-head">
+      <div class="kind">Critical · đã tự kiểm · xác nhận · runtime</div>
+      <div class="site">Runtime/Loaders/AssetLoader.cs:930</div>
+    </div>
+    <p class="verdict">Cache của <code>AssetReference</code> khoá theo <code>AssetGUID</code> chứ không theo <code>RuntimeKey</code> ⇒ <strong>trả về sai sub-asset</strong>.</p>
+    <pre><span class="c1">// AssetLoader.cs:930</span>
+var address  = assetReference.<span class="bad">AssetGUID</span>;
+var cacheKey = new AssetCacheKey(address, typeof(T));
+
+<span class="c1">// AssetReference.cs:354-364 (2.9.1)</span>
+public virtual object RuntimeKey =&gt; !string.IsNullOrEmpty(m_SubObjectName)
+    ? string.Format("{0}[{1}]", m_AssetGUID, m_SubObjectName)   <span class="c1">// ← phân biệt sub-object</span>
+    : m_AssetGUID;
+public virtual string AssetGUID =&gt; m_AssetGUID;                 <span class="bad">// ← guid trần, mất sub-object</span></pre>
+    <p>Hai <code>AssetReferenceSprite</code> trỏ hai sprite khác nhau <strong>trong cùng một atlas/texture</strong> dùng chung một cache key ⇒ lần load thứ hai nhận <strong>sprite của lần thứ nhất</strong>. Không exception, không log.</p>
+    <p class="note">Đây là bug runtime nguy hiểm nhất trong danh sách với một project <strong>icon</strong>: icon cắt từ atlas là ca dùng chuẩn của sub-object reference. Vá: khoá cache bằng <code>assetReference.RuntimeKey.ToString()</code>.</p>
+  </div>
+
+  <div class="find high">
+    <div class="find-head">
+      <div class="kind">High · ba chỗ hợp thành một lỗ</div>
+      <div class="site">Editor/Cdn/BuildManifestWriter.cs:217 · CatalogVerifier.cs:222 · CatalogInspectCLI.cs:150</div>
+    </div>
+    <p class="verdict">CI có thể <strong>xanh trên một build không ship gì</strong>.</p>
+    <ul class="clean">
+      <li><strong>Manifest tự soi gương.</strong> Danh sách bundle sinh từ <code>Directory.GetFiles(bundleDir, "*.bundle")</code>, rồi <code>CatalogVerifier</code> đối chiếu chính thư mục đó với bản mô tả sinh ra từ nó. Bắt được hỏng-sau-khi-ghi, <strong>không</strong> bắt được “build ra sai chỗ”. Bundle Unity đã build nhưng rơi vào Local path thì đơn giản vắng mặt, không ai kêu.</li>
+      <li><strong>0 bundle = pass.</strong> <code>manifest.bundles</code> rỗng ⇒ vòng lặp không chạy ⇒ <code>Problems.Count == 0</code> ⇒ Passed. <code>CdnBuildCLI</code> in <code>✓ 0 bundle(s) verified</code> rồi <code>Exit(0)</code>.</li>
+      <li><strong>Unknown = pass.</strong> Mọi bundle phân loại <code>Unknown</code> (RemoteLoadPath dùng token profile tuỳ biến hoặc scheme không phải http) đều bị bỏ qua; <code>IsPublishable</code> không có số hạng nào cho “đã kiểm được bao nhiêu” ⇒ luôn true.</li>
+    </ul>
+    <div class="callout warn col">
+      <div class="lbl">Ghép với lỗ hổng 2</div>
+      <p class="note">Group bị lật sang Local → 0 bundle remote → manifest ghi trung thực 0 → CI xanh → catalog trỏ tới bundle không ai publish. Ba lỗi “nhẹ” cộng lại thành một đường ống im lặng hoàn toàn.</p>
+    </div>
+    <div class="patch">
+      <div class="lbl">Vá</div>
+      <p><code>BundlesChecked == 0</code> ⇒ fail. <code>UncheckedBundles &gt; 0</code> ⇒ fail. Và đối chiếu <code>result.AssetBundleBuildResults</code> của Unity với file trên đĩa theo cả hai chiều, không chỉ dùng nó để làm giàu thông tin.</p>
+    </div>
+  </div>
+
+  <div class="find high">
+    <div class="find-head">
+      <div class="kind">High · đã đối kháng · sống sót</div>
+      <div class="site">Editor/Automation/BatchAddressUpdater.cs:38</div>
+    </div>
+    <p class="verdict"><code>FindAndReplace</code> khớp bằng literal nhưng thay bằng regex, rồi đếm vô điều kiện.</p>
+    <pre><span class="c1">:38</span> if (entry.address.IndexOf(find, comparison) &gt;= 0)      <span class="c1">// literal</span>
+<span class="c1">:42</span>     newAddress = Regex.Replace(entry.address, <span class="bad">find</span>, <span class="bad">replace</span>, IgnoreCase);
+<span class="c1">:46</span>     count++;                                            <span class="bad">// không kiểm newAddress != old</span></pre>
+    <ul class="clean">
+      <li><code>FindAndReplace("[UI]", "ui")</code> → <code>[UI]</code> thành character class, khớp mọi chữ U và I ở mọi address ⇒ <strong>ghi đè hàng loạt</strong>, mỗi cái báo là một update thành công.</li>
+      <li><code>FindAndReplace("Icon(Small)", "IconSm")</code> → <code>(Small)</code> thành capture group ⇒ no-op, nhưng vẫn trả 1.</li>
+      <li><code>replace</code> chứa <code>$1</code> / <code>$&amp;</code> ⇒ chèn text bắt được thay vì ký tự literal.</li>
+    </ul>
+    <p class="note">Vá: <code>Regex.Escape(find)</code> (hoặc dùng thẳng <code>string.Replace</code> với <code>OrdinalIgnoreCase</code>), và <code>count++</code> chỉ khi <code>newAddress != entry.address</code>.</p>
+  </div>
+
+  <div class="find med">
+    <div class="find-head">
+      <div class="kind">Medium · đã đối kháng · sống sót</div>
+      <div class="site">Editor/Cdn/SettingsContract.cs:481 · Editor/Automation/AddressableAutoProcessor.cs:145</div>
+    </div>
+    <ul class="clean">
+      <li><strong><code>SettingsContract.cs:481</code></strong> — auto-fix cho <code>BundleNaming</code> / <code>UseAssetBundleCrc</code> ghi vào field mà getter <em>bỏ qua</em> khi <code>UseDefaultSchemaSettings</code> bật ⇒ rule <strong>vĩnh viễn không fix được</strong>. GUI đếm “Fix All wrote N value(s)” cho những lệnh ghi vô hiệu; <code>CdnSetupCLI</code> exit 1 trên project thực ra hợp lệ. Hiện <em>tiềm ẩn</em> — mọi schema trong repo đang <code>m_UseDefaultSchemaSettings: 0</code>.</li>
+      <li><strong><code>AddressableAutoProcessor.cs:145</code></strong> — <em>Force Process All Assets</em> vứt <code>result.Errors</code>, in “Complete - 0 addresses, 0 labels” khi rule-data fail validate. Đường anh em <code>:90-96</code> trong <strong>cùng file</strong> thì có log lỗi.</li>
+    </ul>
+  </div>
+
+  <div class="find unk">
+    <div class="find-head">
+      <div class="kind">Không đủ cơ sở · ĐỪNG VÁ</div>
+      <div class="site">Editor/Cdn/CdnProfileManager.cs:367</div>
+    </div>
+    <p class="verdict">Bị gắn nhãn critical (“seed localhost vào mọi profile có sẵn”), nhưng đọc kỹ thì code có gác tường minh.</p>
+    <p class="note">Profile đã tồn tại chỉ được bổ sung biến còn thiếu; <code>EnsureProfileVariablesExist</code> ghi rõ <em>“We do NOT overwrite existing values — manual edits are preserved”</em>; profile mới được set giá trị đúng theo từng môi trường qua <code>switch</code> (Local/Dev/Staging/Prod). Tôi không tái hiện được kịch bản hỏng. <strong>Ghi lại để khỏi vá nhầm.</strong></p>
+  </div>
+</section>
+
+
+<!-- ROUND 2 -->
+<section id="r2">
+  <div class="stack col">
+    <div class="eyebrow">Vòng 2</div>
+    <h2>Quét drift API và chốt backlog</h2>
+    <p>Hai khoản nợ của vòng 1 — đợt quét drift 2.3.1&rarr;2.9.1 chưa từng chạy, và 20+ finding chưa ai kiểm — đã làm xong: <strong>50 mục điều tra, 20 kết luận lành, 1 bị bác, 11 sống sót đối kháng, 18 vẫn chưa kết luận.</strong> Lần này tầng đối kháng xếp theo mức nặng trước, sửa đúng lỗi quy trình của vòng 1.</p>
+  </div>
+
+  <div class="find crit">
+    <div class="find-head">
+      <div class="kind">Lỗi trong chính bản vá vòng 1 · đã sửa</div>
+      <div class="site">Editor/Cdn/SettingsContract.cs — EnsurePerGroupSchemaSettings</div>
+    </div>
+    <p class="verdict">Bản vá vòng 1 có thể <strong>ghi số 0 đè lên cấu hình thật của group</strong> — nặng hơn lỗi nó sửa.</p>
+    <pre><span class="c1">2.3.1</span>  UseDefaultSchemaSettings { get { <b>if (SelectedPathPairIndex &gt; 2) return false;</b> ... } }
+<span class="c1">2.9.1</span>  UseDefaultSchemaSettings { get { return m_UseDefaultSchemaSettings; } }   <span class="bad">&larr; mất short-circuit</span>
+
+<span class="c1">2.9.1</span>  GetDefaultSchemaSettings() {
+           if (m_UseCustomPaths) return <span class="bad">default</span>;
+           if (!HasDefaultSchemaSettings()) return <span class="bad">default</span>;   <span class="c1">// LoadPath != Local/Remote</span></pre>
+    <p>Với group dùng custom path (hoặc cặp path thứ ba kiểu <code>CDN.LoadPath</code>), bảy getter trả <strong>default rỗng</strong>. Snapshot đọc đúng đống 0 đó rồi ghi ngược lại &rArr; <code>Compression</code> thành <code>Uncompressed</code>, CRC tắt, bundle cache tắt — <strong>vĩnh viễn, không người trông</strong>, vì <code>CdnSetupCLI</code> gọi <code>Fix()</code> tự động và rule <code>UseAssetBundleCrcForCachedBundles</code> không bao giờ thoả với group dùng default.</p>
+    <div class="patch">
+      <div class="lbl">Đã sửa</div>
+      <p>Gọi thẳng <code>GetDefaultSchemaSettings()</code> (public) và so với sentinel all-zero, thay vì suy đoán từ path binding. Không có template thật &rArr; tắt cờ, <strong>không ghi đè gì</strong>, log rõ là group đó lâu nay đang build Uncompressed/no-CRC.</p>
+    </div>
+  </div>
+
+  <div class="find high">
+    <div class="find-head">
+      <div class="kind">Drift API · phát hiện lớn nhất</div>
+      <div class="site">Runtime/Cdn/Services/CatalogService.cs</div>
+    </div>
+    <p class="verdict"><code>Addressables.CheckForCatalogUpdates()</code> trên 2.3.1 <strong>luôn trả rỗng</strong>.</p>
+    <p><code>ResourceLocatorInfo.CanUpdateContent</code> đòi <code>Dependencies.Count == 2</code>, trong khi build luôn phát ra <strong>ba</strong> catalog hash dependency (Remote/Cache/Local). 2.9.1 đổi hằng số thành <code>DependencyHashIndex.Count</code> (=3) và giờ nó mới khớp.</p>
+    <p class="note">Nghĩa là toàn bộ đường <code>CheckForUpdateAsync &rarr; ApplyUpdateAsync &rarr; UpdateCatalogs &rarr; InvalidateLoaderCaches</code> là <strong>code chết</strong> trên bản cũ và <strong>vừa sống dậy</strong> khi nâng lên 2.9.1. Mọi niềm tin kiểu "đường này xưa nay chạy ổn" đều vô nghĩa — nó chưa từng chạy. Không cần sửa code, nhưng <strong>phải có integration test thật</strong>: đổi catalog rồi khẳng định một handle đã cache được resolve lại.</p>
+  </div>
+
+  <div class="find high">
+    <div class="find-head">
+      <div class="kind">Đã vá ở vòng 2</div>
+      <div class="site">7 mục</div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Vị trí</th><th>Vấn đề</th></tr></thead>
+        <tbody>
+          <tr><td class="path">AssetLoader.cs<br>:979 · :1426</td><td><code>AssetReference.LoadAssetAsync()</code> là API <strong>một lần dùng</strong>: lần hai trả handle invalid, <code>.Task</code> ném, caller nhận <code>null</code>. Đổi sang <code>Addressables.LoadAssetAsync&lt;T&gt;(RuntimeKey)</code> — chính là thứ Unity gọi bên trong. Package không đọc <code>OperationHandle</code>/<code>ReleaseAsset</code> của AssetReference nên an toàn tuyệt đối.</td></tr>
+          <tr><td class="path">AssetLoader.cs<br>CacheHandle</td><td><strong>Epoch invalidation.</strong> Load đang bay khi catalog update xong vẫn cache handle tiền-update: <code>InvalidateAddress</code> chỉ quét <code>_assetCache</code> (chưa có gì), <code>DropCompletedInFlight</code> cố ý bỏ qua load chưa xong, <code>AfterAwait</code> không biết gì về catalog. Giờ load chụp epoch lúc bắt đầu; lệch epoch &rArr; trả handle cho caller nhưng <strong>không</strong> cho vào cache.</td></tr>
+          <tr><td class="path">LayoutRuleProcessor.cs</td><td>Address trùng giờ thành <code>ProcessResult.Error</code>. <code>PreviewRuleConflicts</code> là code chết, <code>DetectConflicts</code> chỉ đến được từ 3 bề mặt read-only, <code>SetAddress</code> nhận trùng vô tư — đường apply hoàn toàn không kiểm.</td></tr>
+          <tr><td class="path">LayoutRuleProcessor.cs</td><td><code>CreateOrMoveEntry</code>/<code>MoveEntry</code> đổi <code>postEvent:false&rarr;true</code>: <code>AddressableScenesManager</code> là subscriber duy nhất giữ bất biến "scene không được vừa addressable vừa nằm trong build list".</td></tr>
+          <tr><td class="path">AddressRule.cs<br>LayoutRuleProcessor.cs</td><td>Cờ <code>AllowGroupMove</code> (mặc định <strong>true</strong> — giữ nguyên hành vi cũ) cho phép tắt việc rule kéo entry ra khỏi group cấu hình tay. Mọi lần di chuyển giờ đều ghi Warning kèm tên group cũ.</td></tr>
+          <tr><td class="path">RuleSerializer.cs</td><td>Import rơi filter làm rule <strong>nới rộng</strong> phạm vi khớp (filter là AND). Giờ import vào nhưng <code>Enabled=false</code> + <code>failCount++</code> + LogError: không mất dữ liệu, không tự chạy.</td></tr>
+          <tr><td class="path">BatchAddressUpdater.cs</td><td><code>RemovePrefix</code> làm address rỗng &rarr; Unity âm thầm thay bằng asset path. <code>ConvertToLowercase</code> dùng <code>ToLower()</code> phụ thuộc culture (tr-TR: <code>I</code>&rarr;<code>&#x131;</code>) và gây trùng address. Giờ <code>ToLowerInvariant</code> + dựng map đầy đủ, <strong>huỷ cả lô</strong> nếu trùng.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="find unk">
+    <div class="find-head">
+      <div class="kind">Cố ý KHÔNG sửa · quyết định sản phẩm</div>
+      <div class="site">Runtime/API/SimpleAPI.cs</div>
+    </div>
+    <p class="verdict"><code>Simple.Load</code> trả asset thô có thể bị CDN invalidation huỷ dưới chân caller.</p>
+    <p class="note">Nghi vấn ban đầu về tier eviction <strong>sai</strong>: Simple luôn chạy trên <code>GlobalAssetScope</code>, dựng <code>AssetLoader</code> untiered nên <code>_tiering</code> null và mọi đường eviction return ngay. Nhưng catalog invalidation thì làm được đúng điều đó — sau <code>handle.Dispose()</code>, thứ duy nhất giữ object sống là reference của cache.</p>
+    <p class="note">Bắt invalidation giữ lại chúng sẽ đổi crash lấy <strong>retention không giới hạn qua mỗi lần update</strong> — đó là đánh đổi sản phẩm, không phải sửa lỗi. Nên đã <strong>ghi rõ phơi nhiễm ngay trên API</strong> thay vì tự quyết: thứ gì sống qua một lần catalog update thì phải dùng Standard/Advanced và giữ handle.</p>
+  </div>
+</section>
+
+<!-- ══════════ UNVERIFIED ══════════ -->
+<section id="unver">
+  <div class="stack col">
+    <div class="eyebrow">Trung thực về độ phủ</div>
+    <h2>Chưa xác minh — 20+ finding</h2>
+    <p>Chỉ 8/33 được thẩm định đối kháng. Dưới đây là những cái đáng chú ý mà <strong>chưa ai kiểm</strong>. Đừng vá mù theo bảng này; coi nó là danh sách cần điều tra.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Mức</th><th>Vị trí</th><th>Nghi vấn</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Runtime/Loaders/AssetLoader.cs:979</td><td><code>AssetReference.LoadAssetAsync()</code> là API dùng một lần; lần gọi thứ hai trên cùng reference hỏng</td></tr>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Runtime/Loaders/AssetLoader.cs:2062</td><td>Load đang bay khi catalog update xong sẽ cache handle tiền-update</td></tr>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Editor/Rules/LayoutRuleProcessor.cs:286</td><td>Rule kéo asset ra khỏi group cấu hình tay, kích hoạt mỗi lần import</td></tr>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Editor/Rules/RuleConflictDetector.cs:105</td><td>Không ai phát hiện address trùng trên đường apply — address trùng làm một asset không load được</td></tr>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Editor/Rules/RuleSerializer.cs:274</td><td>Import bỏ im filter không resolve được, vẫn báo thành công ⇒ rule khớp rộng hơn ý định</td></tr>
+        <tr><td><span class="pill p-high">high</span></td><td class="path">Editor/Automation/BatchAddressUpdater.cs:115</td><td><code>RemovePrefix</code> / <code>ConvertToLowercase</code> có thể làm address rỗng hoặc trùng</td></tr>
+        <tr><td><span class="pill p-med">med</span></td><td class="path">Runtime/Core/TieredCache.cs:218</td><td><code>Set</code> lặng lẽ release handle của caller khi trùng key</td></tr>
+        <tr><td><span class="pill p-med">med</span></td><td class="path">Runtime/API/SimpleAPI.cs:66</td><td><code>Simple.Load</code> trả asset thô chỉ được giữ sống bởi cache của loader</td></tr>
+        <tr><td><span class="pill p-med">med</span></td><td class="path">Editor/Rules/CompositeLayoutRuleData.cs:58</td><td>Cờ “Respect Source Order” trơ — processor luôn re-sort</td></tr>
+        <tr><td><span class="pill p-med">med</span></td><td class="path">Runtime/Loaders/AssetLoader.cs:2128</td><td><code>ReleaseAsset(address)</code> không khớp entry nạp qua <code>AssetReference</code> (cùng gốc với lỗi critical #2)</td></tr>
+        <tr><td><span class="pill p-unk">—</span></td><td class="path">toàn package</td><td><strong>Chưa quét drift API 2.3.1→2.9.1.</strong> Lỗi <code>labels</code> là <em>một</em> thể hiện; không ai biết còn bao nhiêu cái nữa</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════ ORDER ══════════ -->
+<section id="order">
+  <div class="stack col">
+    <div class="eyebrow">Triển khai</div>
+    <h2>Thứ tự vá</h2>
+    <p>Cột cuối là điểm quan trọng nhất của bảng này: cả lớp lỗi đang bàn <strong>đều compile sạch và đều báo thành công</strong>. “Nó build được” không phải kiểm chứng.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Việc</th><th>Vì sao thứ tự này</th><th>Kiểm chứng</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td class="path">AddressRule — chuẩn hoá tên trước FindGroup, hoặc giữ GUID</td><td>Nổ theo cấp số nhân, hoàn toàn im lặng</td><td>Rule tên <code>A/B</code>, apply 10 asset → số group phải là <strong>1</strong></td></tr>
+        <tr><td>2</td><td class="path">AssetLoader.cs:930 → khoá cache bằng RuntimeKey</td><td>Trả sai asset lúc runtime, người chơi thấy</td><td>Load 2 <code>AssetReferenceSprite</code> cùng atlas khác sub-object → phải ra 2 sprite khác nhau</td></tr>
+        <tr><td>3</td><td class="path">Ba dòng SetLabel + đếm có điều kiện + event gộp</td><td>Đang chạy là chết hẳn trên 2.9.1</td><td>Apply rule chỉ-label → <strong>restart editor</strong> → mở lại, label còn không</td></tr>
+        <tr><td>4</td><td class="path">Group template: GetTypes() + ApplyTo + EnsureSchemas + DTO RuleSerializer</td><td>Thiệt hại đo được, nhưng vá phức tạp nhất</td><td>Xoá group → apply lại → so <code>m_BundleMode</code>/<code>m_BuildPath</code>/<code>m_LoadPath</code> trong file <code>.asset</code>, <em>không</em> nhìn số entry</td></tr>
+        <tr><td>5</td><td class="path">CI gate: BundlesChecked==0 và UncheckedBundles&gt;0 ⇒ fail</td><td>CI đang nói dối; vá xong mới tin được bước 4</td><td>Build với mọi group Local → CI phải <strong>đỏ</strong></td></tr>
+        <tr><td>6</td><td class="path">BatchAddressUpdater: Regex.Escape + đếm theo thay đổi thật</td><td>Ghi đè hàng loạt, nhưng phải chủ động gọi mới dính</td><td><code>FindAndReplace("[UI]","ui")</code> trên corpus → 0 thay đổi</td></tr>
+        <tr><td>7</td><td class="path">SettingsContract mở qua TypeCache</td><td>Không hỏng gì, chỉ bất tiện</td><td>Đăng ký rule ngoài → recompile → rule vẫn còn</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout col">
+    <div class="lbl">Lưu ý khi triển khai</div>
+    <p class="note"><code>main</code> đang có hai session dùng chung worktree. Theo <code>Documentation/PARALLEL_SESSIONS.md</code>: <code>Runtime/Loaders/</code> thuộc <strong>Session A</strong> và <code>Editor/Cdn/</code> thuộc <strong>Session B</strong> — tức bước 2 và bước 5 <strong>chạm vùng của người khác</strong>. Phải claim ở §2 hoặc gửi yêu cầu ở §3 trước, đừng sửa thẳng. Bước 1, 3, 4, 6 nằm trong <code>Editor/Rules/</code> + <code>Editor/Automation/</code> — vùng “chưa ai”, claim rồi làm được ngay.</p>
+  </div>
+</section>
+
+<!-- ══════════ THESIS ══════════ -->
+<section id="thesis">
+  <div class="stack col">
+    <div class="eyebrow">Luận điểm</div>
+    <h2>Thesis cũ đúng, nhưng là một ca của thứ lớn hơn</h2>
+  </div>
+
+  <p class="col">Thesis gốc — <em>“rule sở hữu <strong>danh tính</strong> group, không ai sở hữu <strong>cấu hình</strong> group”</em> — đúng. Nhưng nhìn cả bảy chỗ cùng lúc thì thấy một mẫu chung hơn:</p>
+
+  <ul class="clean col">
+    <li>ghi label qua <code>entry.labels</code> — property <strong>không sở hữu</strong> lệnh ghi</li>
+    <li>tra group bằng chuỗi thô — tên mà Unity <strong>đã chuẩn hoá lại</strong></li>
+    <li>khoá cache bằng <code>AssetGUID</code> — <strong>không phải</strong> khoá định danh thật (<code>RuntimeKey</code>)</li>
+    <li>thay chuỗi bằng regex — trong khi <strong>gác bằng literal</strong></li>
+    <li>xác minh build bằng manifest <strong>sinh ra từ chính output đó</strong></li>
+  </ul>
+
+  <div class="callout col">
+    <div class="lbl">Phát biểu sắc nhất</div>
+    <p><strong>Package đếm <em>ý định</em>, không bao giờ đọc lại <em>kết quả</em>.</strong></p>
+    <p class="note"><code>LabelsApplied++</code> đếm lần thử chứ không đếm lần bám. <code>IsPublishable</code> không có số hạng nào cho “đã kiểm được bao nhiêu”. Manifest tự soi gương. Không chỗ nào trong hệ hỏi lại <em>“cái tôi vừa ghi có thật sự ở đó không?”</em> — nên mọi sai lệch đều thoát ra ngoài dưới dạng màu xanh.</p>
+    <p class="note">Đó là lý do cả ba lỗ hổng đều <strong>câm</strong>, và là lý do vá từng chỗ sẽ còn tìm ra tiếp. Thứ đáng thêm vào package không phải rule thứ chín, mà là một quy ước: <strong>mọi hàm ghi trả về xác nhận đã ghi, và mọi bộ đếm chỉ tăng theo xác nhận đó.</strong></p>
+  </div>
+
+  <div class="callout col">
+    <div class="lbl">Nhận xét cho công bằng</div>
+    <p class="note">Package này cẩn thận hơn mức trung bình. Comment trong code cho thấy tác giả tự tìm ra và sửa biến thể tệ hơn của lỗ hổng 2; <code>SettingsContract</code> cố tình từ chối đoán bừa local hay remote và ghi rõ lý do; <code>CatalogInspection</code> tự nêu đúng cái hazard “biến check thành luôn-pass” — chỉ là nêu trong log chứ không đưa vào exit code. Vấn đề không nằm ở sự cẩu thả, mà ở chỗ chưa có quy ước đọc-lại-sau-khi-ghi.</p>
+  </div>
+</section>
+
+<footer>
+  <p class="note">Review trên <code>main</code> @ <code>396b64e</code> (4.1.0-pre.9), working tree sạch. Số dòng Addressables đối chiếu song song hai bản: 2.3.1 (<code>PackageCache/com.unity.addressables@5d870284b3d9</code>) và 2.9.1 (<code>E:/Git Pj/Icon Match/Library/PackageCache/com.unity.addressables@2.9.1</code>). Lỗ hổng 1 và 2 xác minh bằng đọc nguồn hai bản + đối chứng thực địa trên <code>D:/GitRepo/Enhanced-UI-Framework</code>; lỗ hổng 3 đọc từ signature. Bốn finding critical được kiểm tay sau khi tầng đối kháng bỏ sót chúng. Vòng 2 đã chạy xong đợt quét drift API toàn package và chốt backlog. <strong>Trạng thái triển khai:</strong> toàn bộ mục ở "Thứ tự vá" cộng 7 mục vòng 2 đã vá trên <code>main</code> — compile gate PASS cả hai assembly, Unity compile 4/4 assembly 0 lỗi CS, EditMode <strong>165/165 PASS</strong>. Hệ CDN vẫn <strong>chưa</strong> được review chỉnh thể.</p>
+</footer>
+
+</div>
+</body>
+</html>

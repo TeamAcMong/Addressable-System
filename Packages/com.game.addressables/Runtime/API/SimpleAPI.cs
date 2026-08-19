@@ -62,6 +62,22 @@ namespace AddressableManager.API
             // the loader's cache took its own reference in CacheHandle(), so the asset stays
             // alive and reachable for the next Load() even after this Dispose() decrements.
             // Without this every call orphaned one reference (HANDOFF_TO_SESSION_B.md A-4).
+            //
+            // KNOWN EXPOSURE, and the reason this tier is called Simple. After the Dispose() below the
+            // only thing keeping the returned object alive is the loader cache's reference, and the
+            // caller holds no handle with which to say "I am still using this". Tier eviction cannot
+            // take it (Simple always runs on GlobalAssetScope, which builds an untiered AssetLoader, so
+            // _tiering is null and every eviction path returns immediately) — but a CDN catalog update
+            // can: CatalogService -> AssetLoaderRegistry.InvalidateAll -> AssetLoader.InvalidateAddress
+            // drops the cache's reference, and if it was the last one the object is destroyed while the
+            // caller is still holding it. The symptom is a Unity "The object of type 'X' has been
+            // destroyed but you are still trying to access it" on a reference that was valid a frame
+            // earlier.
+            //
+            // Anything that outlives a catalog update must use Standard/Advanced and hold the handle;
+            // that is what the handle is for. Making invalidation retain these instead would trade the
+            // crash for unbounded retention across every update, which is a product decision rather
+            // than a defect fix, so it is documented here instead of decided here.
             var asset = handle.Asset;
             handle.Dispose();
             return asset;

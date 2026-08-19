@@ -168,7 +168,86 @@ namespace AddressableManager.Editor.Cdn
             var rules = new List<SettingsRule>();
             AddProjectRules(settings, rules);
             AddGroupRules(settings, rules);
+            AddExternalRules(settings, rules);
             return rules;
+        }
+
+        /// <summary>
+        /// Appends rules contributed by the consuming project, discovered via
+        /// <see cref="SettingsRuleProviderAttribute"/>.
+        /// </summary>
+        /// <remarks>
+        /// WHY TypeCache AND NOT A STATIC EVENT. An event in an Editor assembly loses every subscriber
+        /// on domain reload - on every script compile, and on entering Play Mode with reload enabled.
+        /// A project that subscribed from anywhere other than [InitializeOnLoadMethod] would simply
+        /// stop contributing rules, and an absent rule reads as GREEN in all four consumers of this
+        /// list (the validator tab, "Fix All", CatalogVerifier, and the unattended CdnSetupCLI). That
+        /// is the same false-green this contract exists to prevent. Unity rebuilds TypeCache before any
+        /// user code runs after a reload, so there is nothing to re-register and nothing to lose.
+        ///
+        /// Everything here is defensive on purpose: this list feeds a CI gate and a batchmode CLI that
+        /// calls Fix() unattended, so one malformed provider in a consuming project must degrade to a
+        /// loud, skipped provider - never to a thrown exception that makes the whole contract
+        /// unevaluatable, and never to a silently shorter list.
+        /// </remarks>
+        private static void AddExternalRules(AddressableAssetSettings settings, List<SettingsRule> rules)
+        {
+            var providers = TypeCache.GetMethodsWithAttribute<SettingsRuleProviderAttribute>()
+                .Where(m => m.IsStatic)
+                // Deterministic order: without this, report row order follows assembly load order and
+                // every "Copy report" diff churns for reasons unrelated to the project.
+                .OrderBy(m => m.DeclaringType?.Assembly.GetName().Name ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(m => m.DeclaringType?.FullName ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(m => m.Name, StringComparer.Ordinal);
+
+            var seen = new HashSet<string>(rules.Select(r => r.Id), StringComparer.Ordinal);
+
+            foreach (var method in providers)
+            {
+                string origin = $"{method.DeclaringType?.FullName}.{method.Name}";
+
+                var parameters = method.GetParameters();
+                if (!typeof(IEnumerable<SettingsRule>).IsAssignableFrom(method.ReturnType)
+                    || parameters.Length != 1
+                    || parameters[0].ParameterType != typeof(AddressableAssetSettings))
+                {
+                    UnityEngine.Debug.LogError(
+                        $"[SettingsContract] {origin} carries [SettingsRuleProvider] but does not have the " +
+                        "required signature 'static IEnumerable<SettingsRule> M(AddressableAssetSettings)'. " +
+                        "Ignored.");
+                    continue;
+                }
+
+                IEnumerable<SettingsRule> produced;
+                try
+                {
+                    produced = (IEnumerable<SettingsRule>)method.Invoke(null, new object[] { settings });
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError($"[SettingsContract] rule provider {origin} threw: {ex}. Its rules are omitted.");
+                    continue;
+                }
+
+                if (produced == null) continue;
+
+                foreach (var rule in produced)
+                {
+                    if (rule == null) continue;
+
+                    // Ids key the report, "Fix All", and any CI allowlist. A duplicate would make one of
+                    // the two rules invisible depending on iteration order, so it is refused loudly.
+                    if (!seen.Add(rule.Id))
+                    {
+                        UnityEngine.Debug.LogError(
+                            $"[SettingsContract] provider {origin} returned rule id '{rule.Id}', which is " +
+                            "already in use. Dropped - ids must be unique across the whole contract.");
+                        continue;
+                    }
+
+                    rules.Add(rule);
+                }
+            }
         }
 
         /// <summary>Formats a text report (counts + one line per failing/warning rule) suitable for "Copy report" or a CI log.</summary>
@@ -350,6 +429,117 @@ namespace AddressableManager.Editor.Cdn
                 }));
         }
 
+        /// <summary>
+        /// Clears <c>UseDefaultSchemaSettings</c> before a per-field fix writes to the schema.
+        /// </summary>
+        /// <remarks>
+        /// BundledAssetGroupSchema's BundleNaming / UseAssetBundleCrc / UseAssetBundleCrcForCachedBundles
+        /// getters short-circuit to the group-template defaults while UseDefaultSchemaSettings is on, and
+        /// ignore the private backing fields entirely. A fix that assigns the property in that state
+        /// produces a real, dirty, committed diff in the schema asset while the matching IsSatisfied()
+        /// keeps reading the template value and keeps returning false: the rule becomes permanently
+        /// unfixable, "Fix All" counts a write that did nothing, and CdnSetupCLI classifies it as
+        /// "fixable rule still failing after auto-fix attempt (bug in fix logic)" and exits 1.
+        ///
+        /// Turning the toggle off is the honest resolution - the fix is being asked to set a per-group
+        /// value, and a per-group value is precisely what the toggle disables - but it is a visible
+        /// change to the group, so it is logged rather than done quietly.
+        /// </remarks>
+        /// <summary>
+        /// True when <paramref name="settings"/> is the all-zero sentinel Addressables returns for a
+        /// schema that has no default template behind it.
+        /// </summary>
+        /// <remarks>
+        /// DefaultSchemaSettings is a plain struct with no equality members, so `== default` will not
+        /// compile and `Equals(default)` would box and compare field-by-field via reflection. Spelling
+        /// the comparison out is cheaper and, more importantly, it fails to compile rather than silently
+        /// ignoring a field if Unity adds one to the struct - which is the failure mode that matters
+        /// here, since a missed field would put this check back to guessing.
+        ///
+        /// No real template is all-zero: every entry Unity builds in CreateDefaultSchemaSettings sets
+        /// compression to LZ4 or LZMA and useAssetBundleCache to true.
+        /// </remarks>
+        private static bool IsDefaultSchemaSettings(BundledAssetGroupSchema.DefaultSchemaSettings settings)
+        {
+            return settings.compression == default
+                && settings.useAssetBundleCache == default
+                && settings.assetBundledCacheClearBehavior == default
+                && settings.useAssetBundleCrc == default
+                && settings.useAssetBundleCrcForCachedBundles == default;
+        }
+
+        private static void EnsurePerGroupSchemaSettings(BundledAssetGroupSchema schema, string groupName)
+        {
+            if (schema == null || !schema.UseDefaultSchemaSettings) return;
+
+            // SEVEN properties are gated behind this toggle, not one. While it is on, every one of them
+            // ignores its own serialized field and returns GetDefaultSchemaSettings(). Flipping the
+            // toggle to make ONE fix land would therefore silently switch the other six from the
+            // template defaults the group is effectively running on to whatever stale values their
+            // backing fields happen to hold - a config change nobody asked for, invisible in the
+            // validator, and exactly the class of silent drift this contract exists to catch.
+            //
+            // So: read the effective values first (still the template's, the toggle is on), flip, then
+            // write them all back. Afterwards the group is running per-group settings that are
+            // byte-for-byte what it was already running, and the caller's single assignment is the only
+            // thing that actually changes.
+            //
+            // BUT the snapshot is only meaningful if there IS a template behind the toggle. On
+            // Addressables 2.9.x, GetDefaultSchemaSettings() returns default(DefaultSchemaSettings) -
+            // all zeros - whenever the schema uses custom paths, or its LoadPath is bound to anything
+            // other than the built-in Local.LoadPath / Remote.LoadPath (a third pair such as
+            // CDN.LoadPath counts). 2.3.1 could not reach that state through this function because its
+            // UseDefaultSchemaSettings getter short-circuited to false for those groups; 2.9.1 dropped
+            // that short-circuit, so the getter says true and the snapshot silently reads zeros.
+            // Writing THOSE back would persist Uncompressed + no CRC + no bundle cache onto a live
+            // group, unattended, via CdnSetupCLI - strictly worse than the bug this guard exists to fix.
+            //
+            // GetDefaultSchemaSettings() is public, so ask it directly rather than inferring the state
+            // from path bindings.
+            bool hasRealTemplate = !IsDefaultSchemaSettings(schema.GetDefaultSchemaSettings());
+            if (!hasRealTemplate)
+            {
+                // No template behind the toggle: the seven getters are already handing out zeros, so
+                // there is nothing worth preserving and nothing safe to copy. Turn the toggle off so
+                // the caller's fix can land, and leave the group on its own stored values - which is
+                // what it will now start using. Say so, because it changes more than the one field.
+                schema.UseDefaultSchemaSettings = false;
+
+                UnityEngine.Debug.LogWarning(
+                    $"[SettingsContract] Group '{groupName}' had \"Use Default Schema Settings\" enabled but has " +
+                    "no default template behind it (custom paths, or a LoadPath that is not Local.LoadPath / " +
+                    "Remote.LoadPath). On Addressables 2.9+ that means it was silently building Uncompressed " +
+                    "with no CRC and no bundle cache. Turned the toggle off so the group now uses its own " +
+                    "stored schema values - review Compression / UseAssetBundleCache / CRC on this group.");
+                return;
+            }
+
+            var compression = schema.Compression;
+            var cacheClear = schema.AssetBundledCacheClearBehavior;
+            var stripDownload = schema.StripDownloadOptions;
+            var useCache = schema.UseAssetBundleCache;
+            var useCrc = schema.UseAssetBundleCrc;
+            var useCrcCached = schema.UseAssetBundleCrcForCachedBundles;
+            var bundleNaming = schema.BundleNaming;
+
+            schema.UseDefaultSchemaSettings = false;
+
+            schema.Compression = compression;
+            schema.AssetBundledCacheClearBehavior = cacheClear;
+            schema.StripDownloadOptions = stripDownload;
+            schema.UseAssetBundleCache = useCache;
+            schema.UseAssetBundleCrc = useCrc;
+            schema.UseAssetBundleCrcForCachedBundles = useCrcCached;
+            schema.BundleNaming = bundleNaming;
+
+            UnityEngine.Debug.LogWarning(
+                $"[SettingsContract] Group '{groupName}' had \"Use Default Schema Settings\" enabled, which " +
+                "makes its per-group bundle settings read-only. Turned it off so the fix can take effect, " +
+                "and copied the seven previously-inherited values onto the group first so nothing else " +
+                "changed. If this group should keep following the group template, revert the fix and edit " +
+                "the template instead.");
+        }
+
         private static void AddGroupRules(AddressableAssetSettings settings, List<SettingsRule> rules)
         {
             foreach (var group in settings.groups)
@@ -478,6 +668,7 @@ namespace AddressableManager.Editor.Cdn
                     {
                         var schema = group.GetSchema<BundledAssetGroupSchema>();
                         if (schema == null) return;
+                        EnsurePerGroupSchemaSettings(schema, groupName);
                         schema.BundleNaming = BundledAssetGroupSchema.BundleNamingStyle.AppendHash;
                         EditorUtility.SetDirty(schema);
                     },
@@ -494,6 +685,7 @@ namespace AddressableManager.Editor.Cdn
                     {
                         var schema = group.GetSchema<BundledAssetGroupSchema>();
                         if (schema == null) return;
+                        EnsurePerGroupSchemaSettings(schema, groupName);
                         schema.UseAssetBundleCrc = true;
                         EditorUtility.SetDirty(schema);
                     },
@@ -510,6 +702,7 @@ namespace AddressableManager.Editor.Cdn
                     {
                         var schema = group.GetSchema<BundledAssetGroupSchema>();
                         if (schema == null) return;
+                        EnsurePerGroupSchemaSettings(schema, groupName);
                         schema.UseAssetBundleCrcForCachedBundles = true;
                         EditorUtility.SetDirty(schema);
                     },

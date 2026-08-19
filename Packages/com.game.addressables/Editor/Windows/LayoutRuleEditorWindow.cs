@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 using AddressableManager.Editor.Rules;
 using AddressableManager.Editor.Filters;
@@ -38,6 +39,17 @@ namespace AddressableManager.Editor.Windows
         private bool _previewNeedsRefresh = true;
         private int _previewLimit = 50;
         private int _totalMatchCount = 0;
+
+        /// <summary>
+        /// Duplicate-address conflicts the CURRENT rule set would create, recomputed with the preview.
+        /// </summary>
+        /// <remarks>
+        /// RuleConflictDetector.PreviewRuleConflicts existed with zero callers anywhere in the package -
+        /// a whole simulate-before-you-apply feature that nothing could reach. Duplicate addresses are
+        /// now also caught at apply time, but by then the entries are written; showing them next to the
+        /// preview is the point of having a preview at all.
+        /// </remarks>
+        private List<RuleConflictDetector.Conflict> _previewConflicts = new List<RuleConflictDetector.Conflict>();
         private bool _isGeneratingPreview = false;
 
         private class PreviewItem
@@ -372,8 +384,34 @@ namespace AddressableManager.Editor.Windows
             rule.Enabled = EditorGUILayout.Toggle("Enabled", rule.Enabled);
             rule.Description = EditorGUILayout.TextArea(rule.Description, GUILayout.Height(40));
             rule.TargetGroupName = EditorGUILayout.TextField("Target Group", rule.TargetGroupName);
+
+            // This window draws every field by hand, so a field with no line here is a field the user
+            // cannot set - and an unset template means the group silently inherits the DefaultGroup's
+            // BundleMode/BuildPath/LoadPath the first time the rule has to create it.
+            rule.TargetGroupTemplate = (AddressableAssetGroupTemplate)EditorGUILayout.ObjectField(
+                "Group Template", rule.TargetGroupTemplate, typeof(AddressableAssetGroupTemplate), false);
+
+            if (rule.TargetGroupTemplate == null && !string.IsNullOrEmpty(rule.TargetGroupName))
+            {
+                EditorGUILayout.HelpBox(
+                    "No group template. If this rule ever has to CREATE its target group, the group's " +
+                    "bundle mode and build/load paths are copied from the Default Group - which in a " +
+                    "stock project means PackTogether and Local. Entry counts look correct either way.",
+                    MessageType.Info);
+            }
+
+            if (!string.IsNullOrEmpty(rule.TargetGroupName)
+                && AddressRule.NormalizeGroupName(rule.TargetGroupName) != rule.TargetGroupName)
+            {
+                EditorGUILayout.HelpBox(
+                    $"'/' and '\\' are not valid in an Addressables group name. This rule will use " +
+                    $"'{AddressRule.NormalizeGroupName(rule.TargetGroupName)}'.",
+                    MessageType.Warning);
+            }
+
             rule.Priority = EditorGUILayout.IntField("Priority", rule.Priority);
             rule.SkipExisting = EditorGUILayout.Toggle("Skip Existing", rule.SkipExisting);
+            rule.AllowGroupMove = EditorGUILayout.Toggle("Allow Group Move", rule.AllowGroupMove);
 
             EditorGUILayout.Space(10);
 
@@ -550,6 +588,21 @@ namespace AddressableManager.Editor.Windows
                 EditorGUILayout.LabelField(stats, EditorStyles.miniLabel);
             }
 
+            if (_previewConflicts.Count > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    $"{_previewConflicts.Count} duplicate address(es) would be created by this rule set. " +
+                    "Applying will report these as errors.",
+                    MessageType.Error);
+
+                foreach (var conflict in _previewConflicts)
+                {
+                    EditorGUILayout.LabelField($"• {conflict.Message}", EditorStyles.miniLabel);
+                }
+
+                EditorGUILayout.Space(3);
+            }
+
             EditorGUILayout.Space(3);
 
             // Preview list
@@ -627,6 +680,7 @@ namespace AddressableManager.Editor.Windows
 
             _isGeneratingPreview = true;
             _previewItems.Clear();
+            _previewConflicts.Clear();
             _totalMatchCount = 0;
 
             try
@@ -725,6 +779,13 @@ namespace AddressableManager.Editor.Windows
             }
 
             _totalMatchCount = matchCount;
+
+            // Simulate the whole rule set, not just the selected rule: a duplicate address is by
+            // definition a collision between two assets, which one rule alone cannot show.
+            _previewConflicts = RuleConflictDetector
+                .PreviewRuleConflicts(_selectedRuleData, allAssets)
+                .Where(c => c.Type == RuleConflictDetector.ConflictType.DuplicateAddress)
+                .ToList();
         }
 
         private void GenerateLabelPreview(LabelRule rule)
