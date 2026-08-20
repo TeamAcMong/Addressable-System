@@ -498,17 +498,35 @@ namespace AddressableManager.Editor.Rules
                             AppendToExisting = ruleImport.appendToExisting
                         };
 
-                        // Load filters
+                        // Load filters. Same path/type-name/JSON resolution the address rules use - the
+                        // label and version paths were left on plain LoadAssetAtPath, so every shipped
+                        // template imported its label and version rules with ZERO filters (their
+                        // filterAssetPath is empty by design now that filters travel inline), which
+                        // fails validation and aborts the entire run.
                         foreach (var filterExport in ruleImport.filters)
                         {
-                            if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
+                            var filter = ResolveOrCreate<AssetFilterBase>(
+                                filterExport.filterAssetPath, filterExport.filterType, filterExport.filterJson,
+                                ruleData, out string filterProblem);
+
+                            if (filter != null)
                             {
-                                var filter = AssetDatabase.LoadAssetAtPath<AssetFilterBase>(filterExport.filterAssetPath);
-                                if (filter != null)
-                                {
-                                    rule.Filters.Add(filter);
-                                }
+                                rule.Filters.Add(filter);
                             }
+                            else
+                            {
+                                Debug.LogError(
+                                    $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
+                                    $"({filterProblem}).");
+                            }
+                        }
+
+                        if (rule.Filters.Count == 0)
+                        {
+                            rule.Enabled = false;
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters; imported disabled.");
                         }
 
                         // Load label provider
@@ -542,17 +560,35 @@ namespace AddressableManager.Editor.Rules
                             SkipExisting = ruleImport.skipExisting
                         };
 
-                        // Load filters
+                        // Load filters. Same path/type-name/JSON resolution the address rules use - the
+                        // label and version paths were left on plain LoadAssetAtPath, so every shipped
+                        // template imported its label and version rules with ZERO filters (their
+                        // filterAssetPath is empty by design now that filters travel inline), which
+                        // fails validation and aborts the entire run.
                         foreach (var filterExport in ruleImport.filters)
                         {
-                            if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
+                            var filter = ResolveOrCreate<AssetFilterBase>(
+                                filterExport.filterAssetPath, filterExport.filterType, filterExport.filterJson,
+                                ruleData, out string filterProblem);
+
+                            if (filter != null)
                             {
-                                var filter = AssetDatabase.LoadAssetAtPath<AssetFilterBase>(filterExport.filterAssetPath);
-                                if (filter != null)
-                                {
-                                    rule.Filters.Add(filter);
-                                }
+                                rule.Filters.Add(filter);
                             }
+                            else
+                            {
+                                Debug.LogError(
+                                    $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
+                                    $"({filterProblem}).");
+                            }
+                        }
+
+                        if (rule.Filters.Count == 0)
+                        {
+                            rule.Enabled = false;
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters; imported disabled.");
                         }
 
                         // Load version provider

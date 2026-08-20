@@ -5,6 +5,11 @@ The canonical boot sequence for a game that ships content from a CDN. Drop
 it is written to be read rather than reused. Every branch corresponds to one boot
 outcome, with a comment saying what a real game should do there.
 
+Three fields on the component decide what it does: **Environment Id** (empty uses the
+default from the settings asset), **Check For Update On Boot**, and **Apply Update
+Automatically**. It exposes `BootComplete` and a human-readable `Status` for a loading
+screen to read.
+
 ## The one rule
 
 `CdnManager.InitializeAsync()` must run before anything else touches Addressables.
@@ -26,14 +31,19 @@ live in a `Resources` folder — that is how it is found at runtime
 Manager ▸ CDN Settings**, put it in any folder named `Resources`, and keep the file
 name `CdnSettings` — the name is a constant, not a search.
 
-Then open **Window ▸ Addressable Manager ▸ CDN Manager** and check the Settings
-Validator tab. It reports every unmet requirement and offers a Fix All for the ones
-that can be fixed automatically, which is faster than discovering them one 404 at a
-time.
+`InitializeAsync` also refuses to start against a settings asset that fails its own
+validation, so a stray trailing `/` on a base URL stops the boot with a message rather
+than surfacing later as a bad request.
 
-To try the flow with no CDN at all, use the Local Server tab: it serves a built
-content folder over HTTP on localhost, which is what the package's own integration
-tests run against.
+Then open **Window ▸ Addressable Manager ▸ CDN Manager** and check the **Validator**
+tab. It reports every unmet requirement and offers a Fix All for the ones that can be
+fixed automatically, which is faster than discovering them one 404 at a time.
+
+To try the flow with no CDN at all, use the **Server** tab: it serves a built content
+folder over HTTP on localhost — port 8080 by default, matching the default `Local`
+environment — which is what the package's own integration tests run against. The same
+server can be started from **Tools ▸ Addressable Manager ▸ Start Local Content
+Server**.
 
 ## What to read next
 

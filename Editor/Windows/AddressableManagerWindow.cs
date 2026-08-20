@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using AddressableManager.Editor.Data;
+using AddressableManager.Configs;
+using AddressableManager.Managers;
 using AddressableManager.Monitoring;
 
 namespace AddressableManager.Editor.Windows
@@ -200,8 +202,8 @@ namespace AddressableManager.Editor.Windows
             _delaySlider = _root.Q<SliderInt>("delay-slider");
             _failureRateSlider = _root.Q<Slider>("failure-rate-slider");
 
-            _logLevelDropdown.choices = new List<string> { "None", "Errors Only", "Warnings and Errors", "All" };
-            _logLevelDropdown.value = "Warnings and Errors";
+            _logLevelDropdown.choices = LogLevelChoices;
+            _logLevelDropdown.value = LogLevelToChoice(DebugSettings.Instance.logLevel);
 
             var resetSettingsBtn = _root.Q<Button>("reset-settings-btn");
             var resetStatsBtn = _root.Q<Button>("reset-stats-btn");
@@ -230,12 +232,19 @@ namespace AddressableManager.Editor.Windows
             var cleanupAllBtn = _root.Q<Button>("cleanup-all-btn");
             cleanupAllBtn.clicked += () =>
             {
-                if (EditorUtility.DisplayDialog("Cleanup All Scopes",
-                    "Are you sure you want to cleanup all scopes? This will release all tracked assets.",
-                    "Yes", "Cancel"))
+                bool live = Application.isPlaying;
+                string body = live
+                    ? "Release every asset held by every tracked scope, and clear the Dashboard's rows?\n\n" +
+                      "This releases real runtime handles. Anything still using those assets will break."
+                    : "Clear the Dashboard's tracking rows for every scope?\n\n" +
+                      "Nothing is released: there are no live scopes outside Play Mode, so this only " +
+                      "resets what the Dashboard is showing.";
+
+                if (EditorUtility.DisplayDialog("Cleanup All Scopes", body, "Yes", "Cancel"))
                 {
                     foreach (var scopeId in _tracker.TrackedScopes.Keys.ToList())
                     {
+                        ReleaseScope(scopeId);
                         _tracker.ClearScope(scopeId);
                     }
                     RefreshScopesTab();
@@ -337,6 +346,73 @@ namespace AddressableManager.Editor.Windows
             {
                 _refreshInterval = evt.newValue / 1000f; // Convert ms to seconds
             });
+
+            // The Settings tab's remaining four widgets were queried into fields at initialisation and
+            // then never read again - no callback, no polling, no write - and the window never loaded a
+            // DebugSettings asset at all. So the log level, the slow-loading simulation and the failure
+            // rate were pure decoration, while the tools guide told users this tab "controls the live
+            // DebugSettings instance". They write to the asset now.
+            _logLevelDropdown.RegisterValueChangedCallback(evt =>
+            {
+                var settings = DebugSettings.Instance;
+                settings.logLevel = ChoiceToLogLevel(evt.newValue);
+                PersistDebugSettings(settings);
+            });
+
+            _simulateSlowToggle.RegisterValueChangedCallback(evt =>
+            {
+                var settings = DebugSettings.Instance;
+                settings.simulateSlowLoading = evt.newValue;
+                PersistDebugSettings(settings);
+            });
+
+            _delaySlider.RegisterValueChangedCallback(evt =>
+            {
+                var settings = DebugSettings.Instance;
+                settings.simulatedDelayMs = evt.newValue;
+                PersistDebugSettings(settings);
+            });
+
+            _failureRateSlider.RegisterValueChangedCallback(evt =>
+            {
+                var settings = DebugSettings.Instance;
+                settings.simulateFailureRate = evt.newValue;
+                PersistDebugSettings(settings);
+            });
+        }
+
+        /// <summary>The dropdown labels, in DebugSettings.LogLevel order.</summary>
+        private static readonly List<string> LogLevelChoices =
+            new List<string> { "None", "Errors Only", "Warnings and Errors", "All" };
+
+        private static string LogLevelToChoice(DebugSettings.LogLevel level)
+        {
+            int index = (int)level;
+            return index >= 0 && index < LogLevelChoices.Count
+                ? LogLevelChoices[index]
+                : LogLevelChoices[LogLevelChoices.Count - 1];
+        }
+
+        private static DebugSettings.LogLevel ChoiceToLogLevel(string choice)
+        {
+            int index = LogLevelChoices.IndexOf(choice);
+            return index >= 0 ? (DebugSettings.LogLevel)index : DebugSettings.LogLevel.WarningsAndErrors;
+        }
+
+        /// <summary>
+        /// Mark the settings asset dirty so an edit made here survives a domain reload.
+        /// </summary>
+        /// <remarks>
+        /// DebugSettings.Instance falls back to a CreateInstance when no asset exists in the project;
+        /// that in-memory copy has no path, and calling SetDirty on it is meaningless rather than
+        /// harmful - the checked cast keeps it from being an error either way.
+        /// </remarks>
+        private static void PersistDebugSettings(DebugSettings settings)
+        {
+            if (settings == null) return;
+            if (!AssetDatabase.Contains(settings)) return;
+
+            EditorUtility.SetDirty(settings);
         }
 
         private void SubscribeToEvents()
@@ -541,6 +617,29 @@ namespace AddressableManager.Editor.Windows
         /// (HANDOFF_TO_SESSION_B.md §4.5; BaseScopeInspector already did this correctly for the
         /// per-object Inspector, this mirrors that pattern here).
         /// </summary>
+        /// <summary>
+        /// Release the live loader behind a tracked scope, when there is one.
+        /// </summary>
+        /// <remarks>
+        /// The Cleanup buttons used to call only AssetTrackerService.ClearScope, which touches nothing
+        /// but the Dashboard's own bookkeeping - it flips IsValid to false, zeroes ReferenceCount and
+        /// empties the row list. No AssetLoader, no IAssetScope and no Addressables handle was involved,
+        /// so every asset stayed loaded while the rows vanished and the memory figure dropped to zero.
+        /// The dialog meanwhile said "This will release all tracked assets". A user cleaning up to free
+        /// memory got a display that agreed with them and a process that had not freed anything.
+        ///
+        /// ScopeManager.ClearScope does the real work, so the button now calls it. Outside Play Mode
+        /// there is nothing to release and the dialog says so instead of claiming otherwise.
+        /// </remarks>
+        private static void ReleaseScope(string scopeId)
+        {
+            if (!Application.isPlaying) return;
+            if (string.IsNullOrEmpty(scopeId)) return;
+            if (!ScopeManager.Instance.HasScope(scopeId)) return;
+
+            ScopeManager.Instance.ClearScope(scopeId);
+        }
+
         private void RefreshScopesTab()
         {
             if (_scopesScroll == null) return;
@@ -604,10 +703,16 @@ namespace AddressableManager.Editor.Windows
             cleanupBtn.clicked += () =>
             {
                 var displayName = AssetMonitorBridge.GetDisplayName(scopeId);
-                if (EditorUtility.DisplayDialog($"Cleanup {displayName} Scope",
-                    $"Are you sure you want to cleanup the {displayName} scope?",
-                    "Yes", "Cancel"))
+                bool live = Application.isPlaying && ScopeManager.Instance.HasScope(scopeId);
+                string body = live
+                    ? $"Release every asset held by the {displayName} scope, and clear its Dashboard rows?\n\n" +
+                      "This releases real runtime handles."
+                    : $"Clear the Dashboard's tracking rows for {displayName}?\n\n" +
+                      "Nothing is released - this scope has no live loader right now.";
+
+                if (EditorUtility.DisplayDialog($"Cleanup {displayName} Scope", body, "Yes", "Cancel"))
                 {
+                    ReleaseScope(scopeId);
                     _tracker.ClearScope(scopeId);
                     RefreshScopesTab();
                 }
@@ -832,7 +937,7 @@ namespace AddressableManager.Editor.Windows
 
         private void ResetSettings()
         {
-            _logLevelDropdown.value = "Warnings and Errors";
+            _logLevelDropdown.value = LogLevelToChoice(DebugSettings.Instance.logLevel);
             _autoRefreshToggle.value = true;
             _refreshIntervalSlider.value = 500;
             _simulateSlowToggle.value = false;

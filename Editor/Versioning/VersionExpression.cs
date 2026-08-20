@@ -19,6 +19,18 @@ namespace AddressableManager.Editor.Versioning
         public bool MinInclusive { get; private set; }
         public bool MaxInclusive { get; private set; }
 
+        /// <summary>
+        /// Matches the four comparison forms: <c>&gt;=1.0.0</c>, <c>&gt;1.0.0</c>, <c>&lt;=2.0.0</c>,
+        /// <c>&lt;2.0.0</c>.
+        /// </summary>
+        /// <remarks>
+        /// Two-character operators are listed before their one-character prefixes so that
+        /// <c>&gt;=1.0.0</c> does not match as <c>&gt;</c> followed by a version of "=1.0.0".
+        /// </remarks>
+        private static readonly Regex ComparisonRegex = new Regex(
+            @"^(?<op>>=|<=|>|<)\s*(?<version>.+)$",
+            RegexOptions.Compiled);
+
         private static readonly Regex RangeRegex = new Regex(
             @"^(?<minBracket>[\[\(])(?<min>[^,\]\)]*),(?<max>[^,\]\)]*)(?<maxBracket>[\]\)])$",
             RegexOptions.Compiled);
@@ -49,6 +61,27 @@ namespace AddressableManager.Editor.Versioning
             if (match.Success)
             {
                 return ParseRange(match, out versionExpression);
+            }
+
+            // Comparison operators. AddressableCLI.SetVersionExpression has always advertised these four
+            // forms in its own "Valid formats:" error message, so a user corrected by that message
+            // typed one of them and was rejected a second time. They cost four lines and IsMatch
+            // already supports an open bound on either side.
+            var comparison = ComparisonRegex.Match(expression);
+            if (comparison.Success)
+            {
+                if (!SemanticVersion.TryParse(comparison.Groups["version"].Value, out var bound))
+                    return false;
+
+                switch (comparison.Groups["op"].Value)
+                {
+                    case ">=": versionExpression = new VersionExpression(bound, null, true, false); return true;
+                    case ">":  versionExpression = new VersionExpression(bound, null, false, false); return true;
+                    case "<=": versionExpression = new VersionExpression(null, bound, false, true); return true;
+                    case "<":  versionExpression = new VersionExpression(null, bound, false, false); return true;
+                }
+
+                return false;
             }
 
             // Not a range - treat as single version (minimum, inclusive)
