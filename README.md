@@ -157,7 +157,7 @@ Honest state of each area, because a README that hides this costs more than one 
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.9
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.10
 ```
 
 Or in `Packages/manifest.json`:
@@ -165,7 +165,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.9"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.10"
   }
 }
 ```
@@ -1704,7 +1704,7 @@ because that is where you go looking for a window or a batchmode command:
 
 ### Not yet validated
 
-Quoted from the changelog for `4.1.0-pre.4`, and still true at `4.1.0-pre.9`:
+Quoted from the changelog for `4.1.0-pre.4`, and still true at `4.1.0-pre.10`:
 
 > Phase 5's field validation: no device matrix, no staging soak, no measurement against a real CDN,
 > and the CI workflows have never run. Three Phase 3 measurements are also unrun — cancel-and-resume,
@@ -2012,7 +2012,7 @@ Behaviour that is easy to get wrong:
   `.asset` files under `Editor/Templates/BasicAddressRules/`; `ComprehensiveRules.json`,
   `MaterialTextureRules.json`, `PlatformSpecificRules.json` and `VersionedAssetsRules.json` carry
   empty paths and are rebuilt from the type name plus the embedded configuration. This applies to
-  address, label and version rules alike; before 4.1.0-pre.9 only address-rule filters had the
+  address, label and version rules alike; before 4.1.0-pre.10 only address-rule filters had the
   fallback, so label and version rules in those templates imported with no filters at all.
 
 ### Version filtering
@@ -2035,7 +2035,7 @@ shipped `ComprehensiveRules.json` template uses.
 > **The CLI's own error message lists four forms it will then reject.** On a parse failure
 > All eight forms `SetVersionExpression` advertises are accepted: the three range shapes, a bare
 > version (treated as an inclusive minimum), and the four comparison operators `>=1.0.0`, `>1.0.0`,
-> `<=2.0.0`, `<2.0.0`. The comparison branch was added in 4.1.0-pre.9 — before that the CLI's own
+> `<=2.0.0`, `<2.0.0`. The comparison branch was added in 4.1.0-pre.10 — before that the CLI's own
 > error message listed four forms its parser then rejected. `[1.0.0,)` and `[,2.0.0)` also work.
 
 Three more behaviours to know:
@@ -2045,7 +2045,7 @@ Three more behaviours to know:
   false, and both `ApplyRules` and `ApplyRulesToAssets` return immediately without touching an asset —
   so the error text's "No rules were applied" is accurate. Falling through instead would leave no
   filter set and apply every rule to every asset, which is the opposite of what the expression asked
-  for; that is what the code did before 4.1.0-pre.9.
+  for; that is what the code did before 4.1.0-pre.10.
 - **`ExcludeUnversioned` governs the three "no usable version" cases identically**: an asset that is
   not addressable yet, one whose entry carries no `version:` label, and one whose label does not
   parse as a semantic version. Set, they are skipped; clear (the default), they pass through.
@@ -2367,11 +2367,11 @@ by an editor build step even though no *runtime* code reads the asset.
 | :-- | :-- |
 | `PoolConfiguration` (the whole `ScriptableObject`) | **Read by no runtime code.** See below |
 | `AddressablePreloadConfig`: `preloadEntries`, `loadInParallel`, `maxConcurrentLoads` | **Read by no runtime code.** See below |
-| — its `validateOnBuild` / `failBuildOnError` | **Live since 4.1.0-pre.9**: `PreloadConfigBuildValidator` (an `IPreprocessBuildWithReport`) runs `Validate()` on every config during a player build and fails the build when asked |
+| — its `validateOnBuild` / `failBuildOnError` | **Live since 4.1.0-pre.10**: `PreloadConfigBuildValidator` (an `IPreprocessBuildWithReport`) runs `Validate()` on every config during a player build and fails the build when asked |
 | `DebugSettings`, every field but `logLevel` | No callers; see [The debug settings asset](#the-debug-settings-asset) |
 | `LayoutRuleData.AutoApplyOnModified` | Inert. Only `AutoApplyOnImport` is honoured |
 | `ExtensionFilter.MatchAny`, `AddressableGroupFilter`'s match-any flag | Inert — both branches are identical code |
-| ~~Dashboard *Settings* tab: Log Level, Simulate Slow Loading, Delay, Failure Rate~~ | **Fixed in 4.1.0-pre.9.** All four now write to `DebugSettings.Instance` and persist |
+| ~~Dashboard *Settings* tab: Log Level, Simulate Slow Loading, Delay, Failure Rate~~ | **Fixed in 4.1.0-pre.10.** All four now write to `DebugSettings.Instance` and persist |
 | `AssetValidator` recording (`ValidationMode`, `GetValidationStats`) | Manual checks work, nothing reports in. See below |
 | `DownloadPolicy.MaxRetries`, `.MaxConcurrentDownloads` | Inert; see [The CDN settings asset](#the-cdn-settings-asset) |
 | `CacheService.BudgetExceeded` via `CdnManager` | Never fires; see [Cache maintenance](#cache-maintenance) |
