@@ -46,6 +46,7 @@ Ai sửa mấy file này thì **ghi vào §2 trước**, sửa, rồi trả ngay
 | `Tools/CompileGate/` | **A** | 2026-08-16 15:10 | Gộp năng lực `check-min-unity-api.sh` (min-Unity + ma trận UniTask) vào `run.sh` |
 | `CHANGELOG.md`, `README.md`, `Packages/com.game.addressables/README.md` | **B** | 2026-08-17 10:45 | L-7 bước 2: ghi mục deprecation `TieredAssetLoader` + đổi `Advanced.CreateTieredLoader` → `Advanced.CreateLoader` trong ví dụ. **✅ ĐÃ TRẢ 11:05** — gate PASS. |
 | `package.json`, `CHANGELOG.md`, cả hai `README.md` | **B** | 2026-08-17 12:10 | Cắt `4.1.0-pre.6` (đã publish, tag verify trên origin), rồi tách nội dung Wave F ra `pre.7`. **✅ ĐÃ TRẢ 12:30** — gate PASS, 142/142. |
+| `package.json`, `CHANGELOG.md` | **C** (review) | 2026-08-20 | Cắt `4.1.0-pre.10` cho nhánh `fix/review-4.1.0-pre.9` (3 commit: af10ee4, 950107f, 17a2d82). Trả ngay sau khi tag. |
 | `Editor/Rules/`, `Editor/Automation/`, `Editor/Cdn/SettingsContract.cs`, `Editor/Cdn/CatalogVerifier.cs`, `Editor/Cdn/CatalogInspection*.cs`, `Runtime/Loaders/AssetLoader.cs` | **C** (review) | 2026-08-19 | Vá 7 mục của `Documentation/REVIEW_4.1.0-pre.9.html`. **✅ ĐÃ TRẢ** — gate PASS cả 2 assembly; Unity compile 4/4 assembly (kèm Tests) 0 lỗi CS; **EditMode 165/165 PASS**. |
 
 ---
