@@ -115,7 +115,13 @@ namespace AddressableManager.Cdn
             {
                 // Whatever the project already installed runs first and keeps its effect unless we
                 // deliberately override the same field.
-                _previousWebRequestOverride?.Invoke(request);
+                //
+                // Isolated, because this whole delegate runs INSIDE ResourceManager.Update - see
+                // InvokeHook. A hook that throws here would otherwise propagate into the middle of
+                // Addressables' own update loop.
+                InvokeHook(
+                    () => _previousWebRequestOverride?.Invoke(request),
+                    "the WebRequestOverride this project installed before Cdn.InitializeAsync");
 
                 if (request == null) return;
 
@@ -135,7 +141,14 @@ namespace AddressableManager.Cdn
                     request.timeout = timeoutSeconds;
                 }
 
-                string token = authHeaderProvider?.Invoke();
+                // Fetched per request so a refreshed token is picked up without reinstalling - which
+                // also means this delegate runs inside ResourceManager.Update on EVERY bundle, catalog
+                // and hash request. It must return an already-held token synchronously.
+                string token = null;
+                InvokeHook(
+                    () => token = authHeaderProvider?.Invoke(),
+                    "the authHeaderProvider passed to Cdn.InitializeAsync");
+
                 if (!string.IsNullOrEmpty(token))
                     request.SetRequestHeader("Authorization", $"Bearer {token}");
             };
@@ -145,9 +158,16 @@ namespace AddressableManager.Cdn
                 if (location == null) return null;
 
                 // Chain: let an existing transform decide the id first, then rewrite its origin.
-                string id = _previousIdTransform != null
-                    ? _previousIdTransform(location)
-                    : location.InternalId;
+                // Isolated for the same reason as the request hook - this also runs inside
+                // ResourceManager.Update, and falling back to the untransformed id is better than an
+                // exception thrown through Addressables' update loop.
+                string id = location.InternalId;
+                if (_previousIdTransform != null)
+                {
+                    InvokeHook(
+                        () => id = _previousIdTransform(location),
+                        "the InternalIdTransformFunc this project installed before Cdn.InitializeAsync");
+                }
 
                 var active = _activeRewriter;
                 return active != null ? active.Rewrite(id) : id;
@@ -175,6 +195,49 @@ namespace AddressableManager.Cdn
             _previousIdTransform = null;
             _activeRewriter = null;
             _installed = false;
+        }
+
+        /// <summary>
+        /// Runs a consumer-supplied delegate that executes inside Addressables' update loop, turning
+        /// the two ways it can go wrong into something a reader can act on.
+        /// </summary>
+        /// <remarks>
+        /// Both hooks this class installs are invoked by the ResourceManager while it is inside
+        /// <c>ResourceManager.Update</c>. Two consequences that are invisible from the call site:
+        ///
+        /// <para><b>Re-entrancy.</b> Anything that pumps Addressables from in here - most often
+        /// <c>WaitForCompletion()</c>, but equally blocking on a Task that only completes once
+        /// Addressables advances, or starting and awaiting another Addressables operation - re-enters
+        /// the update loop, and Unity throws <c>"Reentering the Update method is not allowed"</c> from
+        /// a stack that names only Unity's own frames. The delegate that caused it never appears in
+        /// that stack. This is the only place that still knows which delegate was running, so the log
+        /// written here names it.</para>
+        ///
+        /// <para><b>Blocking.</b> Even without re-entering, work done here stalls the loader: the hook
+        /// runs on every bundle, catalog and hash request. A token must already be in hand and be
+        /// returned synchronously - fetch and cache it before <c>Cdn.InitializeAsync</c>, and refresh
+        /// it on your own schedule, never from inside the hook.</para>
+        ///
+        /// A failing hook does not fail the request: the header is simply not attached, or the id is
+        /// left as Addressables resolved it. That surfaces as an ordinary 401 or a miss, which
+        /// <see cref="CdnErrorMapper"/> already classifies, instead of an exception thrown through the
+        /// middle of Addressables' update.
+        /// </remarks>
+        private static void InvokeHook(Action hook, string description)
+        {
+            try
+            {
+                hook();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError(
+                    $"[CdnRequestDecorator] {description} threw inside Addressables' update loop: {ex.Message}\n" +
+                    "This hook runs on every request, from inside ResourceManager.Update. It must not call " +
+                    "WaitForCompletion, must not block on a Task, and must not start or await an Addressables " +
+                    "operation - each of those re-enters the update loop. Return an already-held value " +
+                    "synchronously instead. The request continues without this hook's contribution.\n" + ex);
+            }
         }
 
         /// <summary>

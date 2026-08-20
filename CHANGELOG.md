@@ -1,6 +1,57 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.11] - 2026-08-20 - The auth hook runs inside Addressables' update loop, and never said so
+
+Reported from a production integration: `Reentering the Update method is not allowed. This can happen
+when calling WaitForCompletion on an operation while inside of a callback.` thrown from
+`ResourceManager.Update`.
+
+The package itself never calls `WaitForCompletion` - grep over `Runtime/` and `Editor/` returns
+nothing - and neither of its await paths resumes inside the update loop: Addressables builds its
+`Task` with `RunContinuationsAsynchronously` (`AsyncOperationBase.cs:247`), and UniTask's handle
+awaiter polls on the PlayerLoop (`AddressablesAsyncExtensions.cs:96,157`). So code after
+`await Assets.Load(...)` is not the hazard.
+
+But two pieces of package code *are* invoked from inside `ResourceManager.Update`, and both call
+straight back out into consumer delegates: `Addressables.WebRequestOverride` and
+`Addressables.InternalIdTransformFunc`, installed by `CdnRequestDecorator`. Between them they invoke
+`CdnManager.AuthTokenProvider` on **every** bundle, catalog and hash request, plus whatever hooks the
+project already had installed.
+
+`AuthTokenProvider`'s documentation said only "Called on every request, so a refreshed token is
+picked up without reinstalling" - which reads as an invitation to fetch a token there. Fetching one
+by blocking, or by awaiting an Addressables operation, re-enters the update loop and produces exactly
+the reported exception, from a stack that names only Unity's own frames and never the delegate that
+caused it.
+
+### Fixed
+
+- **Consumer delegates invoked from the hooks are isolated.** A throwing hook no longer propagates
+  into the middle of Addressables' update; it is caught, and the log **names which delegate threw**
+  along with the constraint it violated. The request continues without that hook's contribution - an
+  ordinary 401 or an untransformed id, both of which `CdnErrorMapper` already classifies.
+
+- **The constraint is documented where the delegate is supplied**: on `CdnManager.AuthTokenProvider`,
+  in the package README, and in the CDN usage guide. Return a token you already hold; refresh it on
+  your own schedule.
+
+- **The README's auth example was wrong.** It showed `() => $"Bearer {token}"` while the decorator
+  writes the header as `Bearer {token}` itself, so following it produced
+  `Authorization: Bearer Bearer <token>` and a 401 that looks like an expired credential.
+
+### Still open
+
+This release fixes the package's share: an undocumented re-entrancy-hostile callback whose failure
+mode was unreadable. It cannot stop a `WaitForCompletion` in project code, and the reporting
+integration's full stack has not been captured yet, so whether `AuthTokenProvider` was the trigger in
+that particular case is unconfirmed. With this release the log will name the delegate if it was.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 165/165 PASS, and the mechanical doc sweep still
+resolves all 313 assertions.
+
 ## [4.1.0-pre.10] - 2026-08-20 - Everything the package said it did, checked against what it does
 
 A review that started from three reported design flaws and ended up auditing the package against
