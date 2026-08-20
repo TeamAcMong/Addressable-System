@@ -1,6 +1,59 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.12] - 2026-08-20 - A failed catalog check ends the session, and Unity blames the wrong thing
+
+Root-caused from a production log. The reported symptom was thousands of
+
+```
+Exception: Reentering the Update method is not allowed.  This can happen when calling
+WaitForCompletion on an operation while inside of a callback.
+```
+
+That message is wrong on both counts: no `WaitForCompletion` was called, and nothing re-entered. The
+two-frame stack (`ResourceManager.Update` <- `MonoBehaviourCallbackHooks.Update`) is the giveaway -
+real re-entrancy would carry the caller's frames between them. This is the ordinary once-per-frame
+call finding a flag that was already set.
+
+The actual chain, all inside Addressables 2.9.1:
+
+1. `CheckCatalogsOperation` failed - the catalog hash URL was unreachable
+   (`http://localhost:8080/Android/catalog/1.0/catalog_1.0.hash`, the Local profile's default, with no
+   local server running).
+2. `CheckCatalogsOperation.Destroy()` is `m_DepOp.Release()` with no `IsValid()` guard
+   (CheckCatalogsOperation.cs:62-65). After a failure that handle is already invalid, so
+   `AsyncOperationHandle.get_InternalOp` throws **"Attempting to use an invalid operation handle"**.
+3. That throw escapes `ResourceManager.ExecuteDeferredCallbacks` (ResourceManager.cs:1065), called
+   from `ResourceManager.Update`, which sets `m_InsideUpdateMethod = true` at line 1100 and clears it
+   at 1121 **with no try/finally**. The flag stays set for the rest of the session.
+4. Every frame thereafter throws the re-entrancy message, and Addressables is unusable until play
+   mode is exited.
+
+Both defects are Unity's, and neither can be caught from this package: the throw happens on Unity's
+own stack inside `Update`. What this package can do is stop the developer losing an afternoon to it.
+
+### Added
+
+- `CatalogService` now explains the failure at the moment it becomes inevitable - naming the URL, the
+  two Addressables defects, the misleading message about to flood the console, and the fact that only
+  exiting play mode recovers. Logged once per service, not per check.
+- A `Reentering the Update method` section in the troubleshooting guide, with the quick-diagnosis row
+  that points at it, how to find the real first error, and the four causes worth checking.
+
+### Not fixed, because it cannot be
+
+The package cannot prevent or contain either defect. It also cannot pre-flight its way out reliably: a
+check that passes can still fail a moment later on the real request. Reporting precisely is the whole
+of what is available here.
+
+Relevant if you hit this: the Local profile's catalog path is `http://localhost:8080/...`, which needs
+the CDN Manager's Local Server started. `4.1.0-pre.10` fixed a related defect where creating the
+profile variable pushed that localhost default into **every** profile, Prod included.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 165/165 PASS, doc sweep 313/313.
+
 ## [4.1.0-pre.11] - 2026-08-20 - The auth hook runs inside Addressables' update loop, and never said so
 
 Reported from a production integration: `Reentering the Update method is not allowed. This can happen

@@ -44,7 +44,7 @@ this page was rewritten to prevent — fix it rather than picking one.
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.11
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.12
 ```
 
 Always pin to a tag. Tracking a branch means a `git pull` can change your API surface. The
@@ -92,7 +92,7 @@ If you are not sure which tier you want,
 
 ## 🚦 Status
 
-`4.1.0-pre.11` is a **pre-release**, and the label is doing real work: this line is far more correct
+`4.1.0-pre.12` is a **pre-release**, and the label is doing real work: this line is far more correct
 than 4.0.x, and far less proven.
 
 - **A correctness pass produced `pre.6` through `pre.8`.** An external review verified **66
@@ -230,7 +230,7 @@ assemblies before anything is committed; and the release path is `deploy.sh`.
 ### How releases are cut
 
 ```bash
-./deploy.sh --semver "4.1.0-pre.11"
+./deploy.sh --semver "4.1.0-pre.12"
 ```
 
 The script `git subtree split`s `Packages/com.game.addressables` onto a temporary `upm` branch,

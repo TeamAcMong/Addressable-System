@@ -248,6 +248,8 @@ namespace AddressableManager.Cdn
 
             if (!succeeded)
             {
+                WarnAboutCheckCatalogsDefect(failure);
+
                 // The connection dropped between the reachability check and the request. Treated as
                 // the offline answer rather than an error, for the same reason as above.
                 if (!_network.IsReachable)
@@ -258,6 +260,57 @@ namespace AddressableManager.Cdn
 
             return CdnResult<CatalogUpdateInfo>.Success(new CatalogUpdateInfo(catalogs));
         }
+
+        /// <summary>
+        /// Explains, once, that a failed catalog check is about to break Addressables' update loop for
+        /// the rest of the session — because Unity's own error will not say so.
+        /// </summary>
+        /// <remarks>
+        /// Two defects in Addressables 2.9.1 combine into a session-ending failure that names the wrong
+        /// cause:
+        ///
+        /// <para>1. <c>CheckCatalogsOperation.Destroy()</c> is <c>m_DepOp.Release()</c> with no
+        /// <c>IsValid()</c> check (CheckCatalogsOperation.cs:62-65). When the check failed, that
+        /// dependency handle is already invalid, so <c>AsyncOperationHandle.get_InternalOp</c> throws
+        /// <c>"Attempting to use an invalid operation handle"</c>.</para>
+        ///
+        /// <para>2. That throw lands in <c>ResourceManager.ExecuteDeferredCallbacks</c>
+        /// (ResourceManager.cs:1065), called from <c>ResourceManager.Update</c> — which sets
+        /// <c>m_InsideUpdateMethod = true</c> at line 1100 and clears it at 1121 with <b>no
+        /// try/finally</b>. The flag is therefore stuck true forever, and every subsequent frame throws
+        /// <c>"Reentering the Update method is not allowed. This can happen when calling
+        /// WaitForCompletion on an operation while inside of a callback."</c></para>
+        ///
+        /// That second message is what a developer actually sees — thousands of times, blaming a
+        /// <c>WaitForCompletion</c> that was never called, from a two-frame stack containing only
+        /// Unity's own code. The real cause is this failed catalog check, already scrolled far out of
+        /// view. Nothing downstream can catch the throw: it happens on Unity's stack inside Update.
+        ///
+        /// So the only useful thing to do is say it here, at the moment it becomes inevitable.
+        /// </remarks>
+        private void WarnAboutCheckCatalogsDefect(Exception failure)
+        {
+            if (_warnedAboutCheckCatalogsDefect) return;
+            _warnedAboutCheckCatalogsDefect = true;
+
+            Debug.LogWarning(
+                "[CatalogService] The catalog update check failed, and on Addressables 2.9.1 that failure " +
+                "is not contained.\n" +
+                $"  Reason: {failure?.Message ?? "(no exception recorded)"}\n\n" +
+                "Addressables will now throw \"Attempting to use an invalid operation handle\" from " +
+                "CheckCatalogsOperation.Destroy(), and because ResourceManager.Update has no try/finally " +
+                "around its re-entrancy flag, that flag stays set for the rest of the session. From this " +
+                "point every frame logs \"Reentering the Update method is not allowed ... WaitForCompletion " +
+                "... inside of a callback\".\n\n" +
+                "That message is misleading: no WaitForCompletion is involved, and Addressables is now " +
+                "unusable until you exit play mode and re-enter. Fix the catalog URL above rather than " +
+                "hunting for a re-entrancy bug — most often the host is simply not running (the Local " +
+                "profile points at http://localhost:8080, which needs the CDN Manager's Local Server tab " +
+                "started), or the profile is pointing somewhere it should not be.");
+        }
+
+        /// <summary>Set once the defect above has been explained, so it is not repeated every check.</summary>
+        private bool _warnedAboutCheckCatalogsDefect;
 
         // ================= 2.7 apply update =================
 
