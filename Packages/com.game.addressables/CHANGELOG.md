@@ -1,6 +1,55 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.13] - 2026-08-20 - "The restriction check could not run" was the wrong answer half the time
+
+Reported from the CDN Manager's Update Preview tab, which refused to evaluate:
+
+> No groups with static content (Cannot Change Post Release) detected. This is a configuration
+> failure ... If no content is static, ensure that at least one group has the
+> ContentUpdateGroupSchema with StaticContent enabled.
+
+That advice contradicts itself - *if no content is static, mark a group static* - which is the tell
+that one branch was being asked to answer two different questions.
+
+### Fixed
+
+`ContentUpdateRestrictions` treated "no group is marked Cannot Change Post Release" as a
+configuration failure regardless of why, and returned `CanEvaluate = false`. Two situations were
+collapsed into one, and they need opposite answers:
+
+- **Something ships inside the player and was not declared.** A group whose `BuildPath` resolves to a
+  Local path is baked into the build and can never be replaced by a content update, so it must be
+  marked Cannot Change Post Release. Leaving it unmarked is precisely the misconfiguration this check
+  exists to catch, and the check genuinely cannot run. This now reports as before - and **names the
+  offending groups**, instead of leaving the user to guess which of them needs the flag.
+
+- **Nothing is immutable.** Every group builds remote, which is an ordinary CDN layout: there is no
+  content a content update could break, so the restriction check has nothing to guard and passes for
+  that reason. This used to be blocked outright. It now passes, with a message that says *why* -
+  "this check passes for that reason, not because content was compared" - so a vacuous pass is never
+  mistaken for a real comparison against the content state.
+
+The distinguishing fact is the group's build path, which the package already reads for the
+`group:<name>:RemotePathsConsistent` contract rule added in `4.1.0-pre.10`.
+
+### Added
+
+`Tests/Editor/ContentUpdateRestrictionsTests.cs` - three cases pinning both branches and the
+no-groups edge, so they cannot collapse back into a single answer. The decision was extracted to
+`EvaluateStaticContentConfiguration` (internal) so it can be tested on group configuration alone,
+without constructing an `addressables_content_state.bin`. EditMode 165 -> 168.
+
+### Note on the failure this was found alongside
+
+Nothing here changes the underlying Addressables 2.9.1 defect described in `4.1.0-pre.12`: a failed
+catalog check still ends the session with a misleading re-entrancy flood. These are separate
+problems that surfaced in the same integration.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 168/168 PASS, doc sweep 313/313.
+
 ## [4.1.0-pre.12] - 2026-08-20 - A failed catalog check ends the session, and Unity blames the wrong thing
 
 Root-caused from a production log. The reported symptom was thousands of
