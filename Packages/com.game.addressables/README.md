@@ -157,7 +157,7 @@ Honest state of each area, because a README that hides this costs more than one 
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.10
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.11
 ```
 
 Or in `Packages/manifest.json`:
@@ -165,7 +165,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.10"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.11"
   }
 }
 ```
@@ -1670,10 +1670,26 @@ Auth headers go through a provider you set **before** `InitializeAsync` — the 
 install time, so setting it afterwards has no effect. The *invocation* is per-request, so a refreshed
 token from the same delegate is picked up.
 
+Return the **raw token**. The decorator writes the header as `Bearer {token}` itself, so a provider
+that returns `"Bearer …"` produces `Authorization: Bearer Bearer …`.
+
 ```csharp
-CdnManager.AuthTokenProvider = () => $"Bearer {MyAuth.CurrentToken}";
+CdnManager.AuthTokenProvider = () => MyAuth.CurrentToken;   // raw token, no "Bearer " prefix
 await CdnManager.InitializeAsync();
 ```
+
+> **This delegate runs inside Addressables' update loop.** `WebRequestOverride` is invoked from
+> within `ResourceManager.Update`, so the provider is called from there too — on every bundle,
+> catalog and hash request. It must **return a token it already holds**: no `WaitForCompletion()`, no
+> blocking on a `Task` or coroutine, no starting or awaiting an Addressables operation. Each of those
+> re-enters the update loop and Unity throws `Reentering the Update method is not allowed` from a
+> stack that names only Unity's own frames — never the delegate that caused it. Even a non-re-entrant
+> blocking call stalls every download while it runs.
+>
+> Refresh the token on your own schedule, cache it in a field, and let the provider return that
+> field. Since `4.1.0-pre.11` a provider that throws is caught, named in the log, and the request
+> continues without the header — an ordinary 401 instead of an exception thrown through the middle of
+> Addressables' update.
 
 Base URLs support `{platform}` and `{appVersion}` tokens. Since `4.1.0-pre.9` both detection and
 substitution are case-insensitive, so `{Platform}` and `{PLATFORM}` expand like the lowercase form

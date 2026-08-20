@@ -528,7 +528,7 @@ around:
 | `CatalogParseFailed`, `CatalogVersionIncompatible` | The catalog downloaded but this build cannot use it. | Force an app update; a retry will not help. |
 | `BundleNotFound` | 404 on a bundle the catalog references. | Catalog and bundles are out of sync — the Catalog tab would have caught this before upload. Not retryable. |
 | `BundleCrcMismatch` | The response could not be processed into a bundle. `CdnErrorMapper` maps `UnityWebRequest.Result.DataProcessingError` here **regardless of HTTP status**, so a corrupt object served with a clean 200 lands here instead of falling through to `Unknown`. | On a download, the dependency cache is cleared once and the bundle re-fetched before you see it. If it recurs, the object on the CDN is corrupt and re-uploading is the fix. |
-| `Unauthorized` | 401/403. | Signed URL expired or the token is wrong. Refresh `CdnManager.AuthTokenProvider`. |
+| `Unauthorized` | 401/403. | Signed URL expired or the token is wrong. Refresh the token your `CdnManager.AuthTokenProvider` returns — refresh it on your own schedule and cache it, never from inside the provider: it runs inside Addressables' update loop. Return the raw token; the `Bearer ` prefix is added for you. |
 | `InsufficientDiskSpace` | Pre-flight failed: size + `MinFreeDiskBytes` exceeds free space. | Tell the player how much is needed. |
 | `MeteredNetworkBlocked` | Policy refused a download on a metered connection. Only happens when you set `requireUnmeteredNetwork`. | Ask, then retry with `DownloadRequest.For(key, allowMeteredOverride: true)`. |
 | `Cancelled` | Your own cancellation token fired. | Not an error. Completed bundles stay cached. |

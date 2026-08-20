@@ -91,6 +91,30 @@ namespace AddressableManager.Cdn
         /// Supplies a bearer token per request. Set before <see cref="InitializeAsync"/>.
         /// Called on every request, so a refreshed token is picked up without reinstalling.
         /// </summary>
+        /// <remarks>
+        /// <para><b>This runs inside Addressables' update loop, and must return immediately.</b>
+        /// Addressables invokes <c>WebRequestOverride</c> from within <c>ResourceManager.Update</c>,
+        /// so this delegate does too - on every bundle, catalog and hash request.</para>
+        ///
+        /// <para>It must therefore <b>return a token it already holds</b>. It must not call
+        /// <c>WaitForCompletion()</c>, must not block on a <c>Task</c> or coroutine, and must not
+        /// start or await an Addressables operation: each of those re-enters the update loop and
+        /// Unity throws <c>"Reentering the Update method is not allowed"</c> - from a stack that names
+        /// only Unity's own frames, never the delegate that caused it. Even a non-re-entrant blocking
+        /// call is a problem, because it stalls every download for as long as it runs.</para>
+        ///
+        /// <para>Fetch and refresh the token on your own schedule, cache it in a field, and let this
+        /// return that field. If it throws, the package logs which delegate threw and the request
+        /// continues without an Authorization header - which surfaces as an ordinary 401 rather than
+        /// an exception thrown through the middle of Addressables' update.</para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// // Refreshed elsewhere; the hook only reads it.
+        /// private static string _token;
+        /// CdnManager.AuthTokenProvider = () =&gt; _token;
+        /// </code>
+        /// </example>
         public static Func<string> AuthTokenProvider { get; set; }
 
 #if UNITASK_PRESENT
