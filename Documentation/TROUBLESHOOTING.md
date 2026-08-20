@@ -18,6 +18,7 @@ This guide helps you diagnose and fix common problems with the Addressable Manag
 | Compilation errors | Missing assembly reference or old API | [Compilation](#compilation-errors) |
 | Version errors | Git/Build config | [Versioning](#versioning-issues) |
 | CDN error code | See the per-code table | [CDN Content Delivery](#cdn-content-delivery) |
+| `Reentering the Update method is not allowed` every frame | A failed catalog check, **not** `WaitForCompletion` | [Reentering the Update method](#reentering-the-update-method) |
 
 ---
 
@@ -1451,3 +1452,57 @@ validation error rather than something the package trims. Duplicate environment 
 `defaultEnvironmentId` that is not in the list are the other two.
 
 **Fix.** The failure message lists every problem at once. Fix them all and re-run.
+
+---
+
+## Reentering the Update method
+
+**Symptom.** Every frame logs:
+
+```
+Exception: Reentering the Update method is not allowed.  This can happen when calling
+WaitForCompletion on an operation while inside of a callback.
+UnityEngine.ResourceManagement.ResourceManager.Update (ResourceManager.cs:1099)
+MonoBehaviourCallbackHooks.Update (MonoBehaviourCallbackHooks.cs:29)
+```
+
+The editor slows to a crawl and Addressables stops working until you leave play mode.
+
+**The message is wrong.** No `WaitForCompletion` is involved, and nothing is re-entering. Note the
+stack has only **two frames**: real re-entrancy would show your own code between them. This is the
+*outer*, once-per-frame call finding a flag that was already set.
+
+**What actually happened**, as two defects in Addressables 2.9.1 stacked on top of each other:
+
+1. A catalog check failed — usually because its URL is unreachable.
+2. `CheckCatalogsOperation.Destroy()` is `m_DepOp.Release()` with no `IsValid()` guard
+   (`CheckCatalogsOperation.cs:62-65`). The dependency handle is already invalid after a failure, so
+   `AsyncOperationHandle.get_InternalOp` throws **`Attempting to use an invalid operation handle`**.
+3. That throw escapes `ResourceManager.ExecuteDeferredCallbacks` (`ResourceManager.cs:1065`), called
+   from `ResourceManager.Update`, which sets `m_InsideUpdateMethod = true` at line 1100 and clears it
+   at 1121 **with no `try`/`finally`**. The flag stays set for the rest of the session.
+4. Every frame from then on throws the re-entrancy message.
+
+**Finding the real error.** Filter the Console to **Errors only** and scroll to the *first* one.
+Everything after it is noise. You are looking for `Attempting to use an invalid operation handle`,
+and above that, an `OperationException : CheckCatalogsOperation failed` naming the URL that could not
+be reached.
+
+Since `4.1.0-pre.12` this package logs the explanation itself, at the moment the check fails, so you
+do not have to reconstruct the chain:
+
+```
+[CatalogService] The catalog update check failed, and on Addressables 2.9.1 that failure is not contained.
+```
+
+**Fixing it.** The re-entrancy error is a symptom; fix the catalog URL.
+
+| Cause | Fix |
+| :-- | :-- |
+| Local profile points at `http://localhost:8080` and no server is running | Start it: **Window ▸ Addressable Manager ▸ CDN Manager ▸ Local Server ▸ Start**, or switch to a profile whose catalog URL is actually reachable |
+| Wrong profile active for this build target | Check `Remote.CatalogLoadPath` in the Addressables profile — a build for Android reading a desktop-only URL fails the same way |
+| Remote host down or DNS failing | The `RemoteProviderException` in the first error names the exact URL; try it in a browser |
+| Nothing has been published at that version yet | The URL embeds `[bundleVersion]`; a bumped player version points at a catalog that was never uploaded |
+
+Recovery within a session is not possible: exit play mode and re-enter. The stuck flag lives on the
+`ResourceManager` instance and nothing in this package, or in your project, can reset it.
