@@ -56,6 +56,25 @@ namespace AddressableManager.Editor.Rules
         /// </remarks>
         private readonly Dictionary<string, string> _addressOwners = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        /// <summary>
+        /// <see cref="LayoutRuleData.VersionExpression"/>, parsed once per run. Null when the rule data
+        /// sets no expression.
+        /// </summary>
+        /// <remarks>
+        /// The setting was serialized, exposed as a public property, round-tripped by RuleSerializer and
+        /// settable from the CLI (AddressableCLI.SetVersionExpression, which even validated the syntax)
+        /// - and NOTHING read it. A user could set "[1.1.0,2.0.0)", see the CLI accept it, and get a run
+        /// that applied every rule to every asset. Same shape as LabelRule.AppendToExisting.
+        ///
+        /// It filters on the version an asset ALREADY carries, i.e. its existing "version:" label. That
+        /// is the only version an asset has before the version rules run, and it is what makes the
+        /// setting useful: "only touch assets already in the 1.x line".
+        /// </remarks>
+        private Versioning.VersionExpression _versionFilter;
+
+        /// <summary>Whether the current run has a version filter at all.</summary>
+        private bool _hasVersionFilter;
+
         public LayoutRuleProcessor(LayoutRuleData ruleData)
         {
             _ruleData = ruleData ?? throw new ArgumentNullException(nameof(ruleData));
@@ -77,6 +96,9 @@ namespace AddressableManager.Editor.Rules
             var result = new ProcessResult();
             _labelsTouched = false;
             _addressOwners.Clear();
+            // Abort, do not fall through. Returning here with no filter set would apply every rule to
+            // every asset - the exact outcome the error message says did not happen.
+            if (!PrepareVersionFilter(result)) return result;
 
             try
             {
@@ -150,6 +172,9 @@ namespace AddressableManager.Editor.Rules
             var result = new ProcessResult();
             _labelsTouched = false;
             _addressOwners.Clear();
+            // Abort, do not fall through. Returning here with no filter set would apply every rule to
+            // every asset - the exact outcome the error message says did not happen.
+            if (!PrepareVersionFilter(result)) return result;
 
             try
             {
@@ -212,6 +237,77 @@ namespace AddressableManager.Editor.Rules
         // settings/group assets or anything outside the project's own asset tree
         // (HANDOFF_TO_SESSION_B.md E-PAIR-1).
         private const string ExcludedAddressableDataPrefix = "Assets/AddressableAssetsData/";
+
+        /// <summary>
+        /// Parse the rule data's version expression once, before any rule runs.
+        /// </summary>
+        /// <returns>False when the run must not proceed.</returns>
+        private bool PrepareVersionFilter(ProcessResult result)
+        {
+            _versionFilter = null;
+            _hasVersionFilter = false;
+
+            string expression = _ruleData.VersionExpression;
+            if (string.IsNullOrWhiteSpace(expression)) return true;
+
+            if (!Versioning.VersionExpression.TryParse(expression, out var parsed))
+            {
+                // An unparseable expression must not silently degrade into "no filter" - that would
+                // apply every rule to every asset, which is the opposite of what was asked for.
+                result.Errors.Add(
+                    $"Version expression '{expression}' could not be parsed. Expected forms: '1.2.3', " +
+                    "'[1.0.0,2.0.0)', '(1.0.0,2.0.0]'. No rules were applied.");
+                return false;
+            }
+
+            _versionFilter = parsed;
+            _hasVersionFilter = true;
+            Log($"Version filter active: {expression}" +
+                (_ruleData.ExcludeUnversioned ? " (assets with no version label are excluded)" : ""));
+            return true;
+        }
+
+        /// <summary>
+        /// True when an asset passes the run's version filter, i.e. rules may touch it.
+        /// </summary>
+        /// <remarks>
+        /// Reads the entry's existing "version:" label. An asset that is not addressable yet, or that
+        /// carries no version label, is governed by <see cref="LayoutRuleData.ExcludeUnversioned"/>:
+        /// excluded when it is set, allowed through when it is not.
+        /// </remarks>
+        private bool PassesVersionFilter(string assetPath)
+        {
+            if (!_hasVersionFilter) return true;
+
+            var guid = AssetDatabase.AssetPathToGUID(assetPath);
+            var entry = string.IsNullOrEmpty(guid) ? null : _settings.FindAssetEntry(guid);
+
+            string versionLabel = null;
+            if (entry != null)
+            {
+                foreach (string label in entry.labels)
+                {
+                    if (label != null && label.StartsWith("version:", StringComparison.Ordinal))
+                    {
+                        versionLabel = label;
+                        break;
+                    }
+                }
+            }
+
+            if (versionLabel == null)
+                return !_ruleData.ExcludeUnversioned;
+
+            string raw = versionLabel.Substring("version:".Length);
+            if (!Versioning.SemanticVersion.TryParse(raw, out var version))
+            {
+                // A malformed version label is treated as unversioned rather than as a match: guessing
+                // that it satisfies the range is the answer that silently does the wrong thing.
+                return !_ruleData.ExcludeUnversioned;
+            }
+
+            return _versionFilter.IsMatch(version);
+        }
 
         /// <summary>
         /// The single definition of "an asset rules may be applied to".
@@ -303,7 +399,7 @@ namespace AddressableManager.Editor.Rules
                     }
                 }
 
-                if (matchedRule != null)
+                if (matchedRule != null && PassesVersionFilter(assetPath))
                 {
                     ApplyAddressRule(assetPath, matchedRule, result);
                 }
@@ -453,6 +549,8 @@ namespace AddressableManager.Editor.Rules
                 // added, so turning it off changed nothing at all. "Replace" is a per-asset decision -
                 // if ANY matching rule asks to replace, the entry's rule-owned labels are rebuilt from
                 // scratch instead of accumulated.
+                if (!PassesVersionFilter(assetPath)) continue;
+
                 var labelsToApply = new HashSet<string>(StringComparer.Ordinal);
                 bool replaceExisting = false;
 
@@ -586,6 +684,8 @@ namespace AddressableManager.Editor.Rules
                     float progress = 0.9f + (0.1f * (processed / (float)total));
                     progressCallback?.Invoke(progress, $"Processing versions ({processed}/{total})...");
                 }
+
+                if (!PassesVersionFilter(assetPath)) continue;
 
                 // Find first matching rule
                 VersionRule matchedRule = null;

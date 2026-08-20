@@ -1,6 +1,6 @@
 # Addressable Manager
 
-[![Version](https://img.shields.io/badge/version-4.1.0--pre.8-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.1.0--pre.9-blue.svg)](CHANGELOG.md)
 [![Unity](https://img.shields.io/badge/Unity-2023.1%2B-black.svg)](#requirements)
 [![Addressables](https://img.shields.io/badge/com.unity.addressables-2.9.1-black.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
@@ -86,6 +86,7 @@ need to own the machinery. You can mix them; they share the same caches.
   - [The CDN Manager window](#the-cdn-manager-window)
   - [The debug settings asset](#the-debug-settings-asset)
   - [Rule automation](#rule-automation)
+  - [Version filtering](#version-filtering)
   - [Layout Rule Editor and Layout Viewer](#layout-rule-editor-and-layout-viewer)
   - [Menu reference](#menu-reference)
   - [Command line for CI](#command-line-for-ci)
@@ -134,7 +135,7 @@ Honest state of each area, because a README that hides this costs more than one 
 | Tiered caching | Shipping, **off by default**. Byte accounting relies on a Profiler call that is [unverified in non-development builds](#a-caveat-on-byte-accounting) |
 | CDN build pipeline, runtime, downloads, cache | Complete, and verified against a local `HttpListener` |
 | CDN on real devices / a real CDN / staging soak | **Never done.** See [Not yet validated](#not-yet-validated) |
-| Rule automation, Layout Rule Editor | Shipping. Reworked in `4.1.0-pre.6`; three settings on `LayoutRuleData` are [inert](#-known-inert-surfaces) |
+| Rule automation, Layout Rule Editor | Shipping. Reworked in `4.1.0-pre.6`; one setting on `LayoutRuleData` is [inert](#-known-inert-surfaces) |
 | `PoolConfiguration` asset | **Inert.** Read by nothing. See [Known inert surfaces](#-known-inert-surfaces) |
 | `TieredAssetLoader` | **Deprecated** in `4.1.0-pre.7`, removed in 5.0.0. See [Migrating](#-migrating-from-40x) |
 
@@ -156,7 +157,7 @@ Honest state of each area, because a README that hides this costs more than one 
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.8
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.9
 ```
 
 Or in `Packages/manifest.json`:
@@ -164,7 +165,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.8"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.9"
   }
 }
 ```
@@ -836,7 +837,7 @@ construction.
 | `TieredCacheConfig.Default` | 100 MB | Balanced; eviction triggers at 90 % usage, targets 70 % |
 | `TieredCacheConfig.Aggressive` | 50 MB | Quicker promotion and eviction. Suits mobile |
 | `TieredCacheConfig.Lenient` | 200 MB | Slower eviction. Suits desktop |
-| `TieredCacheConfig.Disabled` | 0 | Tiering and eviction both off |
+| `TieredCacheConfig.Disabled` | 0 (unlimited) | Tiering and eviction both off |
 
 Each is a **new instance** every time you read it, so mutating one is safe. The twelve fields are
 public and mutable; `Validate(out string error)` enforces `PromoteToHotThreshold >
@@ -1324,7 +1325,9 @@ Create the settings asset via **Assets ▸ Create ▸ Addressable Manager ▸ CD
 
 `Validate()` returns **every** problem at once, and `InitializeAsync` refuses to start if there are
 any. A **trailing `/`** on a base URL is a hard validation failure, not something the package trims;
-so is a scheme that is not `http://` or `https://`.
+so is a scheme other than `http` or `https`. Both checks are ordinal since `4.1.0-pre.9` — the scheme
+is compared case-insensitively, so `HTTPS://…` is accepted, and neither check depends on the
+machine's locale any more.
 
 The asset's fifth and last field is `DownloadPolicy`, a nested block of five fields of its own. Two of
 those five are wired to nothing:
@@ -1552,7 +1555,8 @@ defaults to 64 MiB.
 > `DownloadService.RunPreflightChecks` — and no value of it is treated as a sentinel, so
 > `minFreeDiskBytes: -1` lowers the requirement by one byte and the check still runs. The gate is
 > skipped only when the package cannot read the volume: `GetFreeDiskBytes()` returns `-1` for
-> "unknown" and the comparison is `free >= 0 && free < needed`. `DownloadRequest` validates nothing.
+> "unknown" and the comparison is `free >= 0 && free < needed`. `DownloadRequest`'s constructor rejects
+> a null key list and validates nothing else.
 
 > **`GetDownloadSizeAsync` fails on an empty key list** rather than returning 0 — deliberately, so a
 > bad key list cannot masquerade as fully-cached content. A caller that builds keys dynamically must
@@ -1671,7 +1675,9 @@ CdnManager.AuthTokenProvider = () => $"Bearer {MyAuth.CurrentToken}";
 await CdnManager.InitializeAsync();
 ```
 
-Base URLs support `{platform}` and `{appVersion}` tokens.
+Base URLs support `{platform}` and `{appVersion}` tokens. Since `4.1.0-pre.9` both detection and
+substitution are case-insensitive, so `{Platform}` and `{PLATFORM}` expand like the lowercase form
+rather than travelling on as literal braces.
 
 > **`{platform}` does not expand to Unity's platform name.** It reproduces the **`BuildTarget` enum
 > name** — `StandaloneWindows64`, `StandaloneOSX`, `StandaloneLinux64`, `Android`, `iOS`, `WebGL`,
@@ -1698,7 +1704,7 @@ because that is where you go looking for a window or a batchmode command:
 
 ### Not yet validated
 
-Quoted from the changelog for `4.1.0-pre.4`, and still true at `4.1.0-pre.8`:
+Quoted from the changelog for `4.1.0-pre.4`, and still true at `4.1.0-pre.9`:
 
 > Phase 5's field validation: no device matrix, no staging soak, no measurement against a real CDN,
 > and the CI workflows have never run. Three Phase 3 measurements are also unrun — cancel-and-resume,
@@ -1707,9 +1713,9 @@ Quoted from the changelog for `4.1.0-pre.4`, and still true at `4.1.0-pre.8`:
 
 The automated evidence for the CDN layer is ten PlayMode integration tests across three fixtures, all
 against a local `HttpListener` and asserted against the *server's* request log — because Addressables
-in Fast Mode reports success without a byte crossing HTTP — plus 30 EditMode tests over catalog
-parsing, retry and error mapping, and the build snapshot. Every one of them is local. If you are the
-first to run this against a real CDN, expect to find something.
+in Fast Mode reports success without a byte crossing HTTP — plus 53 EditMode cases over catalog
+parsing, retry and error mapping, the build snapshot, and URL token and scheme comparison. Every one
+of them is local. If you are the first to run this against a real CDN, expect to find something.
 
 ---
 
@@ -1845,7 +1851,7 @@ second, with a button through to the CDN Manager window.
 | Scopes | One entry per live, instance-qualified scope id, with a cleanup-all button |
 | Settings | Auto-refresh toggle and refresh interval — see the warning below |
 
-> **Four of the six controls on the Settings tab are inert**: Log Level, Simulate Slow Loading,
+> **All six controls on the Settings tab are live**: Log Level, Simulate Slow Loading,
 > Delay (ms) and Failure Rate (%). They have no change callback and no reader. Only *Auto Refresh
 > Dashboard* and *Refresh Interval* work, and they only change how often the window repaints.
 
@@ -1896,7 +1902,7 @@ connection drops, throttling and latency.
 
 Exactly one field on it is live: **`logLevel`**, and only at its `All` setting. `DebugSettings.IsVerbose`
 is `logLevel == LogLevel.All`, and it gates the verbose logs in `AssetLoader` and `CdnTelemetry`. So
-this asset — not the Dashboard's inert *Log Level* dropdown — is the package's log-level switch.
+this asset is the package's log-level switch, and the Dashboard's *Log Level* dropdown now writes straight to it.
 
 > **`IsVerbose` is `UNITY_EDITOR`-only and hard-`false` in a build.** Both the `Resources` lookup and
 > the comparison sit behind `#if UNITY_EDITOR`; in a player, `IsVerbose` returns `false` without
@@ -1920,7 +1926,8 @@ or with `ScriptableObject.CreateInstance<T>()` in code. Never `new`.
 **Eight filters**: `PathFilter`, `TypeFilter`, `ExtensionFilter`, `ObjectFilter`, `AddressFilter`,
 `AddressableGroupFilter`, `FindAssetsFilter`, `DependentObjectFilter`.
 
-**Seven providers**: `FileNameAddressProvider`, `PathAddressProvider`, `FolderLabelProvider`,
+**Eight providers**, in three families. Address: `PathAddressProvider`,
+`FileNameAddressProvider`. Label: `ConstantLabelProvider`, `FolderLabelProvider`. Version:
 `ConstantVersionProvider`, `DateVersionProvider`, `BuildNumberVersionProvider`,
 `GitCommitVersionProvider`.
 
@@ -1995,9 +2002,53 @@ Behaviour that is easy to get wrong:
 - `TypeFilter` is the one filter that does not self-heal a cold cache — used outside a path that
   calls `Setup()`, it matches nothing. Four filters carry per-asset caches that `Setup()` does not
   invalidate, so two apply runs in one editor session may see stale state.
-- Exported rule JSON is **not portable**: filters and providers are stored as asset *paths*.
-- Of the five shipped JSON templates, only `BasicAddressRules.json` has real filter and provider
-  paths. The other four import as rules with no filters and a null provider.
+- Exported rule JSON carries three things per filter and provider: the asset *path*, the *type
+  name*, and the object's own `JsonUtility` payload. `RuleSerializer` resolves by path first; when
+  the path is empty or does not resolve in this project it rebuilds the type from its name, applies
+  the stored payload with `JsonUtility.FromJsonOverwrite`, and adds the new instance as a sub-asset
+  of the rule data. A rule set exported from another project therefore imports, but the rebuilt
+  filters and providers are *copies* — they are not the exporting project's assets.
+- The five shipped JSON templates use both routes. `BasicAddressRules.json` points at the five
+  `.asset` files under `Editor/Templates/BasicAddressRules/`; `ComprehensiveRules.json`,
+  `MaterialTextureRules.json`, `PlatformSpecificRules.json` and `VersionedAssetsRules.json` carry
+  empty paths and are rebuilt from the type name plus the embedded configuration. This applies to
+  address, label and version rules alike; before 4.1.0-pre.9 only address-rule filters had the
+  fallback, so label and version rules in those templates imported with no filters at all.
+
+### Version filtering
+
+`LayoutRuleData.VersionExpression` narrows a whole apply run to assets whose existing addressables
+entry carries a `version:` label inside the range. It is parsed once, before any rule runs, by
+`LayoutRuleProcessor.PrepareVersionFilter`.
+
+```bash
+"$UNITY" -batchmode -quit -nographics -projectPath . -logFile - \
+  -executeMethod AddressableManager.Editor.CLI.AddressableCLI.SetVersionExpression \
+  -layoutRuleAssetPath "$RULES" -versionExpression "[1.0.0,2.0.0)" -excludeUnversioned true
+```
+
+`VersionExpression.TryParse` accepts exactly two shapes: a bare semantic version (`1.0.0`, read as
+"this version or newer"), and a bracketed range where `[` / `]` are inclusive and `(` / `)`
+exclusive. Either bound of a range may be left empty for an open end — `[1.0.0,)` is the form the
+shipped `ComprehensiveRules.json` template uses.
+
+> **The CLI's own error message lists four forms it will then reject.** On a parse failure
+> All eight forms `SetVersionExpression` advertises are accepted: the three range shapes, a bare
+> version (treated as an inclusive minimum), and the four comparison operators `>=1.0.0`, `>1.0.0`,
+> `<=2.0.0`, `<2.0.0`. The comparison branch was added in 4.1.0-pre.9 — before that the CLI's own
+> error message listed four forms its parser then rejected. `[1.0.0,)` and `[,2.0.0)` also work.
+
+Three more behaviours to know:
+
+- **An empty expression means no filter**, and every asset is eligible. That is the default.
+- **An unparseable expression stops the run.** `PrepareVersionFilter` records the error and returns
+  false, and both `ApplyRules` and `ApplyRulesToAssets` return immediately without touching an asset —
+  so the error text's "No rules were applied" is accurate. Falling through instead would leave no
+  filter set and apply every rule to every asset, which is the opposite of what the expression asked
+  for; that is what the code did before 4.1.0-pre.9.
+- **`ExcludeUnversioned` governs the three "no usable version" cases identically**: an asset that is
+  not addressable yet, one whose entry carries no `version:` label, and one whose label does not
+  parse as a semantic version. Set, they are skipped; clear (the default), they pass through.
 
 ### Layout Rule Editor and Layout Viewer
 
@@ -2033,10 +2084,10 @@ project. Three of its seven conflict types (`CircularDependency`, `MissingRefere
 | **GameObject ▸ Addressable Manager** | Add Global Scope · Add Scene Scope · Add Hierarchy Scope · View in Dashboard |
 | **Assets ▸ Addressable Manager** | Create Preload Config ⚠️ · Create Pool Config ⚠️ · Create Debug Settings |
 | **Assets ▸ Addressables** | Apply Layout Rules |
-| **Assets ▸ Create ▸ Addressable Manager** | Layout Rule Data · Composite Layout Rule Data · Preload Configuration ⚠️ · Pool Configuration ⚠️ · Debug Settings · CDN Settings · Filters ▸ (8) · Providers ▸ Address ▸ (2) · Providers ▸ Label ▸ (1) · Providers ▸ Version ▸ (4) |
+| **Assets ▸ Create ▸ Addressable Manager** | Layout Rule Data · Composite Layout Rule Data · Preload Configuration ⚠️ · Pool Configuration ⚠️ · Debug Settings · CDN Settings · Filters ▸ (8) · Providers ▸ Address ▸ (2) · Providers ▸ Label ▸ (2) · Providers ▸ Version ▸ (4) |
 
-⚠️ These four create `PoolConfiguration` and `AddressablePreloadConfig` assets, both of which are read
-by no runtime code — see [Known inert surfaces](#-known-inert-surfaces).
+⚠️ `PoolConfiguration` is read by no code at all. `AddressablePreloadConfig` is validated at build
+time but never preloads anything — see [Known inert surfaces](#-known-inert-surfaces).
 
 Three caveats:
 
@@ -2045,8 +2096,11 @@ Three caveats:
 - **Documentation** looks for the README at an `Assets/` path and cannot find it in a UPM install.
   Read this file instead.
 - **Batch Address Updater** opens no window — it shows a dialog listing the four methods to call
-  from code. One of those, `BatchAddressUpdater.FindAndReplace`, treats its `find` argument as a
-  **literal** when `caseSensitive: true` and as a **regex** when `false` (the default).
+  from code: `FindAndReplace(find, replace, caseSensitive = false)`, `AddPrefix(groupName, prefix)`,
+  `RemovePrefix(prefix)` and `ConvertToLowercase(groupName = null)`. `FindAndReplace` treats `find`
+  as a **literal** on both paths — the case-insensitive path still goes through `Regex`, but it
+  escapes the needle and doubles `$` in the replacement, so neither argument is ever read as a
+  pattern or a substitution template.
 
 ### Command line for CI
 
@@ -2056,8 +2110,8 @@ can I run in CI" has one answer.
 
 One thing to get right before either family: **Unity exits 0 when `-executeMethod` runs against an
 assembly that did not compile**, and the method never runs. All five rule-automation entry points
-check `EditorUtility.scriptCompilationFailed` themselves and exit 1; five of the eight CDN ones do,
-and three do not — named under the CDN table below.
+check `EditorUtility.scriptCompilationFailed` themselves and exit 1; six of the eight CDN ones do,
+and two do not — named under the CDN table below.
 
 **Rule automation**
 
@@ -2092,7 +2146,7 @@ fi
 | `AddressableCLI.ValidateLayoutRules` | `-layoutRuleAssetPath` (required), `-errorLogFilePath` |
 | `AddressableCLI.DetectConflicts` | `-reportFilePath` (default `conflicts.json`) |
 | `AddressableCLI.ImportRules` | `-layoutRuleAssetPath`, `-importFilePath` (both required), `-mergeMode` |
-| `AddressableCLI.SetVersionExpression` | `-layoutRuleAssetPath` (required), `-versionExpression`, `-excludeUnversioned` — but see [Known inert surfaces](#-known-inert-surfaces) |
+| `AddressableCLI.SetVersionExpression` | `-layoutRuleAssetPath` (required), `-versionExpression`, `-excludeUnversioned` — see [Version filtering](#version-filtering) |
 
 Exit codes across all five: **0** success · **1** compile failure, validation errors, or findings ·
 **2** missing argument, missing asset, or exception.
@@ -2103,15 +2157,22 @@ Exit codes across all five: **0** success · **1** compile failure, validation e
 
 **CDN content**
 
-Five of these eight check the compile flag: `CdnBuildCLI.VerifyOutput` inline, `BuildContent` and
-`BuildContentUpdate` through `CdnBuildPipeline.Prepare`, and `CatalogInspectCLI.Inspect` and
-`CdnTabProbeCLI.ProbeTabs` in their own first statement.
+Six of these eight check the compile flag in their own first statement: all three `CdnBuildCLI`
+entry points (`BuildContent`, `BuildContentUpdate`, `VerifyOutput`),
+`CdnSetupCLI.ApplyPhaseZeroSetup`, `CatalogInspectCLI.Inspect` and `CdnTabProbeCLI.ProbeTabs`. The
+gates on the first four were added in `4.1.0-pre.9`.
 
-> **Three do not check it:** `CdnSetupCLI.ApplyPhaseZeroSetup`,
-> `CdnTestContentCLI.CreateRemoteTestContent` and `CdnTestContentCLI.GenerateTestCorpus` — the string
-> `scriptCompilationFailed` occurs in neither of those two files. A CI job that runs those first sees
-> exit 0 from a broken assembly. Put a compile step in front of them, or run one of the five that
-> does check as the first Unity invocation in the pipeline.
+> **Two do not check it:** `CdnTestContentCLI.CreateRemoteTestContent` and
+> `CdnTestContentCLI.GenerateTestCorpus` — the string `scriptCompilationFailed` does not occur in
+> that file. A CI job that runs either of them first sees exit 0 from a broken assembly. Put a
+> compile step in front of them, or run one of the six that does check as the first Unity invocation
+> in the pipeline.
+
+> The in-assembly gate cannot cover the case it exists for, because it lives in the assembly that is
+> broken. The repository (not the package) carries `ci/unity-run.sh` for that: it scans the Unity log
+> for `error CS`, then for the `FAILURE:` prefix the CDN CLIs print before exiting non-zero, then
+> checks the exit code, and finally checks that the artifact the step was meant to produce exists.
+> It has never been run against a real Unity invocation — see [Not yet validated](#not-yet-validated).
 
 ```bash
 UNITY=".../Unity.exe"
@@ -2298,19 +2359,19 @@ scopes carry an instance identifier. Never persist or parse a generated scope id
 ## 🚧 Known inert surfaces
 
 Documented rather than left to be discovered, because an inert feature that looks live costs more than
-an absent one. Every row below is a surface that exists, compiles, serializes, and changes no
-behaviour whatsoever.
+an absent one. Every row below is a surface that exists, compiles and serializes while changing no behaviour —
+with one qualified exception, `AddressablePreloadConfig`, whose build-gate fields are now honoured
+by an editor build step even though no *runtime* code reads the asset.
 
 | Surface | Verdict |
 | :-- | :-- |
 | `PoolConfiguration` (the whole `ScriptableObject`) | **Read by no runtime code.** See below |
-| `AddressablePreloadConfig` (the whole `ScriptableObject`) | **Read by no runtime code.** See below |
+| `AddressablePreloadConfig`: `preloadEntries`, `loadInParallel`, `maxConcurrentLoads` | **Read by no runtime code.** See below |
+| — its `validateOnBuild` / `failBuildOnError` | **Live since 4.1.0-pre.9**: `PreloadConfigBuildValidator` (an `IPreprocessBuildWithReport`) runs `Validate()` on every config during a player build and fails the build when asked |
 | `DebugSettings`, every field but `logLevel` | No callers; see [The debug settings asset](#the-debug-settings-asset) |
-| `LayoutRuleData.VersionExpression`, `.ExcludeUnversioned` | Stored, serialized, CLI-writable, read by nothing. See below |
 | `LayoutRuleData.AutoApplyOnModified` | Inert. Only `AutoApplyOnImport` is honoured |
-| `LabelRule.AppendToExisting` | Inert. Labels are always appended; setting it `false` does not replace them |
 | `ExtensionFilter.MatchAny`, `AddressableGroupFilter`'s match-any flag | Inert — both branches are identical code |
-| Dashboard *Settings* tab: Log Level, Simulate Slow Loading, Delay, Failure Rate | Inert. No change callback, no reader |
+| ~~Dashboard *Settings* tab: Log Level, Simulate Slow Loading, Delay, Failure Rate~~ | **Fixed in 4.1.0-pre.9.** All four now write to `DebugSettings.Instance` and persist |
 | `AssetValidator` recording (`ValidationMode`, `GetValidationStats`) | Manual checks work, nothing reports in. See below |
 | `DownloadPolicy.MaxRetries`, `.MaxConcurrentDownloads` | Inert; see [The CDN settings asset](#the-cdn-settings-asset) |
 | `CacheService.BudgetExceeded` via `CdnManager` | Never fires; see [Cache maintenance](#cache-maintenance) |
@@ -2319,18 +2380,17 @@ behaviour whatsoever.
 | `MonitoredAssetLoader.Release<T>(handle, address)` | The `address` argument is never read |
 
 **The two configuration assets.** Not one field and not one method of `PoolConfiguration` is read by
-any runtime code — its own class documentation says so, in capitals. `AddressablePreloadConfig` is in
-exactly the same position, and says nothing about it: its only references anywhere in the package are
-its custom inspector and the two create-menu items. So **Create Pool Config** and **Create Preload
-Config** both make assets that configure nothing. Create pools with `Assets.CreatePool`,
+any runtime code — its own class documentation says so, in capitals. **Create Pool Config** therefore
+makes an asset that configures nothing.
+
+`AddressablePreloadConfig` is no longer in that position, but only partly out of it. Its
+`validateOnBuild` and `failBuildOnError` flags are honoured by `PreloadConfigBuildValidator`, which
+validates every config as a player-build step and can fail the build. Its `preloadEntries`,
+`loadInParallel` and `maxConcurrentLoads` are still read by nothing — the asset is a build-time
+checklist, not a preloader. Create pools with `Assets.CreatePool`,
 `Standard.CreateDynamicPool` or `AddressablePoolManager.CreatePoolAsync`; preload with
 `Simple.Preload` / `Standard.PreloadAsync`, whose own caveat is under
 [Simple](#simple--no-handle-to-manage).
-
-**Version expressions.** `VersionExpression` and `ExcludeUnversioned` are serialized, exposed,
-round-tripped by the serializer, and written by a whole CLI entry point — and read by nothing.
-`SemanticVersion` and `VersionExpression` exist only to validate the string before storing it. Version
-*rules* work; version *expression filtering* does not exist.
 
 **Validator recording.** The mode flags and the manual `ValidateAddress` / `ValidateAssetReference`
 checks work. But nothing calls the recording entry points — no loader, pool, scope or cache reports
@@ -2359,13 +2419,14 @@ Unity -batchmode -projectPath . -runTests -testPlatform EditMode -logFile -
 
 ### What is covered
 
-| Assembly | Fixtures | `[Test]` | `[UnityTest]` |
-| :-- | --: | --: | --: |
-| `AddressableManager.Tests.Editor` | 11 | 141 | 0 |
-| `AddressableManager.Tests.Runtime` | 3 | 1 | 9 |
+| Assembly | Fixtures | `[Test]` | `[UnityTest]` | `[TestCase]` |
+| :-- | --: | --: | --: | --: |
+| `AddressableManager.Tests.Editor` | 12 | 150 | 0 | 14, on 5 further methods |
+| `AddressableManager.Tests.Runtime` | 3 | 1 | 9 | 0 |
 
-There are no `[TestCase]`, `[TestCaseSource]`, `[Values]` or `[Ignore]` attributes anywhere, so
-method count equals case count.
+That is **164 EditMode cases** and **10 PlayMode cases**. The only parameterised methods in the
+package are the five in `CdnUrlCasingTests`; there are no `[TestCaseSource]`, `[Values]` or
+`[Ignore]` attributes anywhere, so everywhere else method count equals case count.
 
 | Fixture | Covers |
 | :-- | :-- |
@@ -2376,6 +2437,7 @@ method count equals case count.
 | `CatalogReaderTests` (14) | CDN catalog parsing |
 | `PoolAndBudgetContractTests` (13) | Pool and shared memory-budget contracts |
 | `CdnRetryAndErrorMappingTests` (12) | Retry, backoff and error mapping |
+| `CdnUrlCasingTests` (23 cases over 14 methods) | `HostRewriter.ResolveTokens` and `CdnEnvironment.IsValid` string comparisons |
 | `DeprecatedApiContractTests` (9) | The `[Obsolete]` surface stays source-compatible until 5.0.0 |
 | `AssetLoaderRegistryTests` (7) | Weak-ref loader registry and catalog-invalidation reach |
 | `CdnBuildSnapshotTests` (4) | Build snapshot and diff |
@@ -2384,12 +2446,14 @@ method count equals case count.
 | `Phase2CdnBootIntegrationTests` (4, PlayMode) | CDN boot flow; platform-token folder naming |
 | `Phase0LocalServerIntegrationTests` (1, PlayMode) | Local content server over real HTTP |
 
-> **These counts are from the source, not from a run.** `4.1.0-pre.8` deliberately did not re-run the
-> suite: its release commit touches `CHANGELOG.md`, the repository-root `README.md` and the `version`
-> field of `package.json` — no `.cs` file changed. (The `4.1.0-pre.7..4.1.0-pre.8` *tag* range shows
-> only the first and third of those, because the tags are subtree splits of the package directory and
-> the root README is not in it.) The last recorded full green run was at `4.1.0-pre.6`. Re-run before
-> quoting a pass rate.
+> **These counts are from the source, not from a run.** The changelog records a full green EditMode
+> run at `4.1.0-pre.9`, which is also when `CdnUrlCasingTests` was added; its figure differs from the
+> source count above by one case, so treat either as approximate and re-run before quoting a pass
+> rate. `4.1.0-pre.8` deliberately did not run the suite at all: its release commit touches
+> `CHANGELOG.md`, the repository-root `README.md` and the `version` field of `package.json` — no
+> `.cs` file changed. (The `4.1.0-pre.7..4.1.0-pre.8` *tag* range shows only the first and third of
+> those, because the tags are subtree splits of the package directory and the root README is not in
+> it.)
 
 Also in the repository, useful in CI: `Tools/check-min-unity-api.sh` compiles the package against a
 chosen editor's reference assemblies in four configurations (runtime-player-Task,

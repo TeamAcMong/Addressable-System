@@ -2,7 +2,7 @@
 
 **Complete reference for all editor windows and tools**
 
-Version 3.5.0 | Unity 2021.3+
+Version 4.1.0-pre.9 | Unity 2023.1+
 
 ---
 
@@ -12,21 +12,24 @@ Version 3.5.0 | Unity 2021.3+
 2. [Addressable Manager Dashboard](#addressable-manager-dashboard)
 3. [Layout Rule Editor](#layout-rule-editor)
 4. [Layout Viewer](#layout-viewer)
-5. [Debug Settings Window](#debug-settings-window)
-6. [Menu Items & Shortcuts](#menu-items--shortcuts)
+5. [CDN Manager](#cdn-manager)
+6. [Custom Inspectors](#custom-inspectors)
+7. [Menu Items & Shortcuts](#menu-items--shortcuts)
 
 ---
 
 ## Overview
 
-The Addressable Manager provides five main editor tools:
+The package ships four editor windows:
 
 | Tool | Purpose | Shortcut |
 |------|---------|----------|
 | Dashboard | Real-time monitoring and performance | `Ctrl+Alt+A` |
 | Layout Rule Editor | Create and manage automation rules | - |
-| Layout Viewer | Visualize addressable layout | - |
-| Debug Settings | Configure runtime behavior | - |
+| Layout Viewer | Inspect the addressable layout and its conflicts | - |
+| CDN Manager | Validate, build and inspect remote content | - |
+
+Debug settings are a ScriptableObject (`Assets > Create > Addressable Manager > Debug Settings`), edited either in its own inspector or from the Dashboard's Settings tab. There is no separate Debug Settings window.
 
 ---
 
@@ -34,35 +37,38 @@ The Addressable Manager provides five main editor tools:
 
 **Path**: `Window > Addressable Manager > Dashboard`
 **Shortcut**: `Ctrl+Alt+A` (Windows) / `Cmd+Alt+A` (Mac)
+**Minimum size**: 800×600
 
-The dashboard provides real-time monitoring of addressable assets during play mode.
+The dashboard provides real-time monitoring of addressable assets during play mode. Monitoring is Editor-only — `EditorAssetMonitor` lives in the Editor assembly, and the tracker is cleared when you exit Play Mode.
+
+A one-line **CDN status strip** sits above the tabs: environment id, app version, cache size and network state while playing (`not in play mode` / `not initialised` otherwise), plus a button that opens the CDN Manager window. It refreshes once per second while the Dashboard is open.
 
 ### Tabs
 
-#### 1. Assets Tab
+#### 1. Active Assets
 
-**Purpose**: View all currently loaded assets
+**Purpose**: View all currently tracked asset handles
 
 **Features**:
-- **Search Bar**: Filter assets by name or type
-- **Scope Filter**: Show assets from specific scopes (Global, Session, Scene, Hierarchy)
-- **Asset Count**: Total number of loaded assets
-- **Asset Details**:
-  - Address
-  - Type
-  - Scope
-  - Load time
-  - Reference count
-  - Memory size
+- **Search field**: matches the address or the type name
+- **Scope filter**: a dropdown rebuilt from the live scope ids as they appear (there is no fixed Global/Session/Scene/Hierarchy list — scene and hierarchy scope ids are instance-qualified, like `Scene-MainScene#h1234`, and are shown as `DisplayName (Category)`)
+- **Asset count label**
+- **Rows**, ordered newest-load-first, each rendered as two lines rather than a column grid:
+  - address (bold)
+  - `Type • <scope> Scope • Loaded <n> ago`
+  - right-hand side: `Refs: <count>` and an estimated size in KB
 
 **Usage**:
 ```
 1. Enter play mode
 2. Open Dashboard
-3. Switch to Assets tab
+3. Switch to Active Assets tab
 4. Search or filter as needed
-5. Click asset to ping in project
 ```
+
+Rows are not clickable — there is no ping-in-project from this tab, and no sortable columns.
+
+> **The memory figures are per-type constants, not measurements.** `AssetTrackerService.EstimateMemorySize` returns a fixed value per type name: Texture2D 1 MB, AudioClip 512 KB, GameObject 256 KB, Material 64 KB, Mesh 128 KB, ScriptableObject 32 KB, everything else 100 KB. Every MB figure in this window — rows, scope totals, the graph, the CSV export — is a proxy for asset count weighted by type. Use the Unity Profiler for real bytes.
 
 **Performance Tips**:
 - Use search to narrow down large lists
@@ -71,137 +77,87 @@ The dashboard provides real-time monitoring of addressable assets during play mo
 
 ---
 
-#### 2. Performance Tab
+#### 2. Performance
 
 **Purpose**: Monitor system performance metrics
 
 **Features**:
-- **Quick Stats**:
-  - Total Assets: Number of tracked assets
-  - Cache Hit Ratio: Percentage of cache hits
-  - Total Memory: Memory used by addressables
-  - Avg Load Time: Average asset load duration
+- **Stat cards**:
+  - Total Assets
+  - Cache Hit Ratio
+  - Total Memory (estimated — see the caveat above)
+  - Avg Load Time
 
-- **Memory Graph**: Real-time memory usage visualization
-  - Shows total, cached, and active memory over time
-  - Peak and average memory statistics
-  - Threshold indicators (warning/critical)
-  - Scrolling 5-minute window
-  - Auto-scaling or fixed scale
+- **Memory Graph**: built in code and inserted under the stat cards, with a summary label above it showing the latest total / cached / active figures plus `Peak` and `Avg` once samples exist.
+  - Keeps the last 300 samples
+  - Plots the **total** series only; cached and active appear in the summary text, not as lines
+  - Threshold grid lines at 50 MB (warning) and 100 MB (critical)
+  - Vertical scale auto-fits the tallest sample (minimum 10 MB, plus 20 % headroom)
+  - One sample per Editor update tick while in Play Mode, so the time window it covers depends on the Editor's frame rate
+  - Nothing in the UI exposes the thresholds, the sample count or the auto-scale flag — they are code defaults
 
-- **Slowest Assets List**: Top assets by load time
-  - Asset address and type
-  - Average load duration in milliseconds
-  - Useful for identifying bottlenecks
+- **Slowest Loading Assets**: address, type and average load time in ms
 
-- **Export Report**: Save performance data to CSV
-  - Full asset list with metrics
-  - Load time statistics
-  - Memory usage breakdown
-  - Suitable for analysis in Excel/Google Sheets
+- **Export Report (CSV)**: opens a save-file panel and writes one row per recorded snapshot
+  - Columns: `Timestamp, Total Memory (MB), Active Assets, Avg Load Time (s), Cache Hit Ratio`
+  - Suitable for analysis in Excel / Google Sheets
 
 **Usage**:
 ```
 1. Enter play mode
 2. Open Dashboard > Performance tab
 3. Memory graph updates automatically
-4. Click "Export Report" to save data
+4. Click "Export Report (CSV)" to save data
 5. Analyze slowest assets to optimize
 ```
 
-**Memory Graph Controls**:
-- Graph shows last 300 samples (5 minutes at 1 sample/second)
-- Red line: Critical memory threshold (100MB default)
-- Orange line: Warning threshold (50MB default)
-- Blue area: Total addressable memory
-- Auto-scales by default, can configure thresholds
-
 ---
 
-#### 3. Scopes Tab
+#### 3. Scopes
 
-**Purpose**: Manage asset scopes and lifecycles
+**Purpose**: Inspect and clear asset scopes
 
 **Features**:
-- **Per-Scope View**: Separate foldouts for each scope
-  - Global: Assets that live forever
-  - Session: Assets that persist across scenes
-  - Scene: Assets tied to current scene
-  - Hierarchy: Assets tied to GameObjects
+- **Per-scope foldouts**, created lazily the first time a live scope id is reported to the tracker — Global, the `ScopeManager` "Session" entry, each `Scene-…` / `Hierarchy-…` scope, each `Hybrid:…` scope, and any custom scope you created. The header reads `DisplayName (Category Scope)`, or just `Category Scope` when no distinct display name was reported.
+- **Scope statistics**: `Assets: N | Memory: X MB`, with `inactive` appended when the scope is deactivated
+- **Asset list**: `address (Type) - Refs: N`
+- **Cleanup buttons**: one per scope, plus **Cleanup All Scopes** in the tab toolbar
 
-- **Scope Statistics**:
-  - Asset count
-  - Total memory usage
-
-- **Asset Lists**: Per-scope asset details
-  - Address, type, reference count
-
-- **Cleanup Buttons**: Release all assets in a scope
-  - Per-scope cleanup
-  - Cleanup all scopes at once
-
-**Usage**:
-```
-# Monitor scene-specific assets
-1. Open Dashboard > Scopes tab
-2. Expand "Scene" foldout
-3. Load scene
-4. Watch assets appear
-5. Unload scene
-6. Assets auto-released
-
-# Manual cleanup
-1. Select scope (e.g., Session)
-2. Click "Cleanup Session"
-3. Confirm dialog
-4. Assets in that scope released
-```
+> **What Cleanup does depends on Play Mode.** In Play Mode it calls `ScopeManager.ClearScope`, releasing real handles, then clears the Dashboard's rows. Outside Play Mode there is no live loader, so it only clears the Dashboard's own rows — the confirmation dialog tells you which of the two you are about to get.
 
 **Best Practices**:
 - Use Scene scope for level-specific assets
-- Use Session scope for UI/systems that persist
+- Use a `ScopeManager` session scope for UI/systems that persist across scenes
 - Use Global scope sparingly (never auto-cleaned)
-- Monitor Hierarchy scope for GameObject-tied assets
+- Watch Hierarchy scopes for GameObject-tied assets
 
 ---
 
-#### 4. Settings Tab
+#### 4. Settings
 
-**Purpose**: Configure dashboard and runtime behavior
+**Purpose**: Configure the dashboard, and the `DebugSettings` asset it writes to
 
-**Features**:
-- **Log Level**: Control debug verbosity
-  - None: No logging
-  - Errors Only: Only log errors
-  - Warnings and Errors: Default level
-  - All: Verbose logging (includes info)
+**Widgets**, in order:
+- **Log Level** dropdown: `None`, `Errors Only`, `Warnings and Errors` (default), `All`
+- **Auto Refresh Dashboard** toggle
+- **Refresh Interval (ms)** slider: 100–5000, default 500
+- **Simulate Slow Loading** toggle
+- **Delay (ms)** slider: 100–5000
+- **Failure Rate (%)** slider: 0–50
+- **Reset All Settings** / **Reset Statistics** buttons
 
-- **Auto-Refresh**: Enable/disable automatic updates
-  - Toggle on/off
-  - Refresh interval slider (100ms - 5000ms)
-  - Recommended: 500ms for good balance
+Auto-refresh and the interval drive this window. The other four write through to `DebugSettings.Instance` and mark the asset dirty.
 
-- **Simulation Settings**: Test error scenarios
-  - Simulate Slow Loading: Add artificial delay
-  - Delay slider: 0-5000ms
-  - Failure Rate: Simulate random load failures (0-100%)
+> **Only the log level changes behaviour.** `DebugSettings.IsVerbose` (`logLevel == All`) gates verbose logging in `AssetLoader` and `CdnTelemetry`. Nothing in the package reads `simulateSlowLoading`, `simulatedDelayMs` or `simulateFailureRate`; `DebugSettings.ShouldSimulateFailure()` and `GetNetworkDelay()` have no callers. The three simulation widgets persist a value and do nothing else — call those methods from your own loading code if you want the behaviour.
 
-- **Actions**:
-  - Reset Settings: Restore defaults
-  - Reset Statistics: Clear performance data
+**Reset All Settings** resets the widgets' displayed values (and re-reads the log level from the asset); it does not write defaults back to `DebugSettings`. **Reset Statistics** clears the tracker and the performance metrics after a confirmation.
 
 **Usage**:
 ```
 # Reduce overhead
 1. Go to Settings tab
-2. Set Auto-Refresh interval to 1000ms or higher
-3. Or disable Auto-Refresh entirely
-
-# Test error handling
-1. Enable "Simulate Slow Loading"
-2. Set delay to 1000ms
-3. Set failure rate to 10%
-4. Test loading code with delays/failures
+2. Set Refresh Interval to 1000ms or higher
+3. Or turn Auto Refresh Dashboard off entirely
 ```
 
 ---
@@ -209,27 +165,25 @@ The dashboard provides real-time monitoring of addressable assets during play mo
 ## Layout Rule Editor
 
 **Path**: `Window > Addressable Manager > Layout Rule Editor`
+**Minimum size**: 1000×600
 
-The Rule Editor is the primary tool for creating and managing addressable automation rules.
+The Rule Editor is the primary tool for creating and managing addressable automation rules. On open it selects the first `LayoutRuleData` it finds in the project; with none selected it shows a **Create New LayoutRuleData** button instead of the three panels.
 
 ### Layout
 
-The window is divided into three panels:
-
 ```
 ┌─────────────────────────────────────────────────┐
-│ Toolbar (Rule Data, Actions)                    │
+│ Toolbar (Rule Data, Validate/Apply/Import/Export)│
 ├──────────┬──────────────────┬───────────────────┤
 │ Rule     │ Configuration    │ Preview           │
 │ List     │ Panel            │ Panel             │
-│ (Left)   │ (Center)         │ (Right)           │
+│ (250px)  │ (Center)         │ (350px)           │
 │          │                  │                   │
-│ • Rules  │ Name             │ Matched Assets:   │
-│ • Priority│ Description      │ • asset1.png      │
-│ • Type   │ Filters          │ • asset2.png      │
-│          │ Provider         │ • ...             │
-│          │ Settings         │                   │
-│          │                  │ Stats: 45/1000    │
+│ Address  │ Name             │ Preview Limit     │
+│ Label    │ Enabled          │ Refresh Preview   │
+│ Version  │ Description      │ • asset1.png      │
+│ tabs     │ Filters          │ • asset2.png      │
+│          │ Provider         │ Showing 45 of 300 │
 └──────────┴──────────────────┴───────────────────┘
 ```
 
@@ -237,316 +191,195 @@ The window is divided into three panels:
 
 ### Toolbar
 
-**Rule Data Selector**:
-- Select which LayoutRuleData asset to edit
-- Dropdown shows all LayoutRuleData assets in project
-- Switching rules clears selection
+**Rule Data Selector**: an ObjectField accepting a `LayoutRuleData` asset. Changing it clears the current rule selection.
 
 **Action Buttons**:
-- **Validate**: Check rules for errors
-  - Shows validation summary dialog
-  - Lists all warnings and errors
-  - Recommended before applying
+- **Validate**: runs `RuleValidator` and shows a summary dialog. The dialog lists the first ten messages with their severity; every message is also written to the console.
 
-- **Apply All**: Execute all rules
-  - Applies address, label, and version rules
-  - Shows progress bar
-  - Displays results summary
-  - Cannot undo - recommend backup first
+- **Apply All**: confirms, then runs `LayoutRuleProcessor.ApplyRules` with a progress bar and reports processed / addresses / labels / error counts. There is no undo — back up first.
 
-- **Import**: Load rules from JSON
-  - Select template or exported rules
-  - Choose merge or replace mode
-  - Merge: Add rules to existing set
-  - Replace: Clear existing rules first
+- **Import**: file panel for a `.json` file, then a **Merge / Replace** choice.
+  - Merge: keep existing rules and add the imported ones
+  - Replace: remove all existing rules first
 
-- **Export**: Save rules to JSON
-  - Choose output location
-  - Creates shareable template
-  - Version controlled format
-  - Can import back later
+- **Export**: save panel for a `.json` file, then offers to reveal it in the file browser. The default file name comes from the rule data's Description.
+
+Import/export goes through `RuleSerializer`, which stores each filter's and provider's type name, asset path and serialized JSON — resolving by path on import, and otherwise reconstructing the object from the type name and storing it as a sub-asset of the rule data.
 
 ---
 
 ### Left Panel: Rule List
 
-**Rule Type Tabs**:
-- Address: Rules that assign addresses and groups
-- Label: Rules that add metadata labels
-- Version: Rules that apply version tags
+**Rule Type Toggles** (toolbar buttons, exactly one active):
+- Address: rules that assign addresses and groups
+- Label: rules that add labels
+- Version: rules that apply version tags
 
-**Rule Items**:
-Each rule shows:
-- Rule name (click to select)
-- Number of filters
-- Priority value
-- Enabled/disabled state (visual indicator)
+**Rule Items**: each shows the rule name (click to select) and one mini line, `Filters: N | Priority: P`. There is no enabled/disabled badge in the list — the Enabled toggle lives in the configuration panel.
 
 **Controls**:
-- **+ Add Rule**: Create new rule of current type
-- **- Remove**: Delete selected rule (with confirmation)
+- **+ Add Rule**: appends a new rule of the current type, named `Address Rule N` / `Label Rule N` / `Version Rule N`
+- **- Remove**: deletes the selected rule (enabled only while a rule is selected; no confirmation)
 
-**Sorting**:
-- Rules displayed in priority order (highest first)
-- Higher priority rules process first
-- Use priority to control override behavior
+**Ordering**: the list shows rules in stored order. Priority affects *processing*, not display — `LayoutRuleProcessor` sorts by priority descending (highest first) unless the rule data's `Preserve Rule Order` is on, in which case stored order wins.
 
 ---
 
 ### Center Panel: Configuration
 
-**When rule selected, shows**:
+**When a rule is selected, the panel draws every field by hand:**
 
-#### Basic Settings
-- **Rule Name**: Descriptive identifier
-- **Enabled**: Toggle rule on/off without deleting
-- **Description**: Documentation for team members
-- **Priority**: Processing order (0-1000, higher first)
+#### Address rule
+- **Rule Name**
+- **Enabled**
+- **Description** (multi-line text area)
+- **Target Group** — the addressable group name. `/` and `\` are not valid in group names; the editor warns and shows the normalized name it will use.
+- **Group Template** — an `AddressableAssetGroupTemplate`. Leave it empty and a group this rule has to *create* inherits the Default Group's bundle mode and build/load paths; the editor shows a HelpBox saying so.
+- **Priority** — a plain int field, default 0, no clamping. Higher is applied first.
+- **Skip Existing** — don't touch assets that already have an address. This also stops the rule relocating those entries into its target group.
+- **Allow Group Move** — default on. Turn it off to protect hand-configured groups from being emptied by this rule.
+- **Filters (AND logic)** — object fields for `AssetFilterBase`, one `-` button per row, `+ Add Filter` at the bottom
+- **Address Provider** — a single `AddressProviderBase` object field
 
-#### Address Rule Settings
-- **Target Group Name**: Which addressable group
-  - Group created if doesn't exist
-  - Use consistent names
-- **Skip Existing**: Preserve manual addresses
-  - true: Don't override existing addresses
-  - false: Apply rule even if address set
+#### Label rule
+Rule Name, Enabled, Description, Priority, **Append to Existing** (on = add to the existing label set, off = replace it), Filters, **Label Provider**.
 
-#### Label Rule Settings
-- **Append To Existing**: Keep or replace labels
-  - true: Add labels to existing set
-  - false: Replace all labels
+#### Version rule
+Rule Name, Enabled, Description, Priority, **Skip Existing**, Filters, **Version Provider**.
 
-#### Version Rule Settings
-- **Skip Existing**: Preserve manual versions
-  - true: Don't override existing versions
-  - false: Apply rule even if version set
+#### Available filters (8, all created from `Assets > Create > Addressable Manager > Filters`)
+- **PathFilter** — match by asset path
+- **TypeFilter** — match by Unity type
+- **ExtensionFilter** — match by file extension
+- **AddressFilter** — match on the existing address
+- **AddressableGroupFilter** — match by group membership
+- **ObjectFilter** — match specific assets
+- **FindAssetsFilter** — match an `AssetDatabase.FindAssets` search filter
+- **DependentObjectFilter** — match dependencies of given objects
 
-#### Filters Section
-- List of filters (AND logic - all must pass)
-- **Add/Remove** buttons for each filter slot
-- Drag-and-drop filter assets from project
-- Empty slots ignored
+> **PathFilter defaults to `Contains` matching.** Its `Match Mode` options are `Contains`, `StartsWith`, `EndsWith`, `Exact`, `Regex` and `Glob`, and the first four compare with plain string operations — a pattern containing `*` or `**` matches **nothing** until you switch Match Mode to `Glob`. Typing `**` under `Regex` throws an invalid-pattern exception that is caught and logged as `[PathFilter] Invalid Regex pattern …`, after which the filter rejects everything. The default pattern is `Assets/` and matching is case-insensitive by default.
+>
+> Also note a **disabled filter matches everything** — `AssetFilterBase.IsMatch` returns true when `Enabled` is off, so unchecking a filter widens the rule rather than disabling the rule.
 
-**Common Filter Assets**:
-- PathFilter: Match by file path
-- TypeFilter: Match by Unity type
-- ExtensionFilter: Match by file extension
-- AddressFilter: Match existing addresses
-- AddressableGroupFilter: Match by group
-- ObjectFilter: Match specific assets
-- FindAssetsFilter: Search using AssetDatabase
-- DependentObjectFilter: Match dependencies
-
-#### Provider Section
-- Single provider per rule
-- Generates the output (address/labels/version)
-- Drag-and-drop from project
-
-**Address Providers**:
-- FileNameAddressProvider: Use asset filename
-- PathAddressProvider: Use relative path
-
-**Label Providers**:
-- ConstantLabelProvider: Fixed label(s)
-- FolderLabelProvider: Label from folder name
-
-**Version Providers**:
-- ConstantVersionProvider: Fixed version
-- BuildNumberVersionProvider: From Unity build settings
-- GitCommitVersionProvider: From git commit/tag
-- DateVersionProvider: From timestamp
+#### Available providers (8, from `Assets > Create > Addressable Manager > Providers`)
+- Address: **PathAddressProvider**, **FileNameAddressProvider**
+- Label: **ConstantLabelProvider**, **FolderLabelProvider**
+- Version: **ConstantVersionProvider**, **DateVersionProvider**, **BuildNumberVersionProvider**, **GitCommitVersionProvider**
 
 ---
 
 ### Right Panel: Preview
 
-**Purpose**: See which assets match the selected rule before applying
+**Purpose**: See which assets match the selected rule before applying.
 
 **Features**:
-- **Preview Limit Slider**: Control sample size (10-200)
-  - Lower limit for fast preview
-  - Higher limit for comprehensive check
+- **Preview Limit** slider: 10–200, default 50
+- **Refresh Preview** button (its label reads "Generating…" while a preview runs)
+- **Statistics**: `Showing X of Y matched assets`
+- **Conflict box**: after an *address* preview, the whole rule set is simulated and any duplicate addresses it would create are listed as an error HelpBox. Label and version previews do not run this check.
+- **Asset list**: each item shows the file name (click to ping and select it in the project), the full asset path, and the generated `Address:` / `Labels:` / `Version:` value — or a red error box when generation threw or produced an empty value.
 
-- **Refresh Preview Button**: Generate preview
-  - Scans project for matching assets
-  - Shows first N matches
-  - Displays generated output
-
-- **Statistics**: Shows X of Y matched
-  - X: Number shown in preview
-  - Y: Total matching assets
-
-- **Asset List**: Each item shows:
-  - Asset filename (clickable - pings in project)
-  - Full asset path
-  - Generated address/label/version
-  - Error message if generation failed
+The preview scan covers `Assets` only, and skips `Assets/AddressableAssetsData/`.
 
 **Usage**:
 ```
-1. Select a rule from left panel
-2. Adjust preview limit if needed (default: 50)
+1. Select a rule from the left panel
+2. Adjust Preview Limit if needed (default: 50)
 3. Click "Refresh Preview"
-4. Wait for preview generation
-5. Review matched assets
-6. Check generated outputs are correct
-7. If wrong, adjust filters/provider
-8. Refresh preview again
-9. When satisfied, click "Apply All"
+4. Review matched assets and generated outputs
+5. If wrong, adjust filters/provider and refresh again
+6. When satisfied, click "Apply All"
 ```
 
 **Performance Tips**:
-- Use lower limit (20-30) for quick checks
-- Increase limit when finalizing rules
-- Preview can be slow with 1000+ matches
-- Consider splitting rules if preview too slow
+- Use a lower limit (20–30) for quick checks — the limit caps the rows built, not the scan
+- Every refresh walks every asset under `Assets`, so it gets slower with project size
+- Split rules into smaller sets if the scan becomes painful
 
 ---
 
 ## Layout Viewer
 
 **Path**: `Window > Addressable Manager > Layout Viewer`
+**Minimum size**: 900×500
 
-Visualize the complete addressable layout and detect conflicts.
+Inspect the live `AddressableAssetSettings` and the conflicts `RuleConflictDetector` finds in it. Without initialized Addressables settings the window shows an error box and nothing else.
 
-### Features
+### Toolbar
+- **Refresh** — re-run conflict detection now
+- **Auto Refresh** toggle — on by default, re-runs every 2 seconds
+- **Search** field — filters *entries* by address substring, case-insensitive
+- **Conflicts Only** toggle — hide groups with no conflicting entries
+- **Export Report** — save panel writing a CSV with columns `Type, Message, Affected Assets, Suggestion`
 
-#### Asset Search
-- **Search Box**: Filter by address, type, path
-- **Type Filter**: Show only specific asset types
-- **Group Filter**: Show only specific groups
-- **Clear Filters**: Reset all filters
+### Summary bar
+`Groups: N`, `Entries: N`, `Labels: N`, and either `✖ N Error(s)` / `⚠ N Warning(s)` or `✓ No Issues`. Duplicate and empty addresses count as errors; every other conflict type counts as a warning.
 
-#### Asset Tree View
-Displays all addressable assets in hierarchical view:
-- **Group Level**: Addressable groups
-- **Asset Level**: Individual assets
-  - Address
-  - Type
-  - Path
-  - Labels
-  - Version
-  - File size
-  - Reference count (runtime)
+### Left panel: Addressable Groups
+One foldout per group, labelled `GroupName (N entries)` and marked `⚠` when it contains a conflicting entry. Expanding shows each entry as one row: the address, its labels in brackets when it has any, and a `→` button that pings and selects the asset. There is no type filter, group filter, per-asset inspector, dependency view or file-size column.
 
-#### Inspector Panel
-When asset selected:
-- Full asset details
-- Applied rules (which rules configured this asset)
-- Dependencies (what this asset references)
-- Referrers (what references this asset)
-- Validation status
+### Right panel: Validation & Conflicts
+Conflicts grouped by type, each with its message, up to five affected asset paths (each with its own `→` ping button, plus an "… and N more" line), and the detector's suggestion. Conflict types:
 
-#### Conflict Detection
-- **Detect Conflicts Button**: Scan for issues
-  - Duplicate addresses
-  - Missing dependencies
-  - Orphaned assets
-  - Invalid paths
+`DuplicateAddress`, `InvalidAddressCharacters`, `EmptyAddress`, `CircularDependency`, `MissingReference`, `GroupConflict`, `SettingsNotInitialized`.
 
-- **Conflict Report**:
-  - Conflict type
-  - Affected assets
-  - Severity (warning/error)
-  - Suggested fixes
+Detection runs on open, on **Refresh**, and on the auto-refresh tick — there is no separate "Detect Conflicts" button in this window (the `LayoutRuleData` inspector has one).
 
 ### Usage
 
-**Verify Rule Application**:
+**Verify rule application**:
 ```
-1. Apply rules in Rule Editor
+1. Apply rules in the Rule Editor
 2. Open Layout Viewer
-3. Search for specific assets
-4. Verify addresses match expectations
-5. Check labels are correct
-6. Confirm version tags applied
+3. Search for specific addresses
+4. Verify addresses and labels match expectations
 ```
 
-**Debug Conflicts**:
+**Debug conflicts**:
 ```
 1. Open Layout Viewer
-2. Click "Detect Conflicts"
-3. Review conflict list
-4. For each conflict:
-   - Note affected assets
-   - Review rule priorities
-   - Adjust filters or priorities
-   - Reapply rules
-5. Detect conflicts again
-6. Repeat until clean
-```
-
-**Audit Addressable Layout**:
-```
-1. Open Layout Viewer
-2. Expand all groups
-3. Review asset organization
-4. Check for:
-   - Consistent naming
-   - Proper grouping
-   - Complete labeling
-   - Version coverage
-5. Export report if needed
+2. Read the Validation & Conflicts panel (it refreshes itself)
+3. For each conflict: note affected assets, review rule priorities,
+   adjust filters or priorities, reapply rules
+4. Repeat until the summary reads "✓ No Issues"
 ```
 
 ---
 
-## Debug Settings Window
+## CDN Manager
 
-**Path**: `Window > Addressable Manager > Debug Settings`
+**Path**: `Window > Addressable Manager > CDN Manager`
+**Minimum size**: 560×400
 
-Configure runtime debugging and simulation behavior.
+Six tabs, in this order, exactly one active at a time: **Validator**, **Server**, **Update Preview**, **Build**, **Catalog**, **Runtime Monitor**. The header shows the current `EditorUserBuildSettings.activeBuildTarget`.
 
-### Settings
+See `Documentation/CDN_SYSTEM.html` for the CDN workflow itself.
 
-#### Logging
-- **Enable Console Logging**: Toggle all logging
-- **Log Level**: Verbosity control
-- **Log Timestamps**: Add timestamps to logs
-- **Log Stack Traces**: Include call stacks
+---
 
-#### Simulation
-- **Simulate Slow Network**: Add latency
-- **Network Delay (ms)**: 0-5000ms
-- **Simulate Failures**: Random load failures
-- **Failure Rate (%)**: 0-100%
-- **Fail After N Successes**: Periodic failures
+## Custom Inspectors
 
-#### Validation
-- **Strict Mode**: Extra runtime checks
-- **Validate On Load**: Check assets on load
-- **Check Dependencies**: Verify dependencies exist
-- **Warn On Missing**: Log missing assets
+The package registers eight custom inspectors.
 
-#### Performance
-- **Track All Assets**: Enable full tracking
-- **Record Load Times**: Measure durations
-- **Profile Memory**: Track memory usage
-- **Sample Interval (ms)**: Metric collection rate
+**`LayoutRuleData`** — header, stats, and Quick Actions: **Apply All Rules**, **Open Rule Editor**, **Open Viewer**, **Validate Rules**, **Detect Conflicts**, **Clear All Rules**.
 
-### Presets
+**`CompositeLayoutRuleData`** — **Apply Combined Rules**, **Validate All**, and a Combined Rules Preview section.
 
-**Development**:
-- Full logging
-- All validation
-- Performance tracking
-- No simulation
+**`AddressablePreloadConfig`** — **Validate All Addresses**, **Sort by Priority** (ascending, undoable), **Test Load in Editor**, plus total / startup / valid / invalid counts. **Test Load in Editor** does not load anything: outside Play Mode it tells you to enter Play Mode, and inside it lists the first ten assets it *would* load.
 
-**Testing**:
-- Moderate logging
-- Validation enabled
-- Simulate slow network (500ms)
-- 5% failure rate
+**`GlobalAssetScope` / `SceneAssetScope` / `HierarchyAssetScope`** — a shared layout: a coloured banner (Global green, Scene yellow, Hierarchy red) with an ACTIVE / INACTIVE badge, a status block, a memory bar against a hard-coded 100 MB ceiling, a collapsed `Loaded Assets (N)` foldout, and four buttons — **Activate Scope**, **Deactivate Scope**, **Cleanup Scope**, **Open Dashboard**. The first three are **disabled outside Play Mode**; Cleanup is also disabled while the scope holds no assets.
 
-**Production**:
-- Errors only
-- No validation (performance)
-- No simulation
-- Minimal tracking
+**`MonitoringHelper`** — a HelpBox, the default fields, and an **Open Dashboard** button that appears only while playing with monitoring enabled.
+
+**`AddressableProgressBar`** — in Edit Mode, the default fields plus a short Setup Guide. In Play Mode, a Testing Controls block: a **Test Progress** slider (0–1), **Show** / **Hide** / **Reset** buttons, an **Animate 0% → 100%** button (about 5 seconds, click again to stop) and a **Test Status** text field.
+
+There is no custom inspector for `PoolConfiguration` or `DebugSettings`.
 
 ---
 
 ## Menu Items & Shortcuts
+
+Every path below is backed by a `[MenuItem]` or `[CreateAssetMenu]` in the package. Nothing else exists.
 
 ### Window Menu
 
@@ -555,55 +388,95 @@ Window > Addressable Manager >
 ├─ Dashboard (Ctrl+Alt+A)
 ├─ Layout Rule Editor
 ├─ Layout Viewer
-├─ Debug Settings
-└─ [Submenu: Examples]
-   ├─ Basic UI Rules
-   ├─ Multi-Platform Setup
-   └─ DLC Configuration
+├─ CDN Manager
+├─ Documentation
+├─ Settings
+└─ Clear All Caches
 ```
+
+- **Documentation** looks for `Assets/com.game.addressables/README.md`. Installed under `Packages/`, that path does not exist and you get a "not found" dialog — open `Packages/com.game.addressables/README.md` directly.
+- **Settings** pings `Resources/AddressableManager/DebugSettings`, offering to create it when missing.
+- **Clear All Caches** clears **Editor tracking data only** (`AssetTrackerService`, `PerformanceMetrics`). No runtime asset is released.
+
+### Tools Menu
+
+```
+Tools > Addressable Manager >
+├─ Force Process All Assets
+├─ Batch Address Updater
+├─ Repair Groups Missing Schemas
+├─ Start Local Content Server
+├─ Stop Local Content Server
+└─ Quick Setup >
+   ├─ Create All Scope Objects
+   └─ Create Sample Configs
+```
+
+- **Batch Address Updater** is not a window. It shows a dialog listing the `BatchAddressUpdater` static methods you call from code: `FindAndReplace`, `AddPrefix`, `RemovePrefix`, `ConvertToLowercase`.
+- **Start Local Content Server** serves on port 8080. **Stop** is greyed out while nothing is running.
+- **Create All Scope Objects** creates `[GlobalAssetScope]`, `[SceneAssetScope]` and `[HierarchyAssetScope]`. There is no Session GameObject — `SessionAssetScope` was removed in 4.0.0; use `ScopeManager.Instance.GetOrCreateScope("Session")` or `Assets.StartSession()`.
+- **Create Sample Configs** creates `PreloadConfig.asset`, `PoolConfig.asset` and `DebugSettings.asset` in `Assets/`.
 
 ### Assets Menu
 
 ```
+Assets > Addressables >
+└─ Apply Layout Rules            (enabled when something is selected;
+                                  shows a picker if several LayoutRuleData exist)
+
 Assets > Addressable Manager >
-├─ Create Rule Data
-├─ Create Composite Rule Data
-├─ Create Path Filter
-├─ Create Type Filter
-├─ Create Extension Filter
-├─ Create File Name Provider
-├─ Create Path Provider
-├─ Create Constant Label Provider
-├─ Create Folder Label Provider
-├─ Create Constant Version Provider
-├─ Create Build Number Version Provider
-├─ Create Git Commit Version Provider
-└─ Create Date Version Provider
+├─ Create Preload Config
+├─ Create Pool Config
+└─ Create Debug Settings
+
+Assets > Create > Addressable Manager >
+├─ Layout Rule Data
+├─ Composite Layout Rule Data
+├─ Preload Configuration
+├─ Pool Configuration
+├─ Debug Settings
+├─ CDN Settings
+├─ Filters >
+│  ├─ Path Filter
+│  ├─ Type Filter
+│  ├─ Extension Filter
+│  ├─ Address Filter
+│  ├─ Object Filter
+│  ├─ Find Assets Filter
+│  ├─ Dependent Object Filter
+│  └─ Addressable Group Filter
+└─ Providers >
+   ├─ Address > Path
+   ├─ Address > File Name
+   ├─ Label > Constant
+   ├─ Label > Folder Name
+   ├─ Version > Constant
+   ├─ Version > Date
+   ├─ Version > Build Number
+   └─ Version > Git Commit
 ```
 
-### Context Menu (Right-Click)
+### GameObject Menu
 
-On LayoutRuleData:
-- Apply Rules
-- Validate Rules
-- Export to JSON
-- Duplicate
+```
+GameObject > Addressable Manager >
+├─ Add Global Scope
+├─ Add Scene Scope
+├─ Add Hierarchy Scope
+└─ View in Dashboard
+```
 
-On Filters/Providers:
-- Test on Selection
-- Edit Settings
-- Duplicate
+### Add Component
+
+Two entries: `Addressable Manager/Monitoring Helper` and `Addressable Manager/Progress Bar`.
 
 ### Keyboard Shortcuts
 
 | Shortcut | Action | Context |
 |----------|--------|---------|
 | `Ctrl+Alt+A` | Open Dashboard | Global |
-| `Ctrl+R` | Refresh Preview | Rule Editor |
-| `Ctrl+Shift+V` | Validate Rules | Rule Editor |
-| `Ctrl+Shift+A` | Apply Rules | Rule Editor |
-| `F5` | Refresh | Layout Viewer |
-| `Ctrl+F` | Focus Search | Layout Viewer |
+
+That is the **only** keyboard shortcut in the package. The Rule Editor and Layout Viewer register none — use their toolbar buttons.
 
 ---
 
@@ -611,15 +484,15 @@ On Filters/Providers:
 
 ### Rule Editor
 
-**Tip 1: Use Descriptive Names**
+**Tip 1: Use descriptive names**
 ```
 ❌ "Rule 1", "Test", "Temp"
 ✅ "UI Sprites by Filename", "Character Prefabs"
 ```
 
-**Tip 2: Document Rules**
+**Tip 2: Document rules**
 ```
-Always fill in Description field:
+Always fill in the Description field:
 - What it matches
 - Why it exists
 - Any special considerations
@@ -632,66 +505,61 @@ Always fill in Description field:
 3. Verify matches
 4. Adjust if needed
 5. Preview (high limit)
-6. Apply rules
+6. Apply All
 ```
 
-**Tip 4: Use Validation**
+**Tip 4: Set Match Mode before writing a pattern**
 ```
-Run validation before applying:
-- Catches configuration errors
-- Prevents broken rules
-- Shows warnings
+PathFilter starts in Contains mode. "Assets/UI/**" matches nothing there —
+switch Match Mode to Glob first, or write a plain substring.
+```
+
+**Tip 5: Validate before applying**
+```
+Validate catches configuration errors before Apply All writes entries,
+and Apply All cannot be undone.
 ```
 
 ### Layout Viewer
 
-**Tip 1: Regular Audits**
+**Tip 1: Regular audits**
 ```
 Weekly:
-- Open Layout Viewer
-- Run conflict detection
+- Open Layout Viewer (conflicts refresh themselves)
 - Review any issues
 - Clean up unused assets
 ```
 
-**Tip 2: Track Changes**
+**Tip 2: Track changes**
 ```
 Before major changes:
-- Export current layout
+- Export Report
 - Apply changes
-- Compare layouts
-- Verify expected changes only
+- Export again and diff the two CSVs
 ```
 
-**Tip 3: Use Filters**
+**Tip 3: Turn Auto Refresh off on large projects**
 ```
-Narrow down large projects:
-- Filter by group for area-specific review
-- Filter by type for asset-class audit
-- Search for specific patterns
+Detection re-runs every 2 seconds while the window is open.
 ```
 
 ### Dashboard
 
-**Tip 1: Monitor During Testing**
+**Tip 1: Monitor during testing**
 ```
-Keep Dashboard open during play sessions:
-- Watch memory usage
+Keep the Dashboard open during play sessions:
+- Watch estimated memory
 - Track slow assets
 - Identify leaks early
 ```
 
-**Tip 2: Export Reports**
+**Tip 2: Export reports**
 ```
-Before optimization:
-- Export baseline report
-After optimization:
-- Export new report
-- Compare metrics
-- Quantify improvements
+Before optimization: export a baseline CSV
+After optimization: export again and compare
 ```
 
-**Tip 3: Adjust Refresh Rate**
+**Tip 3: Adjust refresh rate**
 ```
 High refresh (100-200ms): Detailed monitoring
 Medium refresh (500ms): General use
@@ -702,47 +570,49 @@ Low refresh (1000ms+): Reduce overhead
 
 ## Troubleshooting
 
-### Rule Editor Not Showing Assets
+### Rule Editor not showing assets
 
 **Check**:
-1. Is LayoutRuleData selected?
-2. Are filters configured correctly?
-3. Do assets exist at filter paths?
-4. Is preview limit too low?
+1. Is a `LayoutRuleData` assigned in the toolbar?
+2. Is `PathFilter` still in `Contains` mode with a glob pattern?
+3. Do assets exist at the filter paths, under `Assets/`?
+4. Is the Preview Limit too low to show what you're looking for?
 
 **Solution**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
-### Dashboard Shows No Data
+### Dashboard shows no data
 
 **Check**:
-1. Are you in play mode?
-2. Have any assets been loaded?
-3. Is auto-refresh enabled?
-4. Check console for errors
+1. Are you in play mode? Tracking is Editor + Play Mode only, and is cleared on exit.
+2. Have any assets been loaded through `AssetLoader` / the facade / a scope?
+3. Is `Auto Refresh Dashboard` enabled?
+4. Check the console for errors
 
-### Preview Generation Slow
+### Preview generation slow
 
 **Causes**:
-- Too many assets matched
+- Every refresh scans every asset under `Assets`
 - Complex filter chains
 - Large project size
 
 **Solutions**:
-- Reduce preview limit
 - Make filters more specific
 - Split rules into smaller sets
+- Lower the Preview Limit (caps the rows built, not the scan)
 
-### Memory Graph Not Updating
+### Memory graph not updating
 
 **Causes**:
-- Not in play mode
+- Not in play mode — samples are only collected while playing
 - No addressable assets loaded
-- Auto-refresh disabled
 
 **Solutions**:
 - Enter play mode
 - Load some assets
-- Check Settings > Auto-Refresh
+
+### Memory numbers look wrong
+
+They are estimates derived from the type name alone (see the Active Assets caveat). Use the Unity Profiler for real bytes.
 
 ---
 
@@ -751,8 +621,9 @@ Low refresh (1000ms+): Reduce overhead
 - [ADDRESSABLE_AUTOMATION_GUIDE.md](ADDRESSABLE_AUTOMATION_GUIDE.md) - Automation system details
 - [RULE_SYSTEM_EXAMPLES.md](RULE_SYSTEM_EXAMPLES.md) - Practical examples
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
-- [API_REFERENCE.md](API_REFERENCE.md) - Runtime API documentation
+- [LIFETIME_DESIGN.md](LIFETIME_DESIGN.md) - Scope and loader ownership rules
+- `Packages/com.game.addressables/EDITOR_TOOLS_GUIDE.md` - inspectors, config assets and the `ScopeManager` API in depth
 
 ---
 
-**Version**: 3.5.0 | **Last Updated**: January 2025 | **Unity**: 2021.3+
+**Version**: 4.1.0-pre.9 | **Unity**: 2023.1+
