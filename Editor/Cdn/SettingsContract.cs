@@ -289,13 +289,51 @@ namespace AddressableManager.Editor.Cdn
 
         private static void AddProjectRules(AddressableAssetSettings settings, List<SettingsRule> rules)
         {
+            // The invariant the whole two-config design rests on, and which nothing stated until now.
+            //
+            // Two systems decide where content comes from, at two different times:
+            //   Addressables profile Remote.LoadPath  -> the origin BAKED INTO THE CATALOG at build time
+            //   CdnSettings environments[].baseUrl    -> the origin HostRewriter swaps TO at runtime
+            //
+            // HostRewriter.Rewrite only rewrites a URL whose origin StartsWith one it was told about;
+            // anything else it deliberately leaves alone. So if the baked origin is not one of the
+            // configured base URLs, switching environment at runtime does nothing at all and every
+            // request goes wherever the build was pointed.
+            //
+            // Nothing checked this. A build against a profile whose host is not in CdnSettings - the
+            // package's own Dev/Staging/Prod templates ship a literal "<domain>" placeholder, so this
+            // is the DEFAULT state - produced a successful build, a passing verifier, and a player
+            // that fetched everything from a host that does not exist, with no log line anywhere.
+            //
+            // No Fix: which of the two sides is wrong is a human call. Adding the origin to
+            // CdnSettings and rebuilding against a different profile are both valid answers and they
+            // mean different things.
+            rules.Add(new SettingsRule(
+                id: "settings.RemoteOriginIsKnown",
+                description:
+                    "The origin baked into the catalog by the active profile's Remote paths must be one of " +
+                    "the base URLs in CdnSettings, or HostRewriter cannot redirect it and switching " +
+                    "environment at runtime silently does nothing.",
+                readCurrent: () => DescribeRemoteOrigins(settings),
+                expectedDisplay: "every remote origin matches a CdnEnvironment.BaseUrl",
+                isSatisfied: () => CdnBuildModes.IsLocalOnly || UnknownRemoteOrigins(settings).Count == 0,
+                fix: null));
+
             rules.Add(new SettingsRule(
                 id: "settings.BuildRemoteCatalog",
-                description: "Without a remote catalog there is nothing for a content update to publish.",
-                readCurrent: () => FormatBool(settings.BuildRemoteCatalog),
-                expectedDisplay: "true",
-                isSatisfied: () => settings.BuildRemoteCatalog,
-                fix: () => { settings.BuildRemoteCatalog = true; EditorUtility.SetDirty(settings); }));
+                description: "Without a remote catalog there is nothing for a content update to publish. " +
+                             "Not required in local-only mode (CdnSettings > Build Mode).",
+                readCurrent: () => CdnBuildModes.IsLocalOnly
+                    ? $"{CdnBuildModes.NotApplicable} {FormatBool(settings.BuildRemoteCatalog)}"
+                    : FormatBool(settings.BuildRemoteCatalog),
+                expectedDisplay: "true (Remote mode) / any (LocalOnly)",
+                isSatisfied: () => CdnBuildModes.IsLocalOnly || settings.BuildRemoteCatalog,
+                // No fix in local-only mode. This rule carrying an unconditional auto-fix is what let
+                // "Fix All" and unattended CdnSetupCLI runs switch a deliberately-local project back to
+                // remote, minutes after someone turned it off.
+                fix: CdnBuildModes.IsLocalOnly
+                    ? (Action)null
+                    : () => { settings.BuildRemoteCatalog = true; EditorUtility.SetDirty(settings); }));
 
             rules.Add(new SettingsRule(
                 id: "settings.RemoteCatalogBuildPath",
@@ -559,6 +597,84 @@ namespace AddressableManager.Editor.Cdn
                 "and copied the seven previously-inherited values onto the group first so nothing else " +
                 "changed. If this group should keep following the group template, revert the fix and edit " +
                 "the template instead.");
+        }
+
+        /// <summary>
+        /// Origins the active profile bakes into content, that no <c>CdnEnvironment</c> claims.
+        /// </summary>
+        /// <remarks>
+        /// Returns empty when there is no CdnSettings asset at all: a project that does not use the
+        /// runtime CDN layer has no rewriter, so the invariant does not apply to it and reporting a
+        /// failure would be noise. It also returns empty when a path is unset - other rules already
+        /// cover that, and reporting the same hole twice helps nobody.
+        /// </remarks>
+        private static List<string> UnknownRemoteOrigins(AddressableAssetSettings settings)
+        {
+            var unknown = new List<string>();
+
+            var loaded = AddressableManager.Cdn.CdnSettings.Load();
+            if (loaded.IsFailure || loaded.Value == null)
+                return unknown;
+
+            var knownOrigins = new List<string>();
+            foreach (var environment in loaded.Value.Environments)
+            {
+                if (environment == null || string.IsNullOrEmpty(environment.BaseUrl)) continue;
+                knownOrigins.Add(environment.BaseUrl);
+            }
+
+            if (knownOrigins.Count == 0)
+                return unknown;
+
+            foreach (string variable in new[]
+                     {
+                         AddressableAssetSettings.kRemoteLoadPath,
+                         RemoteCatalogLoadPathVariable
+                     })
+            {
+                string raw = settings.profileSettings.GetValueByName(settings.activeProfileId, variable);
+                if (string.IsNullOrEmpty(raw)) continue;
+
+                string evaluated = settings.profileSettings.EvaluateString(settings.activeProfileId, raw);
+                if (string.IsNullOrEmpty(evaluated)) continue;
+
+                // Only absolute http(s) content is rewritten; a local path is not this rule's business.
+                if (!evaluated.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    && !evaluated.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                bool matched = false;
+                foreach (string origin in knownOrigins)
+                {
+                    if (evaluated.StartsWith(origin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matched = true;
+                        break;
+                    }
+                }
+
+                if (!matched)
+                    unknown.Add($"{variable}={evaluated}");
+            }
+
+            return unknown;
+        }
+
+        /// <summary>Human-readable current state for the remote-origin rule.</summary>
+        private static string DescribeRemoteOrigins(AddressableAssetSettings settings)
+        {
+            if (CdnBuildModes.IsLocalOnly)
+                return CdnBuildModes.NotApplicable;
+
+            var loaded = AddressableManager.Cdn.CdnSettings.Load();
+            if (loaded.IsFailure || loaded.Value == null)
+                return "(no CdnSettings asset - runtime CDN layer not in use, rule does not apply)";
+
+            var unknown = UnknownRemoteOrigins(settings);
+            if (unknown.Count == 0)
+                return "all remote origins match a configured environment";
+
+            return "NOT in CdnSettings: " + string.Join("; ", unknown);
         }
 
         private static void AddGroupRules(AddressableAssetSettings settings, List<SettingsRule> rules)

@@ -160,6 +160,85 @@ The Update Preview tab exists to catch exactly this before you publish, and
 
 ---
 
+## 3.4 Where the URL comes from, and the one rule that keeps it switchable
+
+Two systems decide where content is fetched from, at two different times, and they have to agree.
+
+| System | Decides | When |
+| :-- | :-- | :-- |
+| Addressables profile `Remote.LoadPath` / `Remote.CatalogLoadPath` | the URL **baked into the catalog** | build time |
+| `CdnSettings.environments[].baseUrl` | the origin `HostRewriter` swaps **to** | runtime |
+
+`HostRewriter.Rewrite` only rewrites a URL whose origin matches one it was told about, and it swaps
+**only that prefix** — `activeBaseUrl + url.Substring(origin.Length)`. Everything after the origin
+survives verbatim. Two consequences follow, and both used to be silent when broken.
+
+### The convention
+
+A remote path is **origin + suffix**, where the suffix is identical for every profile:
+
+```
+bundles   <origin>/[BuildTarget]/bundles
+catalog   <origin>/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]
+```
+
+A path prefix belongs to the **origin**, not the suffix. A CDN serving several games from
+`https://cdn.example.com/game-a` declares that whole string as the environment's `baseUrl`, and the
+profile path is that string plus the shared suffix. That is why the generated profiles carry
+`<cdnBase>` rather than `<domain>`: what replaces it is an origin, optionally including a path
+prefix, never just a hostname.
+
+> Before `4.1.0-pre.14` the generated templates broke this themselves: `Local` used
+> `/[BuildTarget]/bundles` while `Dev`/`Staging`/`Prod` used `/game/[BuildTarget]/bundles`. Content
+> built with `Local` and rewritten to `Prod` landed at a different path than content built with
+> `Prod` directly — two routes, two CDN layouts, and whichever one you had not tested was broken.
+> The suffix now comes from one constant per path kind, so the two cannot drift.
+
+### Every origin a profile can bake must be in `CdnSettings`
+
+If the baked origin is not one of the configured base URLs, `Rewrite` leaves the URL alone,
+switching environment at runtime does nothing at all, and every request goes wherever the build was
+pointed. The `settings.RemoteOriginIsKnown` rule in the Validator tab checks this before you build;
+at runtime, the rewriter now warns once per unknown origin regardless of `logUrlRewrites`.
+
+### Which profile should CI build with?
+
+Build with the profile for the environment you are shipping to — `Prod` for a production release.
+The URL that profile carries is the one your players will poll forever, and no later upload can
+change it.
+
+Runtime environment switching then still works, and is what QA uses: one build, pointed at staging
+or dev without a rebuild, provided every one of those origins is declared in `CdnSettings`.
+
+A build refuses to start if the active profile still contains a `<...>` placeholder. Filling it is
+your job, not the package's — the real host is a release decision and usually a CI secret. Set it in
+the Addressables profile, or call `CdnProfileManager.InjectRemoteHostFromEnvironment` with `CDN_HOST`
+set before building.
+
+## 3.5 Turning the CDN off
+
+`CdnSettings > Build Mode` has two values:
+
+| Mode | Meaning |
+| :-- | :-- |
+| `Remote` (default) | Content is published to a CDN and fetched at runtime. |
+| `LocalOnly` | Everything ships inside the player. |
+
+In `LocalOnly` the remote half of the configuration contract is **skipped rather than reported as
+failing**: `settings.BuildRemoteCatalog` and `settings.RemoteOriginIsKnown` show as not applicable
+and carry no auto-fix, and `CdnBuildPipeline` writes no remote manifest and runs no remote
+verification — there is no remote output to verify, and verifying an empty directory against a
+manifest of that same empty directory proves nothing.
+
+This exists because a project that deliberately turned the CDN off used to be dragged back:
+`settings.BuildRemoteCatalog` carried an unconditional auto-fix, so every "Fix All" and every
+unattended `CdnSetupCLI` run switched it on again. Two rules writing the same field in opposite
+directions means the winner is whichever ran last.
+
+A project with **no `CdnSettings` asset at all** is treated as `LocalOnly`. That is the honest
+reading rather than a fallback: the runtime CDN layer cannot function without that asset, so a
+project without one is not publishing to a CDN whatever its Addressables settings say.
+
 ## 4. The boot sequence
 
 ### The one rule
