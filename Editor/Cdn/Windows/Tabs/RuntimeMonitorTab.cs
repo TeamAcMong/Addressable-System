@@ -127,7 +127,50 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                 AddRow("Cache", "not reported by this platform", false);
             }
 
-            SetDownloadIdle("No download in progress");
+            ShowDownloadState();
+        }
+
+        /// <summary>
+        /// Fill the download row from <see cref="CdnDownloadMonitor"/>.
+        /// </summary>
+        /// <remarks>
+        /// This row used to be permanently dead: the progress bar was queried at construction and then
+        /// assigned in exactly one place, SetDownloadIdle, which sets it to zero. There was no branch
+        /// that could ever show a running download, and no aggregate state to show even if there had
+        /// been - progress reached only the IProgress the caller of DownloadAsync passed, and a
+        /// background prefetch normally passes null.
+        ///
+        /// A bar frozen at "No download in progress" while content is visibly downloading reads as
+        /// "the CDN is not working", which is the failure mode this whole tab exists to rule out.
+        ///
+        /// Polling (the tab already refreshes once a second) rather than subscribing: an event would
+        /// need unsubscribing across domain reloads and play-mode transitions for a cosmetic row. Note
+        /// that a fast download can therefore finish between two refreshes and never be seen - on a
+        /// local server 70 bundles land in about a second. The Server tab's request log is the reliable
+        /// view; this row is for watching a real CDN transfer.
+        /// </remarks>
+        private void ShowDownloadState()
+        {
+            if (!CdnDownloadMonitor.IsDownloading)
+            {
+                SetDownloadIdle("No download in progress");
+                return;
+            }
+
+            var p = CdnDownloadMonitor.Current;
+            _downloadBar.value = p.Percent / 100f;
+
+            string speed = p.BytesPerSecond > 1
+                ? $" at {p.BytesPerSecond / (1024 * 1024):F2} MB/s"
+                : string.Empty;
+
+            string eta = p.EtaSeconds >= 0
+                ? $", {p.EtaSeconds:F0}s left"
+                : string.Empty;
+
+            _downloadLabel.text = p.TotalBytes > 0
+                ? $"Downloading {p.DownloadedBytes / (1024f * 1024f):F2} / {p.TotalBytes / (1024f * 1024f):F2} MB{speed}{eta}"
+                : $"Downloading {p.DownloadedBytes / (1024f * 1024f):F2} MB{speed}";
         }
 
         /// <summary>Check for a newer catalog and report the outcome on the label.</summary>

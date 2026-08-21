@@ -1,6 +1,72 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.15] - 2026-08-21 - The pre.14 local-server fix could never fire, and a progress bar that was never wired
+
+Second round of the Icon Match integration report. `4.1.0-pre.14` closed all seven items from the
+first round and their CDN tier now works end to end (58/58 contract rules pass, 347 bundles verified,
+70 bundles / 10.95 MB fetched with no failed requests). Two new items came out of running it.
+
+### Fixed - the pre.14 local-server fix was disabled by its own change
+
+`4.1.0-pre.14` taught `LocalContentServer` to survive a domain reload by recording the intent in
+`SessionState`. That intent was cleared by `Stop()`, and `Stop()` is what
+`AssemblyReloadEvents.beforeAssemblyReload` was wired to - so every domain reload cleared the flag
+microseconds before the reload that was supposed to read it. The flag was never true on the other
+side and the server never came back. **The feature could not fire once.**
+
+The cause was giving one method two jobs: an automatic teardown is not a decision about whether the
+server should be running, but it was calling the method that makes that decision. Split:
+
+| | |
+| :-- | :-- |
+| `Stop()` (public) | the user's decision - clears the intent, then tears down |
+| `Shutdown()` (internal) | releases the listener only; the intent is untouched |
+
+`beforeAssemblyReload` and `quitting` now call `Shutdown`.
+
+### Fixed - the Runtime Monitor tab's download bar was never wired
+
+`monitor-download-bar` was queried at construction and then assigned in exactly one place -
+`SetDownloadIdle`, which sets it to zero. No branch could show a running download, and there was
+nothing to show one from: progress reached only the `IProgress<DownloadProgress>` the caller of
+`DownloadAsync` passed, and a background prefetch normally passes `null`.
+
+A bar frozen at "No download in progress" while content is visibly downloading reads as "the CDN is
+not working", and it sent a team off diagnosing the wrong thing.
+
+- New `CdnDownloadMonitor`: a snapshot of the last reported progress plus `IsDownloading`, fed by the
+  download path **regardless of whether the caller wanted progress**. Also cleared on the failure
+  path - a monitor stuck at "downloading" after an error is the same frozen-state lie pointing the
+  other way.
+- The tab reads it on its existing one-second refresh. Polling rather than an event: an event would
+  need unsubscribing across domain reloads and play-mode transitions for a cosmetic row.
+- Documented limit: a fast download can finish between two refreshes - 70 bundles land in about a
+  second against a local server. The Server tab's request log remains the reliable view; this row is
+  for watching a real CDN transfer.
+
+### On which profile CI should build with
+
+Asked in the report, answered here rather than left implicit. Since `4.1.0-pre.14` unified the path
+suffix, building with `Local` and switching environment at runtime is path-safe - but it carries a
+failure mode that building with the target profile does not: if the rewrite fails to apply (an origin
+missing from `CdnSettings`, or boot not reaching `SetEnvironment`), the URL baked into the catalog is
+`http://localhost:8080`, and a shipped build cannot be rescued.
+
+**Build with the profile for the environment you are shipping to.** Runtime switching is for QA
+pointing one existing build at another environment. This is what CDN guide 3.4 says.
+
+### Verification
+
+Compile gate PASS on both assemblies. `Tests/Editor/CdnDownloadMonitorTests.cs` added (3 cases,
+including the failure path that must clear the flag).
+
+**The EditMode suite did not run for this release.** The project was locked by an open Unity Editor
+(`Temp/UnityLockfile`), so batchmode could not acquire it, and this build was cut at the requester's
+direction to unblock testing in their production project. The last full green run was 168/168 at
+`4.1.0-pre.14`; the changes here are one Editor-only method split and one new static plus its call
+sites, all compiling clean, but that is a weaker claim than a test run and is recorded as such.
+
 ## [4.1.0-pre.14] - 2026-08-21 - Seven ways the CDN layer let a broken build through without a word
 
 An integration report (Icon Match) traced why its CDN tier had never worked, and the finding was not

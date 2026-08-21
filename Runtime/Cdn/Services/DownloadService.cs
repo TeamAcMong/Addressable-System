@@ -391,8 +391,14 @@ namespace AddressableManager.Cdn
                     else eta = 0;
                 }
 
-                progress?.Report(new DownloadProgress(
-                    status.DownloadedBytes, status.TotalBytes, smoothedBytesPerSecond, eta));
+                var tick = new DownloadProgress(
+                    status.DownloadedBytes, status.TotalBytes, smoothedBytesPerSecond, eta);
+
+                // The monitor is fed regardless of whether the caller wanted progress: a background
+                // prefetch passing null is normal, and it is exactly the case where an observer
+                // outside the call has no other way to know anything is happening.
+                CdnDownloadMonitor.Report(tick);
+                progress?.Report(tick);
             }
 
             bool succeeded = handle.IsValid() && handle.Status == AsyncOperationStatus.Succeeded;
@@ -404,12 +410,20 @@ namespace AddressableManager.Cdn
             SafeRelease(handle);
 
             if (!succeeded)
+            {
+                // Without this the monitor would report "downloading" forever after any failure -
+                // the same frozen-UI lie this monitor exists to remove.
+                CdnDownloadMonitor.Complete();
                 return CdnResult<DownloadStatus>.Failure(CdnErrorMapper.Map(failure, ActiveUrl, _network.IsReachable));
+            }
 
-            progress?.Report(new DownloadProgress(
+            var final = new DownloadProgress(
                 status.DownloadedBytes,
                 status.TotalBytes > 0 ? status.TotalBytes : status.DownloadedBytes,
-                smoothedBytesPerSecond, 0));
+                smoothedBytesPerSecond, 0);
+
+            CdnDownloadMonitor.Complete(final);
+            progress?.Report(final);
 
             return CdnResult<DownloadStatus>.Success(status);
         }
