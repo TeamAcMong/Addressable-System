@@ -49,12 +49,16 @@ namespace AddressableManager.Editor.Cdn
         private void RegisterCleanupHooks()
         {
             // Clean up before domain reload (recompile)
-            AssemblyReloadEvents.beforeAssemblyReload -= Stop;
-            AssemblyReloadEvents.beforeAssemblyReload += Stop;
+            // Shutdown, NOT Stop: a domain reload is not the user deciding to stop the server, and
+            // Stop would clear the intent this reload is supposed to carry across.
+            AssemblyReloadEvents.beforeAssemblyReload -= Shutdown;
+            AssemblyReloadEvents.beforeAssemblyReload += Shutdown;
 
             // Clean up when editor quits
-            EditorApplication.quitting -= Stop;
-            EditorApplication.quitting += Stop;
+            // Also Shutdown: SessionState dies with the editor anyway, so clearing the flag here would
+            // be redundant, and using Stop would make the two teardown paths differ for no reason.
+            EditorApplication.quitting -= Shutdown;
+            EditorApplication.quitting += Shutdown;
         }
 
         public void Start(int port)
@@ -125,12 +129,36 @@ namespace AddressableManager.Editor.Cdn
         internal const string WantsToRunKey = "AddressableManager.LocalContentServer.WantsToRun";
         internal const string PortKey = "AddressableManager.LocalContentServer.Port";
 
+        /// <summary>
+        /// Stop the server because the user asked. The server stays stopped across domain reloads.
+        /// </summary>
         public void Stop()
         {
             // An explicit stop is an instruction, not an accident - do not resurrect it after the next
             // domain reload.
             SessionState.SetBool(WantsToRunKey, false);
+            Shutdown();
+        }
 
+        /// <summary>
+        /// Release the listener WITHOUT touching the run intent, for teardown the user did not ask for.
+        /// </summary>
+        /// <remarks>
+        /// This split is load-bearing, and its absence silently disabled the restart-after-reload
+        /// behaviour entirely in 4.1.0-pre.14.
+        ///
+        /// <c>AssemblyReloadEvents.beforeAssemblyReload</c> is wired to tear the listener down, because
+        /// an HttpListener cannot survive the domain going away. When that was wired to the PUBLIC
+        /// <see cref="Stop"/>, every domain reload cleared the "wants to run" flag microseconds before
+        /// the reload that was supposed to read it - so the flag was never true on the other side and
+        /// the server never came back. The feature added to fix "the local server dies on entering play
+        /// mode" could not fire even once.
+        ///
+        /// An automatic teardown is not a decision about whether the server should be running. Only
+        /// <see cref="Stop"/> is.
+        /// </remarks>
+        internal void Shutdown()
+        {
             if (!_isRunning) return;
 
             _isRunning = false;
