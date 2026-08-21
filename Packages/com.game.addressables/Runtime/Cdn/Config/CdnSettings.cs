@@ -6,6 +6,31 @@ using UnityEngine;
 namespace AddressableManager.Cdn
 {
     /// <summary>
+    /// Whether this project ships content over a CDN at all.
+    /// </summary>
+    /// <remarks>
+    /// A first-class setting rather than something inferred, because half the configuration contract
+    /// only makes sense in one of the two modes and a project that has deliberately turned the CDN off
+    /// should not have to fight a validator that keeps turning it back on.
+    ///
+    /// That fight was real: <c>settings.BuildRemoteCatalog</c> carried an auto-fix, so every "Fix All"
+    /// in the CDN Manager and every unattended <c>CdnSetupCLI.ApplyPhaseZeroSetup</c> switched a
+    /// deliberately-local project back to remote. The only defence was a counter-rule with no fix, and
+    /// two rules writing the same field in opposite directions means the winner is whichever ran last.
+    /// </remarks>
+    public enum CdnBuildMode
+    {
+        /// <summary>Content is published to a CDN and fetched at runtime. The default.</summary>
+        Remote = 0,
+
+        /// <summary>
+        /// Everything ships inside the player. No remote catalog, no remote bundles, and the
+        /// remote half of the configuration contract does not apply.
+        /// </summary>
+        LocalOnly = 1
+    }
+
+    /// <summary>
     /// Runtime configuration for the CDN layer — task 2.2.
     /// </summary>
     /// <remarks>
@@ -26,6 +51,12 @@ namespace AddressableManager.Cdn
     {
         /// <summary>The name this asset must have inside a Resources folder.</summary>
         public const string ResourceName = "CdnSettings";
+
+        [SerializeField]
+        [Tooltip("Remote: content is published to a CDN and fetched at runtime. LocalOnly: everything " +
+                 "ships inside the player, and the remote half of the settings contract is skipped " +
+                 "rather than reported as failing.")]
+        private CdnBuildMode buildMode = CdnBuildMode.Remote;
 
         [SerializeField]
         [Tooltip("Every environment this build can be pointed at.")]
@@ -50,6 +81,9 @@ namespace AddressableManager.Cdn
         [SerializeField]
         [Tooltip("Log every rewritten URL. Noisy; for diagnosing a wrong-host problem.")]
         private bool logUrlRewrites = false;
+
+        /// <summary>Whether this project publishes content to a CDN at all.</summary>
+        public CdnBuildMode BuildMode => buildMode;
 
         /// <summary>Every configured environment.</summary>
         public IReadOnlyList<CdnEnvironment> Environments => environments ?? new List<CdnEnvironment>();

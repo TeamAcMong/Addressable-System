@@ -39,6 +39,29 @@ namespace AddressableManager.Cdn
         [Range(0, 120)]
         private int reachabilityWaitSeconds = 0;
 
+        [SerializeField]
+        [Range(0, 120)]
+        [Tooltip("Deadline for the whole catalog check/apply, not one request. 0 disables it. " +
+                 "Guards the 'online but very slow' case - a captive portal or one bar of signal - " +
+                 "where reachability says yes and the operation then never returns.")]
+        private int catalogOperationTimeoutSeconds = 5;
+
+        /// <summary>
+        /// Deadline applied to a whole catalog check or apply. 0 disables it.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="TimeoutSeconds"/>, which bounds ONE request. A catalog check can
+        /// sit inside its reachability guard and then hang anyway: Application.internetReachability
+        /// reports the interface, not whether anything answers, so a captive portal or a very weak
+        /// connection passes the guard and the operation never returns. Without a deadline the caller's
+        /// first screen waits forever, which is why integrations end up bolting their own timeout on
+        /// top - work the package should not be pushing outward.
+        ///
+        /// Default 5s: long enough for a slow-but-real CDN handshake, short enough that a boot screen
+        /// gives up and carries on with whatever content shipped in the player.
+        /// </remarks>
+        public int CatalogOperationTimeoutSeconds => catalogOperationTimeoutSeconds;
+
         /// <summary>Refuse to download over carrier data.</summary>
         public bool RequireUnmeteredNetwork => requireUnmeteredNetwork;
 

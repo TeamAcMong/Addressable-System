@@ -1,6 +1,80 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0-pre.14] - 2026-08-21 - Seven ways the CDN layer let a broken build through without a word
+
+An integration report (Icon Match) traced why its CDN tier had never worked, and the finding was not
+a bug in the content path - it was that every guard the package has let the case through silently:
+the build reported SUCCESS, the verifier PASSED, and the runtime skipped a wrong URL without logging
+it. All seven items were verified against source before acting on them.
+
+### The central defect: two sources of truth about the host, and nothing compared them
+
+`Remote.LoadPath` on the Addressables profile decides the URL **baked into the catalog** at build
+time. `CdnSettings.environments[].baseUrl` decides the origin `HostRewriter` swaps **to** at runtime.
+They only work together when the baked origin is one of the configured base URLs, because `Rewrite`
+only rewrites a URL whose origin it recognises.
+
+Nothing stated that invariant, let alone checked it - `SettingsContract` had 14 rules and zero
+references to `CdnSettings`. The package's own generated Dev/Staging/Prod profiles ship a literal
+placeholder host, so a build against them was the *default* way to hit this.
+
+### Fixed
+
+- **New contract rule `settings.RemoteOriginIsKnown`.** The active profile's remote origins must
+  match a `CdnEnvironment.BaseUrl`. No auto-fix: adding the origin to `CdnSettings` and rebuilding
+  against a different profile are both valid answers and they mean different things.
+
+- **The build refuses to start on an unresolved `<...>` host placeholder.** The generated templates'
+  own doc comments called those values a fallback that env-var injection was meant to replace -
+  nothing called the injector, and nothing checked, so the placeholder was what got baked into the
+  catalog. Filling it stays the user's job; the package's job is to refuse to guess.
+
+- **`HostRewriter` warns once per unknown origin, regardless of `logUrlRewrites`.** Skipping an
+  unrecognised URL is deliberate, but it is also exactly what a misconfigured build looks like, and
+  the only evidence was behind a flag that defaults to false. Once per origin, not per request -
+  this fires on every bundle.
+
+- **Profile path templates are now uniform.** `Local` used `/[BuildTarget]/bundles` while
+  Dev/Staging/Prod used `/game/[BuildTarget]/bundles`, so content built with one profile and
+  rewritten to another landed at a different path - two routes, two CDN layouts, and whichever you
+  had not tested was broken. The suffix now comes from one constant per path kind. The placeholder is
+  renamed `<cdnBase>`, because what belongs there is an origin (optionally including a path prefix),
+  not a hostname.
+
+- **`CdnBuildMode { Remote, LocalOnly }` on `CdnSettings`, as a first-class setting.** In
+  `LocalOnly` the remote rules are skipped rather than reported as failing, and the build writes no
+  remote manifest and runs no remote verification. This removes the tug-of-war that made a
+  deliberately-local project unworkable: `settings.BuildRemoteCatalog` carried an unconditional
+  auto-fix, so every "Fix All" and every unattended `CdnSetupCLI` run switched it back on. A project
+  with no `CdnSettings` asset is treated as `LocalOnly` - the runtime CDN layer cannot function
+  without that asset, so a project without one is not publishing to a CDN whatever else it says.
+
+- **`DownloadPolicy.CatalogOperationTimeoutSeconds` (default 5s).** `Application.internetReachability`
+  reports the interface, not whether anything answers, so a captive portal or one bar of signal passed
+  the reachability guard and the catalog check then never returned - hanging the caller's first
+  screen. A deadline on the whole operation now returns the offline answer instead. Distinct from
+  `TimeoutSeconds`, which bounds a single request, and linked to the caller's token so cancellation
+  still works.
+
+- **The local content server survives a domain reload.** Entering play mode wiped the static holding
+  it and took the `HttpListener` with it; `[InitializeOnLoad]` recreated the instance but not the
+  running server. The symptom was `ConnectionError : Cannot connect to destination host` - which
+  reads as a broken CDN, not as a server that quietly died, and on Addressables 2.9.1 a failed
+  catalog fetch then poisons `ResourceManager.Update` for the rest of the session (see
+  `4.1.0-pre.12`). The intent is now kept in `SessionState`, whose lifetime is exactly the server's:
+  it survives a domain reload and dies when the editor closes.
+
+### Documentation
+
+New sections in the CDN guide: **3.4 Where the URL comes from** (the origin+suffix convention, why
+every origin must be declared, and which profile CI should build with) and **3.5 Turning the CDN
+off**.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 168/168 PASS, doc sweep 314/314.
+
 ## [4.1.0-pre.13] - 2026-08-20 - "The restriction check could not run" was the wrong answer half the time
 
 Reported from the CDN Manager's Update Preview tab, which refused to evaluate:

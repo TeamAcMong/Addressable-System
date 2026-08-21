@@ -207,6 +207,18 @@ namespace AddressableManager.Cdn
             if (!_network.IsReachable)
                 return CdnResult<CatalogUpdateInfo>.Success(CatalogUpdateInfo.Offline);
 
+            // IsReachable reports the network INTERFACE, not whether anything answers on it. A captive
+            // portal or one bar of signal passes that guard and the operation below then never returns,
+            // so the caller's first screen waits forever. Bound the whole operation, not one request -
+            // DownloadPolicy.TimeoutSeconds already covers the request.
+            // Kept separately: the parameter is about to be replaced by the linked token, and the
+            // catch below has to tell "the caller cancelled" from "the deadline expired".
+            var callerToken = cancellationToken;
+
+            using (var deadline = CreateDeadline(callerToken))
+            {
+                cancellationToken = deadline?.Token ?? callerToken;
+
             // autoReleaseHandle: false — the handle carries the result list, and releasing it
             // automatically would free the list before it can be read.
             AsyncOperationHandle<List<string>> handle;
@@ -231,6 +243,24 @@ namespace AddressableManager.Cdn
             catch (OperationCanceledException)
             {
                 SafeRelease(handle);
+
+                // The caller cancelling and the deadline expiring are different answers. A deadline
+                // means "the host is reachable but not responding", which is the offline answer as far
+                // as the game is concerned - keep playing on what shipped, ask again later.
+                if (!callerToken.IsCancellationRequested)
+                {
+                    int seconds = _settings?.DownloadPolicy?.CatalogOperationTimeoutSeconds ?? 0;
+                    Debug.LogWarning(
+                        $"[CatalogService] The catalog check did not answer within {seconds}s and was " +
+                        "abandoned. The network reports as reachable, so this is most often a captive " +
+                        "portal, a very weak connection, or a host that accepts the connection and then " +
+                        "stalls. Treating it as offline; raise " +
+                        "CdnSettings > DownloadPolicy > CatalogOperationTimeoutSeconds if the CDN is " +
+                        "legitimately this slow.");
+
+                    return CdnResult<CatalogUpdateInfo>.Success(CatalogUpdateInfo.Offline);
+                }
+
                 return CdnResult<CatalogUpdateInfo>.Cancelled("Cancelled while checking for catalog updates");
             }
             catch (Exception ex)
@@ -259,6 +289,26 @@ namespace AddressableManager.Cdn
             }
 
             return CdnResult<CatalogUpdateInfo>.Success(new CatalogUpdateInfo(catalogs));
+            }
+        }
+
+        /// <summary>
+        /// A CancellationTokenSource that fires after
+        /// <see cref="DownloadPolicy.CatalogOperationTimeoutSeconds"/>, linked to the caller's token.
+        /// Null when the deadline is disabled, so the caller's token is used unchanged.
+        /// </summary>
+        /// <remarks>
+        /// Linked rather than standalone: cancelling from the caller must still work, and a deadline
+        /// that ignored the caller's token would be a second, competing lifetime.
+        /// </remarks>
+        private CancellationTokenSource CreateDeadline(CancellationToken callerToken)
+        {
+            int seconds = _settings?.DownloadPolicy?.CatalogOperationTimeoutSeconds ?? 0;
+            if (seconds <= 0) return null;
+
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(seconds));
+            return cts;
         }
 
         /// <summary>

@@ -43,22 +43,64 @@ namespace AddressableManager.Editor.Cdn
         /// Default values for catalog paths per profile. The <c>[UnityEditor.PlayerSettings.bundleVersion]</c> token
         /// is evaluated by <see cref="AddressablesRuntimeProperties.EvaluateString"/> using reflection to access the property.
         /// </summary>
+        /// <summary>
+        /// The rule that makes a build switchable between environments at runtime.
+        /// </summary>
+        /// <remarks>
+        /// A remote path is <c>origin + suffix</c>, and the split is not cosmetic:
+        /// <c>HostRewriter.Rewrite</c> matches a URL against the origins declared in
+        /// <c>CdnSettings.environments[].baseUrl</c> and swaps ONLY that prefix -
+        /// <c>activeBaseUrl + url.Substring(origin.Length)</c>. Everything after the origin survives
+        /// verbatim.
+        ///
+        /// So two things must hold, and neither used to:
+        ///
+        /// <para><b>1. The suffix is identical across every profile.</b> The templates previously gave
+        /// Local <c>/[BuildTarget]/bundles</c> and Dev/Staging/Prod
+        /// <c>/game/[BuildTarget]/bundles</c>. Content built with Local and then rewritten to Prod
+        /// landed at a different path than content built with Prod directly - two routes, two CDN
+        /// layouts, and whichever one you did not test was broken. The suffix now comes from a single
+        /// constant per path kind, so the two cannot drift.</para>
+        ///
+        /// <para><b>2. The origin is declared in CdnSettings.</b> If the origin baked into the catalog
+        /// is not one of the configured base URLs, Rewrite leaves the URL alone and switching
+        /// environment silently does nothing. The <c>settings.RemoteOriginIsKnown</c> contract rule
+        /// checks this before you build.</para>
+        ///
+        /// A "path prefix" belongs to the ORIGIN, not the suffix: a CDN serving several games from
+        /// <c>https://cdn.example.com/game-a</c> declares that whole string as the environment's
+        /// baseUrl, and its profile path is that string plus the shared suffix. That is why the
+        /// placeholder is named <c>&lt;cdnBase&gt;</c> rather than <c>&lt;domain&gt;</c> - what goes
+        /// there is an origin, optionally including a path prefix, never just a hostname.
+        /// </remarks>
+        internal static class PathConvention
+        {
+            /// <summary>The placeholder a generated profile carries until a real origin replaces it.</summary>
+            public const string OriginPlaceholder = "<cdnBase>";
+        }
+
         private static class CatalogPathDefaults
         {
             /// <summary>All catalogs build to a per-app-version folder. This is stable across all profiles.</summary>
             public const string BuildPathValue = "ServerData/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
 
             /// <summary>Local profile: localhost on a dev machine.</summary>
-            public const string LocalLoadPathValue = "http://localhost:8080/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            public const string LocalLoadPathValue = "http://localhost:8080" + Suffix;
 
-            /// <summary>Dev profile: development CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string DevLoadPathValue = "https://cdn-dev.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>
+            /// The part every profile shares, after its origin. Runtime environment switching depends
+            /// on this being IDENTICAL across profiles - see <see cref="PathConvention"/>.
+            /// </summary>
+            public const string Suffix = "/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
 
-            /// <summary>Staging profile: staging CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string StagingLoadPathValue = "https://cdn-stg.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>Dev profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string DevLoadPathValue = "https://cdn-dev.<cdnBase>" + Suffix;
 
-            /// <summary>Production profile: production CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string ProdLoadPathValue = "https://cdn.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>Staging profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string StagingLoadPathValue = "https://cdn-stg.<cdnBase>" + Suffix;
+
+            /// <summary>Production profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string ProdLoadPathValue = "https://cdn.<cdnBase>" + Suffix;
         }
 
         /// <summary>
@@ -71,16 +113,21 @@ namespace AddressableManager.Editor.Cdn
             public const string BuildPathValue = "ServerData/[BuildTarget]/bundles";
 
             /// <summary>Local profile: localhost on a dev machine.</summary>
-            public const string LocalLoadPathValue = "http://localhost:8080/[BuildTarget]/bundles";
+            public const string LocalLoadPathValue = "http://localhost:8080" + Suffix;
 
-            /// <summary>Dev profile: development CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string DevLoadPathValue = "https://cdn-dev.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>
+            /// The part every profile shares, after its origin. Identical across profiles on purpose.
+            /// </summary>
+            public const string Suffix = "/[BuildTarget]/bundles";
 
-            /// <summary>Staging profile: staging CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string StagingLoadPathValue = "https://cdn-stg.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>Dev profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string DevLoadPathValue = "https://cdn-dev.<cdnBase>" + Suffix;
 
-            /// <summary>Production profile: production CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string ProdLoadPathValue = "https://cdn.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>Staging profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string StagingLoadPathValue = "https://cdn-stg.<cdnBase>" + Suffix;
+
+            /// <summary>Production profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string ProdLoadPathValue = "https://cdn.<cdnBase>" + Suffix;
         }
 
         /// <summary>
