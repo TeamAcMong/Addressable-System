@@ -191,39 +191,96 @@ namespace AddressableManager.Editor.Windows.Hub
 
         private static VisualElement BuildSummary(List<ScopeRow> scopes)
         {
-            int assets = 0, dead = 0;
+            int assets = 0, dead = 0, leaked = 0, leakedAssets = 0;
+            long leakedBytes = 0;
+            bool bytesKnown = false;
+
             foreach (var scope in scopes)
             {
                 assets += scope.Assets.Count;
                 dead += scope.Dead;
-            }
+                if (scope.BytesKnown) bytesKnown = true;
 
-            var strip = new VisualElement();
-            strip.AddToClassList("hub-summary");
-
-            strip.Add(SummaryItem(HealthState.Ok, $"{scopes.Count} scope(s)"));
-            strip.Add(SummaryItem(HealthState.Ok, $"{assets} asset(s) held"));
-
-            if (dead > 0)
-            {
-                strip.Add(SummaryItem(HealthState.Warning,
-                    $"{dead} released handle(s) still cached"));
-            }
-
-            int leaked = 0, leakedAssets = 0;
-            foreach (var scope in scopes)
-            {
                 if (!scope.Info.IsLeaked) continue;
                 leaked++;
                 leakedAssets += scope.Assets.Count;
+                leakedBytes += scope.Bytes;
             }
 
-            strip.Add(leaked > 0
-                ? SummaryItem(HealthState.Warning,
-                    $"{leaked} leaked scope(s) holding {leakedAssets} asset(s)")
-                : SummaryItem(HealthState.Ok, "no leaked scopes"));
+            var row = new VisualElement();
+            row.AddToClassList("hub-stats");
 
-            return strip;
+            row.Add(Stat("LIVE SCOPES", scopes.Count.ToString(), string.Empty,
+                HealthState.Ok, "Registered right now"));
+
+            row.Add(Stat("ASSETS HELD", assets.ToString(), string.Empty,
+                HealthState.Ok, "Across every live scope"));
+
+            row.Add(Stat("LEAKED SCOPES", leaked.ToString(), string.Empty,
+                leaked > 0 ? HealthState.Warning : HealthState.Ok,
+                leaked > 0
+                    ? $"Holding {leakedAssets} asset(s) nobody will release"
+                    : "Every scope still has an owner"));
+
+            // Bytes only when the loader actually measured them. An untiered loader never computes
+            // a size, and printing 0 MB next to a hundred megabytes of resident content would be a
+            // number that is worse than no number.
+            row.Add(bytesKnown
+                ? Stat("HELD BY LEAKS", FormatBytes(leakedBytes), string.Empty,
+                    leakedBytes > 0 ? HealthState.Warning : HealthState.Ok,
+                    "Estimated, from the tier accounting")
+                : Stat("HELD BY LEAKS", "—", string.Empty, HealthState.NotMeasured,
+                    "These loaders are not tiered, so no size was computed"));
+
+            var wrapper = new VisualElement();
+            wrapper.Add(row);
+
+            if (dead > 0)
+            {
+                var note = new Label(
+                    $"{dead} cached entr(ies) point at a released handle. That is the shape a " +
+                    "release-ordering bug takes, and it is shown rather than filtered out.");
+                note.AddToClassList("hub-note-text");
+                note.style.marginBottom = 8;
+                wrapper.Add(note);
+            }
+
+            return wrapper;
+        }
+
+        /// <summary>One headline figure. Same shape as the Overview and Update Preview cards.</summary>
+        private static VisualElement Stat(
+            string caption, string value, string unit, HealthState state, string footnote)
+        {
+            var card = new VisualElement();
+            card.AddToClassList("hub-stat");
+
+            var cap = new Label(caption);
+            cap.AddToClassList("hub-stat-caption");
+            card.Add(cap);
+
+            var valueRow = new VisualElement();
+            valueRow.AddToClassList("hub-stat-valuerow");
+
+            var big = new Label(value);
+            big.AddToClassList("hub-stat-value");
+            ApplyText(big, state);
+            valueRow.Add(big);
+
+            if (!string.IsNullOrEmpty(unit))
+            {
+                var unitLabel = new Label(unit);
+                unitLabel.AddToClassList("hub-stat-unit");
+                valueRow.Add(unitLabel);
+            }
+
+            card.Add(valueRow);
+
+            var foot = new Label(footnote);
+            foot.AddToClassList("hub-stat-foot");
+            card.Add(foot);
+
+            return card;
         }
 
         private static VisualElement SummaryItem(HealthState state, string text)
