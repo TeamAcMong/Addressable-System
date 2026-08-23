@@ -2123,6 +2123,57 @@ namespace AddressableManager.Loaders
         /// Callers that invalidate or release by bare guid/address still reach these entries via
         /// <see cref="AssetCacheKey.MatchesAddress"/>.
         /// </remarks>
+        /// <summary>
+        /// A read-only inventory of what this loader is currently holding alive.
+        /// </summary>
+        /// <remarks>
+        /// Public, and public on purpose. Unity's own profiler can tell you how many bytes a bundle
+        /// costs; it cannot tell you WHICH SCOPE is still holding it, because scopes are this
+        /// package's idea and the reference counts live in here. That question - "the scene unloaded,
+        /// so why is this still resident" - is the one that costs an afternoon, and a QA build that
+        /// wants to log it at runtime should not have to fork the package to do so.
+        ///
+        /// A snapshot, not a live view. It is copied out rather than exposing the dictionary, so a
+        /// caller iterating it cannot trip the "collection modified" fault that an eviction sweep or
+        /// a scope disposing itself mid-walk would otherwise cause. It is stale the instant it is
+        /// returned, which is the correct trade for a diagnostics read.
+        ///
+        /// Main thread only, like the rest of this class - AssetLoader takes no locks and
+        /// ThreadSafeAssetLoader is the wrapper that makes cross-thread use safe. Calling this from a
+        /// worker thread has the same hazards as calling anything else here from one.
+        ///
+        /// <see cref="LoadedAssetInfo.EstimatedBytes"/> is zero unless the loader is tiered - the
+        /// byte accounting only exists to drive tier eviction. Zero here means "not measured", not
+        /// "costs nothing", and any UI showing it has to say so.
+        /// </remarks>
+        /// <summary>How many assets this loader is holding, without building a list to count them.</summary>
+        /// <remarks>
+        /// Exists because the Editor's Asset Lifetime screen needs a number once a second and
+        /// <see cref="SnapshotLoadedAssets"/> allocates a row per entry. On a scene holding a few
+        /// thousand assets that is a few thousand structs a second, forever, for a figure that fits
+        /// in an int.
+        /// </remarks>
+        public int CachedAssetCount => _assetCache.Count;
+
+        public List<LoadedAssetInfo> SnapshotLoadedAssets()
+        {
+            var result = new List<LoadedAssetInfo>();
+
+            foreach (var pair in _assetCache)
+            {
+                var entry = pair.Value;
+                if (entry == null) continue;
+
+                result.Add(new LoadedAssetInfo(
+                    pair.Key.Address,
+                    pair.Key.Type != null ? pair.Key.Type.Name : "(unknown)",
+                    entry.Handle != null && entry.Handle.IsAlive,
+                    entry.EstimatedBytes));
+            }
+
+            return result;
+        }
+
         internal static string AssetReferenceCacheAddress(AssetReference assetReference)
         {
             if (assetReference == null) return null;

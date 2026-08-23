@@ -80,7 +80,10 @@ namespace AddressableManager.Editor.Windows
         private double _lastRefreshTime;
         private int _currentTab = 0;
 
-        [MenuItem("Window/Addressable Manager/Dashboard %&a")]
+        // No shortcut here any more: Ctrl+Alt+A opens the hub, which is the front door now.
+        // Two menu items claiming one chord is a race Unity does not arbitrate, and this project had
+        // THREE of them at one point.
+        [MenuItem("Window/Addressable Manager/Dashboard", priority = 210)]
         public static void ShowWindow()
         {
             var window = GetWindow<AddressableManagerWindow>();

@@ -1,3 +1,4 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 using AddressableManager.Editor.Rules;
@@ -10,13 +11,21 @@ namespace AddressableManager.Editor.Tools
     /// </summary>
     public static class AddressableRuleMenuItems
     {
-        [MenuItem("Window/Addressable Manager/Layout Rule Editor", priority = 201)]
+        // The [MenuItem] attributes that used to sit on these two were duplicates: the same paths,
+        // at the same priorities, are registered by LayoutRuleEditorWindow and LayoutViewerWindow
+        // themselves. Unity accepts both and does not define which handler runs - and here the two
+        // handlers were not even guaranteed to open the same window. The methods stay (they are
+        // public API; repo invariant 6 keeps those until 5.0.0) and simply forward.
+
+        /// <summary>Open the Layout Rule Editor.</summary>
+        [Obsolete("Call LayoutRuleEditorWindow.ShowWindow() directly. This forwards to it and will be removed in 5.0.0.")]
         public static void OpenLayoutRuleEditor()
         {
             LayoutRuleEditorWindow.ShowWindow();
         }
 
-        [MenuItem("Window/Addressable Manager/Layout Viewer", priority = 202)]
+        /// <summary>Open the Layout Viewer.</summary>
+        [Obsolete("Call LayoutViewerWindow.ShowWindow() directly. This forwards to it and will be removed in 5.0.0.")]
         public static void OpenLayoutViewer()
         {
             LayoutViewerWindow.ShowWindow();
