@@ -1,0 +1,44 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="hub-root" class="hub-root">
+
+        <ui:VisualElement name="hub-header" class="hub-header">
+            <ui:Label text="Addressable Manager" name="hub-header-title" class="hub-header-title" />
+            <ui:VisualElement name="hub-header-spacer" class="hub-header-spacer" />
+            <ui:Label text="" name="hub-header-context" class="hub-header-context" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="hub-body" class="hub-body">
+
+            <ui:VisualElement name="hub-rail" class="hub-rail">
+                <ui:Label text="DELIVERY PIPELINE" name="hub-rail-caption" class="hub-rail-caption" />
+                <ui:ScrollView name="hub-rail-scroll" class="hub-rail-scroll">
+                    <ui:VisualElement name="hub-rail-stages" class="hub-rail-stages" />
+                </ui:ScrollView>
+                <ui:VisualElement name="hub-rail-blocker" class="hub-rail-blocker">
+                    <ui:Label text="" name="hub-rail-blocker-title" class="hub-rail-blocker-title" />
+                    <ui:Label text="" name="hub-rail-blocker-body" class="hub-rail-blocker-body" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="hub-content" class="hub-content">
+                <ui:VisualElement name="hub-section-header" class="hub-section-header">
+                    <ui:VisualElement name="hub-section-titles" class="hub-section-titles">
+                        <ui:Label text="" name="hub-section-title" class="hub-section-title" />
+                        <ui:Label text="" name="hub-section-subtitle" class="hub-section-subtitle" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="hub-section-actions" class="hub-section-actions" />
+                </ui:VisualElement>
+
+                <ui:VisualElement name="hub-section-body" class="hub-section-body" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+
+        <ui:VisualElement name="hub-status" class="hub-status">
+            <ui:VisualElement name="hub-status-dot" class="hub-status-dot" />
+            <ui:Label text="" name="hub-status-text" class="hub-status-text" />
+            <ui:Label text="" name="hub-status-context" class="hub-status-context" />
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>
