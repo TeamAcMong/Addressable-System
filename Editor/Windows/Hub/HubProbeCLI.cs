@@ -93,7 +93,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 "hub-rail-stages", "hub-section-body", "hub-section-actions", "hub-rail-blocker",
                 "hub-status-dot", "hub-header-context", "hub-section-title", "hub-section-subtitle",
                 "hub-rail-blocker-title", "hub-rail-blocker-body", "hub-status-text",
-                "hub-status-context",
+                "hub-status-context", "hub-header-chips", "hub-header-search",
             };
 
             int missing = 0;

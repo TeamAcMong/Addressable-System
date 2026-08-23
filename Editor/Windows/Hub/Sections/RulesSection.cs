@@ -280,8 +280,13 @@ namespace AddressableManager.Editor.Windows.Hub
                     if (n > 0) body.Add(SummaryRow("  " + Describe(kind), n.ToString()));
                 }
 
-                if (_preview.Errors.Count > 0)
-                    body.Add(BuildMessageList("Collisions", _preview.Errors, HealthState.Blocked));
+                foreach (var collision in _preview.Collisions)
+                    body.Add(BuildCollisionCard(collision));
+
+                // Anything in Errors that is NOT a collision still has to be shown; the collisions
+                // above are the subset that can be acted on, not the whole list.
+                if (_preview.Errors.Count > _preview.Collisions.Count)
+                    body.Add(BuildMessageList("Other errors", _preview.Errors, HealthState.Blocked));
 
                 if (_preview.Warnings.Count > 0)
                     body.Add(BuildMessageList("Worth reading", _preview.Warnings, HealthState.Warning));
@@ -378,6 +383,104 @@ namespace AddressableManager.Editor.Windows.Hub
             }
 
             return box;
+        }
+
+        /// <summary>One duplicate address, with the two assets and something to do about it.</summary>
+        /// <remarks>
+        /// The design's rule for a finding is symptom, cause, action. A collision reported as a
+        /// sentence in a list has the first two and not the third: the reader is told two assets
+        /// collide and then has to go and find them by hand, on the screen that already knows exactly
+        /// where they are.
+        /// </remarks>
+        private static VisualElement BuildCollisionCard(LayoutRuleProcessor.AddressCollision collision)
+        {
+            var card = new VisualElement();
+            card.AddToClassList("hub-card");
+            card.style.marginTop = 7;
+
+            var head = new VisualElement();
+            head.AddToClassList("hub-card-header");
+
+            var title = new Label($"Two assets would claim \u201c{collision.Address}\u201d");
+            title.AddToClassList("hub-card-title");
+            ApplyText(title, HealthState.Blocked);
+            head.Add(title);
+            card.Add(head);
+
+            var body = new VisualElement();
+            body.style.paddingLeft = 8;
+            body.style.paddingRight = 8;
+            body.style.paddingTop = 6;
+            body.style.paddingBottom = 8;
+
+            var why = new Label(
+                $"Both resolve through '{collision.RuleName}'. Addressables returns one location for " +
+                "a key, so the other asset could never be loaded at runtime.");
+            why.AddToClassList("hub-rule-meta");
+            body.Add(why);
+
+            body.Add(AssetLine(collision.FirstAsset));
+            body.Add(AssetLine(collision.SecondAsset));
+
+            var actions = new VisualElement();
+            actions.style.flexDirection = FlexDirection.Row;
+            actions.style.marginTop = 8;
+
+            var ping = new Button(() => PingBoth(collision)) { text = "Show both" };
+            ping.AddToClassList("hub-btn");
+            ping.style.marginLeft = 0;
+            ping.tooltip = "Selects both assets in the Project window.";
+            actions.Add(ping);
+
+            var narrow = new Button(() => SelectRuleAsset()) { text = "Narrow the rule" };
+            narrow.AddToClassList("hub-btn");
+            narrow.tooltip = "Opens the rule set so the filter can be tightened.";
+            actions.Add(narrow);
+
+            body.Add(actions);
+            card.Add(body);
+            return card;
+        }
+
+        private static VisualElement AssetLine(string path)
+        {
+            var line = new Label("← " + path);
+            line.AddToClassList("hub-rule-id");
+            line.style.marginTop = 3;
+            line.tooltip = path;
+            return line;
+        }
+
+        private static void PingBoth(LayoutRuleProcessor.AddressCollision collision)
+        {
+            var objects = new List<UnityEngine.Object>();
+
+            foreach (var path in new[] { collision.FirstAsset, collision.SecondAsset })
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+                if (asset != null) objects.Add(asset);
+            }
+
+            if (objects.Count == 0)
+            {
+                // Both paths came from a run that just walked them, so failing to load is worth a
+                // word rather than a silent no-op on a button the user just pressed.
+                Debug.LogWarning($"[Layout Rules] Neither '{collision.FirstAsset}' nor " +
+                                 $"'{collision.SecondAsset}' could be loaded.");
+                return;
+            }
+
+            Selection.objects = objects.ToArray();
+            EditorGUIUtility.PingObject(objects[0]);
+        }
+
+        private static void SelectRuleAsset()
+        {
+            var data = FindRuleData();
+            if (data == null) return;
+
+            Selection.activeObject = data;
+            EditorGUIUtility.PingObject(data);
         }
 
         private static VisualElement BuildMessageList(string title, List<string> messages, HealthState state)

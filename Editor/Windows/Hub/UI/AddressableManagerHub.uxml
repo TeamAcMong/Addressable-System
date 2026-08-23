@@ -3,6 +3,10 @@
 
         <ui:VisualElement name="hub-header" class="hub-header">
             <ui:Label text="Addressable Manager" name="hub-header-title" class="hub-header-title" />
+            <ui:VisualElement name="hub-header-search" class="hub-header-search">
+                <ui:Label text="Go to anything…" class="hub-header-search-text" />
+                <ui:Label text="Ctrl K" class="hub-header-search-key" />
+            </ui:VisualElement>
             <ui:VisualElement name="hub-header-spacer" class="hub-header-spacer" />
             <ui:VisualElement name="hub-header-chips" class="hub-header-chips" />
             <ui:Label text="" name="hub-header-context" class="hub-header-context" />

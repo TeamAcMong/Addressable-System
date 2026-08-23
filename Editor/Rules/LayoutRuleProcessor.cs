@@ -60,8 +60,32 @@ namespace AddressableManager.Editor.Rules
             public string RuleName;
         }
 
+        /// <summary>Two assets a run would give the same address.</summary>
+        /// <remarks>
+        /// Recorded as data as well as prose. The message in <c>Errors</c> is what a CLI log and a
+        /// build report need; a UI that wants to offer "show me both" has to parse that sentence back
+        /// apart to do it, and a finding you cannot act on is a finding half-delivered.
+        /// </remarks>
+        public sealed class AddressCollision
+        {
+            /// <summary>The address both assets would claim.</summary>
+            public string Address;
+
+            /// <summary>The asset that got there first in this run.</summary>
+            public string FirstAsset;
+
+            /// <summary>The asset that would collide with it.</summary>
+            public string SecondAsset;
+
+            /// <summary>The rule that generated the address.</summary>
+            public string RuleName;
+        }
+
         public class ProcessResult
         {
+            /// <summary>Every duplicate address this run would produce.</summary>
+            public List<AddressCollision> Collisions = new List<AddressCollision>();
+
             /// <summary>
             /// Every write a dry run withheld. Empty on a real run, which does not plan - it writes.
             /// </summary>
@@ -751,6 +775,14 @@ namespace AddressableManager.Editor.Rules
                     // is a human call, and writing it anyway at least keeps the run's behaviour
                     // unchanged for anyone already depending on it. What must not happen is the run
                     // finishing green.
+                    result.Collisions.Add(new AddressCollision
+                    {
+                        Address = address,
+                        FirstAsset = firstOwner,
+                        SecondAsset = assetPath,
+                        RuleName = rule.RuleName,
+                    });
+
                     result.Errors.Add(
                         $"Duplicate address '{address}': generated for both '{firstOwner}' and " +
                         $"'{assetPath}' by rule '{rule.RuleName}'. Two entries sharing one address makes " +
