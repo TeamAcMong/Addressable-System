@@ -351,7 +351,16 @@
     border-bottom-color: var(--unity-colors-window-border);
 }
 
-.hub-rule:hover {
+/*
+ * Hover is a PROMISE. It only goes on rows that do something when clicked.
+ *
+ * Every row in every section used to light up under the cursor, and almost none of them were
+ * interactive - the Validator's rules, the rule list, the lifetime inventory, the profile table.
+ * A row that highlights and then ignores the click is the same defect as a button whose handler is
+ * empty, and this package has shipped that twice already. Adding the modifier is now the deliberate
+ * act of saying "this one really is clickable".
+ */
+.hub-rule--clickable:hover {
     background-color: var(--unity-colors-highlight-background-hover);
 }
 
@@ -623,12 +632,25 @@
     border-bottom-color: var(--unity-colors-window-border);
 }
 
-.hub-prow:hover {
+.hub-prow--clickable:hover {
     background-color: var(--unity-colors-highlight-background-hover);
 }
 
-.hub-prow--active {
+/*
+ * Two different ideas, drawn differently on purpose.
+ *
+ *   --selected  where the cursor is on this screen. Highlight, like any list.
+ *   --active    the profile Addressables will actually BUILD with. A left accent bar, because it
+ *               stays true whether or not this screen has focus, and confusing the two is how a
+ *               build goes out against the profile someone merely clicked on.
+ */
+.hub-prow--selected {
     background-color: var(--unity-colors-highlight-background);
+}
+
+.hub-prow--active {
+    border-left-width: 3px;
+    border-left-color: var(--unity-colors-default-text);
 }
 
 .hub-pcol {

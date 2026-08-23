@@ -81,6 +81,17 @@ namespace AddressableManager.Editor.Windows.Hub
         private VisualElement _body;
         private TextField _originField;
 
+        /// <summary>
+        /// The profile this screen is focused on. Null means "whichever is active".
+        /// </summary>
+        /// <remarks>
+        /// Distinct from the ACTIVE profile, and the distinction is load-bearing. Selecting a row
+        /// here points the origin editor at it; it does not change what a build uses. Conflating the
+        /// two would mean a stray click in a read-only-looking table silently repointed the next
+        /// release at staging.
+        /// </remarks>
+        private string _selectedProfile;
+
         /// <inheritdoc />
         public string Id => HubSections.Ids.Profiles;
 
@@ -221,7 +232,19 @@ namespace AddressableManager.Editor.Windows.Hub
             {
                 var line = new VisualElement();
                 line.AddToClassList("hub-prow");
+                line.AddToClassList("hub-prow--clickable");
                 if (row.IsActive) line.AddToClassList("hub-prow--active");
+                if (row.Name == Selected(rows)) line.AddToClassList("hub-prow--selected");
+
+                string clicked = row.Name;
+                line.RegisterCallback<ClickEvent>(_ =>
+                {
+                    _selectedProfile = clicked;
+                    Rebuild();
+                });
+                line.tooltip = row.IsActive
+                    ? "This is the profile a build uses. Click to edit its origin."
+                    : "Click to edit this profile's origin, or make it the one builds use.";
 
                 var nameCell = new VisualElement();
                 nameCell.AddToClassList("hub-col-profile");
@@ -260,14 +283,31 @@ namespace AddressableManager.Editor.Windows.Hub
             return card;
         }
 
-        /// <summary>The one editable field: the origin of the active profile.</summary>
+        /// <summary>Which profile the editor is pointed at: the selection, falling back to the active one.</summary>
+        private string Selected(List<Row> rows)
+        {
+            if (!string.IsNullOrEmpty(_selectedProfile))
+            {
+                foreach (var row in rows)
+                    if (row.Name == _selectedProfile) return row.Name;
+            }
+
+            foreach (var row in rows)
+                if (row.IsActive) return row.Name;
+
+            return rows.Count > 0 ? rows[0].Name : null;
+        }
+
+        /// <summary>The one editable field: the origin of the selected profile.</summary>
         private VisualElement BuildOriginEditor(AddressableAssetSettings settings, List<Row> rows)
         {
+            string selectedName = Selected(rows);
+
             Row active = default;
             bool found = false;
             foreach (var row in rows)
             {
-                if (!row.IsActive) continue;
+                if (row.Name != selectedName) continue;
                 active = row;
                 found = true;
                 break;
@@ -280,7 +320,9 @@ namespace AddressableManager.Editor.Windows.Hub
             head.AddToClassList("hub-card-header");
             var title = new Label(found && active.HasPlaceholder
                 ? $"'{active.Name}' has no host yet"
-                : "Set the origin for the active profile");
+                : found
+                    ? $"Origin for '{active.Name}'"
+                    : "Set the origin");
             title.AddToClassList("hub-card-title");
             if (found && active.HasPlaceholder) ApplyText(title, HealthState.Blocked);
             head.Add(title);
@@ -288,7 +330,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             if (!found)
             {
-                var none = new Label("No profile is active, so there is nothing to set.");
+                var none = new Label("No profile is selected, so there is nothing to set.");
                 none.AddToClassList("hub-rule-meta");
                 none.style.paddingLeft = 8;
                 none.style.paddingBottom = 7;
@@ -330,6 +372,22 @@ namespace AddressableManager.Editor.Windows.Hub
             example.AddToClassList("hub-rule-id");
             example.style.marginTop = 4;
             body.Add(example);
+
+            // Switching the active profile is the other thing this screen legitimately does, and it
+            // is deliberately NOT what clicking a row does. It changes what the next build bakes
+            // into the catalog, which is not a consequence a stray click should have.
+            if (!active.IsActive)
+            {
+                var makeActive = new Button(() => MakeActive(settings, profileName))
+                {
+                    text = $"Build with '{profileName}' instead",
+                };
+                makeActive.AddToClassList("hub-btn");
+                makeActive.style.alignSelf = Align.FlexStart;
+                makeActive.style.marginTop = 8;
+                makeActive.style.marginLeft = 0;
+                body.Add(makeActive);
+            }
 
             card.Add(body);
             return card;
@@ -383,6 +441,39 @@ namespace AddressableManager.Editor.Windows.Hub
 
             // Re-read rather than assume it took. The row above is rebuilt from the settings asset,
             // so a write that did not land shows immediately instead of being reported as done.
+            Rebuild();
+        }
+
+        private void MakeActive(AddressableAssetSettings settings, string profileName)
+        {
+            string profileId = settings.profileSettings.GetProfileId(profileName);
+            if (string.IsNullOrEmpty(profileId))
+            {
+                EditorUtility.DisplayDialog("Profile not found", $"No profile named '{profileName}'.", "OK");
+                return;
+            }
+
+            string current = settings.profileSettings.GetProfileName(settings.activeProfileId);
+
+            // Name the consequence, not the action. "Are you sure?" makes the reader guess what they
+            // are agreeing to, and what they are agreeing to here is which URL every player of the
+            // next build will poll forever.
+            bool go = EditorUtility.DisplayDialog(
+                "Change the profile builds use?",
+                $"The active profile becomes '{profileName}' instead of '{current}'.\n\n" +
+                "Every content build from now on bakes that profile's URLs into the catalog, and no " +
+                "later upload can change them for a player who already has the build.",
+                $"Use '{profileName}'", "Cancel");
+
+            if (!go) return;
+
+            settings.activeProfileId = profileId;
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log($"[Profiles] Builds now use '{profileName}'.");
+
+            _health.Invalidate();
             Rebuild();
         }
 

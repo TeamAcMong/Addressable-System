@@ -165,13 +165,10 @@ namespace AddressableManager.Editor.Windows.Hub
                     new UpdatePreviewTab(),
                     Probes.UpdatePreview),
 
-                new CdnTabSection(
-                    Ids.Build,
-                    "Build",
-                    "Produce bundles and a catalog for the active profile",
-                    PipelineStage.Build,
-                    new BuildTab(),
-                    Probes.Build),
+                // A section of its own rather than the old tab: the tab offered the two build
+                // buttons and let the pipeline explain itself afterwards, which is too late for the
+                // failure that matters. BuildTab stays for CdnManagerWindow until that window retires.
+                new BuildSection(),
 
                 new CdnTabSection(
                     Ids.Catalog,
