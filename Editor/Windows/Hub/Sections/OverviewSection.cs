@@ -69,6 +69,7 @@ namespace AddressableManager.Editor.Windows.Hub
             _body.Add(BuildPipelineStrip(health));
             _body.Add(BuildStatCards(health));
             _body.Add(BuildTodoList(health));
+            _body.Add(BuildRecent());
             _body.Add(BuildHonestyNote());
         }
 
@@ -437,6 +438,115 @@ namespace AddressableManager.Editor.Windows.Hub
                 case HealthState.NotMeasured: return 1;
                 default:                      return 0;
             }
+        }
+
+        // ---------------------------------------------------------------- recent
+
+        /// <summary>
+        /// What this machine has done lately.
+        /// </summary>
+        /// <remarks>
+        /// Per-machine and disposable by design - it lives under Library/. That is stated on screen
+        /// rather than left to be inferred, because a history that looks authoritative and is in fact
+        /// local to one developer is worse than none: someone would eventually use it to answer "what
+        /// did we ship", which it cannot.
+        /// </remarks>
+        private static VisualElement BuildRecent()
+        {
+            var card = new VisualElement();
+            card.AddToClassList("hub-card");
+
+            var head = new VisualElement();
+            head.AddToClassList("hub-card-header");
+
+            var title = new Label("Recent, on this machine");
+            title.AddToClassList("hub-card-title");
+            head.Add(title);
+
+            var note = new Label("kept under Library/ — local, and safe to delete");
+            note.AddToClassList("hub-card-count");
+            head.Add(note);
+
+            card.Add(head);
+
+            var entries = HubHistory.Recent(6);
+
+            if (entries.Count == 0)
+            {
+                var empty = new Label(HubHistory.Exists
+                    ? "The log exists but is empty."
+                    : "Nothing recorded yet. Builds and rule applies are written here as they happen.");
+                empty.AddToClassList("hub-rule-meta");
+                empty.style.paddingLeft = 8;
+                empty.style.paddingTop = 7;
+                empty.style.paddingBottom = 7;
+                card.Add(empty);
+                return card;
+            }
+
+            foreach (var entry in entries)
+            {
+                var row = new VisualElement();
+                row.AddToClassList("hub-prow");
+
+                var when = new Label(FormatWhen(entry.utc));
+                when.AddToClassList("hub-pcol");
+                when.style.width = 96;
+                when.style.flexShrink = 0;
+                row.Add(when);
+
+                var dot = new VisualElement();
+                dot.AddToClassList("hub-summary-dot");
+                ApplyState(dot, StateOf(entry.kind));
+                row.Add(dot);
+
+                var what = new Label(entry.what);
+                what.AddToClassList("hub-pcol");
+                what.style.flexGrow = 1;
+                row.Add(what);
+
+                var figure = new Label(entry.figure);
+                figure.AddToClassList("hub-pcol");
+                figure.style.width = 190;
+                figure.style.flexShrink = 0;
+                figure.style.unityTextAlign = TextAnchor.MiddleRight;
+                figure.tooltip = entry.figure;
+                row.Add(figure);
+
+                card.Add(row);
+            }
+
+            return card;
+        }
+
+        private static HealthState StateOf(HistoryKind kind)
+        {
+            switch (kind)
+            {
+                case HistoryKind.Failed:  return HealthState.Blocked;
+                case HistoryKind.Warning: return HealthState.Warning;
+                default:                  return HealthState.Ok;
+            }
+        }
+
+        /// <summary>Local time, and the date once it is not today.</summary>
+        /// <remarks>
+        /// Stored as UTC so the file is unambiguous; shown local because nobody reasons about their
+        /// own afternoon in UTC. An unparseable stamp shows the raw text rather than a fabricated
+        /// date - a hand-edited log should look wrong, not plausible.
+        /// </remarks>
+        private static string FormatWhen(string utc)
+        {
+            if (!System.DateTime.TryParse(utc, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+            {
+                return string.IsNullOrEmpty(utc) ? "—" : utc;
+            }
+
+            var local = parsed.ToLocalTime();
+            return local.Date == System.DateTime.Now.Date
+                ? local.ToString("HH:mm:ss")
+                : local.ToString("dd MMM HH:mm");
         }
 
         // ---------------------------------------------------------------- footer
