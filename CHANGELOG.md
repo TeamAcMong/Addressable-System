@@ -1,7 +1,18 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
-## [Unreleased] - One Editor window, and eleven fixes where the patch had landed on one side of a pair
+## [4.1.0] - 2026-08-23 - One Editor window, and eleven fixes where the patch had landed on one side of a pair
+
+The stable release of the 4.1 line. Coming from `4.0.1`, this entry is the last increment, not the
+whole story: the CDN content pipeline, the tiered-cache rework, reference counting, the pooling
+rewrite and the Unity floor correction all landed across `4.1.0-pre.1` through `4.1.0-pre.15`, each
+with its own entry below. Read them in order if you are upgrading from 4.0.x; read
+[Migrating from 4.0.x](README.md#-migrating-from-40x) if you only want the renames.
+
+Dropping the `-pre` label says the API surface has stopped moving. It does not say every part has
+been exercised in the field — the CDN layer's evidence is still local, and
+[Not yet validated](README.md#not-yet-validated) is the list of what nobody has run against a real
+CDN yet.
 
 ### Fixed - eleven defects, almost all the same shape
 

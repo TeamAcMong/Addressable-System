@@ -289,7 +289,7 @@ You can create your own templates:
 ## Template Compatibility
 
 - **Format version:** 1.0
-- **Package version:** 4.1.0-pre.9 — the `filterJson` / `*ProviderJson` fields and type-name
+- **Package version:** 4.1.0 — the `filterJson` / `*ProviderJson` fields and type-name
   resolution are read by this version's `RuleSerializer`; older versions ignore them and fall back
   to paths only
 - **Unity Version:** 2023.1+ (`package.json`)
