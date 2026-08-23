@@ -335,12 +335,56 @@ namespace AddressableManager.Cdn
         public static void Reset()
         {
             CdnRequestDecorator.Uninstall();
+            ClearState();
+        }
+
+        /// <summary>
+        /// Drop every static this class holds, WITHOUT touching the Addressables hooks.
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="Reset"/> because the two callers want different things:
+        /// <see cref="Reset"/> is a deliberate teardown and should uninstall the hooks, while
+        /// <see cref="ResetStatics"/> below runs when Unity has already discarded them.
+        /// </remarks>
+        private static void ClearState()
+        {
             _settings = null;
             _network = null;
             _rewriter = null;
             _catalog = null;
             _downloads = null;
             _cache = null;
+            Interlocked.Exchange(ref _updateInFlight, 0);
+        }
+
+        /// <summary>
+        /// Drop the cached state when entering play mode, so a second Play session starts from the
+        /// same point as the first.
+        /// </summary>
+        /// <remarks>
+        /// This is the missing half of a pair, and its absence produced a state that reported itself
+        /// healthy while being unusable.
+        ///
+        /// With "Enter Play Mode without Domain Reload" - a very common iteration setting -
+        /// <see cref="CdnRequestDecorator"/> resets its statics on SubsystemRegistration and this
+        /// class did not. So on the second Play session <see cref="IsInitialized"/> was still true
+        /// from the first, <see cref="InitializeAsync"/> took its early-return, and
+        /// <c>CdnRequestDecorator.Install</c> was therefore never called again - while the decorator
+        /// had already dropped the rewriter it needed. <see cref="CurrentBaseUrl"/> and
+        /// <see cref="CurrentEnvironmentId"/> kept reporting the configured origin, because they read
+        /// the surviving statics, and the CDN Manager's Runtime Monitor showed green.
+        ///
+        /// <see cref="Reset"/> existed and said in its own doc comment that it was for domain reloads.
+        /// It carried no attribute and had no production call site, so nothing ever ran it.
+        ///
+        /// No hook teardown here: by the time this runs Addressables has rebuilt its instance and the
+        /// hooks are already gone, so uninstalling would restore delegates captured from a previous
+        /// session.
+        /// </remarks>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            ClearState();
         }
 
         // ========== internals ==========

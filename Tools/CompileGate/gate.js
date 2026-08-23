@@ -244,7 +244,20 @@ function build(entry, chain = []) {
   }
 
   if (fs.existsSync(outDll) && !CLEAN) {
-    const newest = srcs.reduce((a, s) => Math.max(a, fs.statSync(s).mtimeMs), 0);
+    // The freshness input is this assembly's own sources PLUS everything it compiles against:
+    // every dependency dll, and the .rsp (whose content encodes the defines and reference list).
+    //
+    // Sources alone is the wrong question, and it produced a false PASS on exactly the class of
+    // error this gate exists to catch. Editor/ calls into Runtime/ constantly, so the normal shape
+    // of a Runtime-only refactor - rename a public method, change a signature, narrow public to
+    // internal - touches no file under Editor/. AddressableManager would rebuild and pass,
+    // AddressableManager.Editor would be served from cache, and the gate printed PASS for a tree
+    // Unity would reject with CS1061. run.sh passes no --clean, so this was the everyday path.
+    const inputs = srcs.concat(deps.filter(d => typeof d === 'string' && fs.existsSync(d)));
+    const rspPathForStamp = path.join(OUT, entry.name + '.rsp');
+    if (fs.existsSync(rspPathForStamp)) inputs.push(rspPathForStamp);
+
+    const newest = inputs.reduce((a, s) => Math.max(a, fs.statSync(s).mtimeMs), 0);
     if (fs.statSync(outDll).mtimeMs >= newest) {
       building.delete(entry.name);
       built.set(entry.name, outDll);

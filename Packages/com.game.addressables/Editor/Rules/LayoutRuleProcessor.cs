@@ -57,6 +57,20 @@ namespace AddressableManager.Editor.Rules
         private readonly Dictionary<string, string> _addressOwners = new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>
+        /// Version labels seen this run that a range expression cannot compare, keyed by label so the
+        /// report names the shape rather than every asset carrying it.
+        /// </summary>
+        /// <remarks>
+        /// Existed because "cannot compare" and "matches" were the same answer. An unparseable label
+        /// fell through to <c>!ExcludeUnversioned</c>, which with the default (and the shipped
+        /// template's) <c>false</c> is <c>true</c> - so a filter set to <c>[1.0.0,2.0.0)</c> passed
+        /// every asset in the project while the log said the filter was active. Three of the four
+        /// shipped version providers write labels in exactly that category.
+        /// </remarks>
+        private readonly Dictionary<string, string> _uncomparableVersionLabels =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>
         /// <see cref="LayoutRuleData.VersionExpression"/>, parsed once per run. Null when the rule data
         /// sets no expression.
         /// </summary>
@@ -94,11 +108,9 @@ namespace AddressableManager.Editor.Rules
         public ProcessResult ApplyRules(Action<float, string> progressCallback = null)
         {
             var result = new ProcessResult();
-            _labelsTouched = false;
-            _addressOwners.Clear();
             // Abort, do not fall through. Returning here with no filter set would apply every rule to
             // every asset - the exact outcome the error message says did not happen.
-            if (!PrepareVersionFilter(result)) return result;
+            if (!BeginRun(result)) return result;
 
             try
             {
@@ -161,6 +173,9 @@ namespace AddressableManager.Editor.Rules
                 Debug.LogException(ex);
             }
 
+            // After the catch, so it is reported whether the run completed or threw partway.
+            ReportUncomparableVersions(result);
+
             return result;
         }
 
@@ -170,11 +185,9 @@ namespace AddressableManager.Editor.Rules
         public ProcessResult ApplyRulesToAssets(List<string> assetPaths, Action<float, string> progressCallback = null)
         {
             var result = new ProcessResult();
-            _labelsTouched = false;
-            _addressOwners.Clear();
             // Abort, do not fall through. Returning here with no filter set would apply every rule to
             // every asset - the exact outcome the error message says did not happen.
-            if (!PrepareVersionFilter(result)) return result;
+            if (!BeginRun(result)) return result;
 
             try
             {
@@ -206,6 +219,9 @@ namespace AddressableManager.Editor.Rules
                 result.Errors.Add($"Exception: {ex.Message}");
                 Debug.LogException(ex);
             }
+
+            // After the catch, so it is reported whether the run completed or threw partway.
+            ReportUncomparableVersions(result);
 
             return result;
         }
@@ -239,6 +255,97 @@ namespace AddressableManager.Editor.Rules
         private const string ExcludedAddressableDataPrefix = "Assets/AddressableAssetsData/";
 
         /// <summary>
+        /// Per-run reset. Returns false when the run must not proceed.
+        /// </summary>
+        private bool BeginRun(ProcessResult result)
+        {
+            _labelsTouched = false;
+            _addressOwners.Clear();
+            SeedExistingAddresses();
+            return PrepareVersionFilter(result);
+        }
+
+        /// <summary>
+        /// Record every address the project already uses, so a collision with an entry that is NOT
+        /// part of this run is detectable.
+        /// </summary>
+        /// <remarks>
+        /// Without this the duplicate check could only ever see inside its own batch, which made it
+        /// useless on the path that matters most. <c>AddressableAutoProcessor</c> hands
+        /// <c>ApplyRulesToAssets</c> the freshly imported paths - normally one - so the map held one
+        /// entry and could not collide with itself. Dropping a second <c>coin.png</c> into a project
+        /// that already had one produced two entries sharing the address <c>coin</c>, one asset
+        /// permanently unreachable at runtime, and a result reporting full success. The only surfaces
+        /// that would have caught it (Layout Viewer, the DetectConflicts CLI) are manual and are never
+        /// invoked by the apply path.
+        ///
+        /// Seeded by GUID rather than skipped-if-same-path: an entry this run is about to rewrite must
+        /// not collide with its own previous address, and the owner check compares asset paths, so the
+        /// path recorded here is the one <c>AssetDatabase</c> reports for that entry now.
+        ///
+        /// Cost is one walk of the existing entries per run. That is the price of the check meaning
+        /// anything on an incremental run, and it is paid once, not per asset.
+        /// </remarks>
+        private void SeedExistingAddresses()
+        {
+            if (_settings?.groups == null) return;
+
+            foreach (var group in _settings.groups)
+            {
+                if (group == null || group.entries == null) continue;
+
+                foreach (var entry in group.entries)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.address)) continue;
+
+                    string path = AssetDatabase.GUIDToAssetPath(entry.guid);
+                    if (string.IsNullOrEmpty(path)) continue;
+
+                    // First writer wins; a project that ALREADY contains a duplicate is reported by
+                    // the first rule run that touches either of them rather than being masked here.
+                    if (!_addressOwners.ContainsKey(entry.address))
+                        _addressOwners[entry.address] = path;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Tell the user about version labels the expression could not compare.
+        /// </summary>
+        /// <remarks>
+        /// A warning, not an error: the run did happen and its effects are real. But it must be said
+        /// out loud, because the failure is invisible from the outside - the assets were let through
+        /// by <c>!ExcludeUnversioned</c> and everything looks like it worked.
+        /// </remarks>
+        private void ReportUncomparableVersions(ProcessResult result)
+        {
+            if (_uncomparableVersionLabels.Count == 0) return;
+
+            var samples = new List<string>();
+            foreach (var pair in _uncomparableVersionLabels)
+            {
+                samples.Add($"'{pair.Key}' (e.g. {pair.Value})");
+                if (samples.Count == 3) break;
+            }
+
+            string more = _uncomparableVersionLabels.Count > samples.Count
+                ? $" and {_uncomparableVersionLabels.Count - samples.Count} other label shape(s)"
+                : string.Empty;
+
+            result.Warnings.Add(
+                $"Version filter '{_ruleData.VersionExpression}' could not compare " +
+                $"{_uncomparableVersionLabels.Count} label shape(s): {string.Join(", ", samples)}{more}. " +
+                (_ruleData.ExcludeUnversioned
+                    ? "Those assets were EXCLUDED from this run."
+                    : "Those assets were INCLUDED in this run, because 'Exclude Unversioned' is off - " +
+                      "so the filter did not narrow anything for them.") +
+                " A range expression can only order semver-shaped labels; a git hash or a date stamp " +
+                "is an identifier, not an ordered version. Use ConstantVersionProvider, or " +
+                "BuildNumberVersionProvider with a three-component bundleVersion, if you need range " +
+                "filtering.");
+        }
+
+        /// <summary>
         /// Parse the rule data's version expression once, before any rule runs.
         /// </summary>
         /// <returns>False when the run must not proceed.</returns>
@@ -246,6 +353,7 @@ namespace AddressableManager.Editor.Rules
         {
             _versionFilter = null;
             _hasVersionFilter = false;
+            _uncomparableVersionLabels.Clear();
 
             string expression = _ruleData.VersionExpression;
             if (string.IsNullOrWhiteSpace(expression)) return true;
@@ -299,10 +407,15 @@ namespace AddressableManager.Editor.Rules
                 return !_ruleData.ExcludeUnversioned;
 
             string raw = versionLabel.Substring("version:".Length);
-            if (!Versioning.SemanticVersion.TryParse(raw, out var version))
+            if (!Versioning.SemanticVersion.TryParseLenient(raw, out var version))
             {
-                // A malformed version label is treated as unversioned rather than as a match: guessing
-                // that it satisfies the range is the answer that silently does the wrong thing.
+                // Still treated as unversioned - guessing that it satisfies the range is the answer
+                // that silently does the wrong thing - but no longer treated as SILENTLY unversioned.
+                // Whatever this run decides here, the user gets told at the end how many assets the
+                // expression could not compare and what their labels looked like.
+                if (!_uncomparableVersionLabels.ContainsKey(raw))
+                    _uncomparableVersionLabels[raw] = assetPath;
+
                 return !_ruleData.ExcludeUnversioned;
             }
 

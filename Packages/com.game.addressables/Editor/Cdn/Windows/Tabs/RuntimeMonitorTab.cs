@@ -158,7 +158,13 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             }
 
             var p = CdnDownloadMonitor.Current;
-            _downloadBar.value = p.Percent / 100f;
+
+            // No conversion: DownloadProgress.Percent is a 0..1 FRACTION (see its doc comment) and
+            // monitor-download-bar declares low-value="0" high-value="1" in the UXML. Dividing by 100
+            // here - which 4.1.0-pre.15 did - put a finished download at 0.01 on a 0..1 bar, so the
+            // bar this row was rewritten to bring to life still never left the left edge. The unit is
+            // stated in three places and only this one disagreed.
+            _downloadBar.value = p.Percent;
 
             string speed = p.BytesPerSecond > 1
                 ? $" at {p.BytesPerSecond / (1024 * 1024):F2} MB/s"

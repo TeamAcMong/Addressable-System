@@ -503,6 +503,16 @@ namespace AddressableManager.Editor.Rules
                         // template imported its label and version rules with ZERO filters (their
                         // filterAssetPath is empty by design now that filters travel inline), which
                         // fails validation and aborts the entire run.
+                        // Losing SOME filters is the dangerous case, not losing all of them. Filters
+                        // are ANDed, so dropping one makes the rule match STRICTLY MORE than it was
+                        // written to: PathFilter("Assets/UI") AND ExtensionFilter(".png") degrades to
+                        // "every .png". This loop used to log the error and carry on, leaving the rule
+                        // ENABLED and counting it as a success - so the CLI printed
+                        // "Rules imported successfully" and exited 0, and the next Apply relabelled
+                        // every addressable asset the surviving filters happened to match. The address
+                        // loop above has always tracked this; label and version did not.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
                             var filter = ResolveOrCreate<AssetFilterBase>(
@@ -515,6 +525,7 @@ namespace AddressableManager.Editor.Rules
                             }
                             else
                             {
+                                degraded = true;
                                 Debug.LogError(
                                     $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
                                     $"({filterProblem}).");
@@ -523,17 +534,40 @@ namespace AddressableManager.Editor.Rules
 
                         if (rule.Filters.Count == 0)
                         {
-                            rule.Enabled = false;
-                            failCount++;
+                            degraded = true;
                             Debug.LogError(
-                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters; imported disabled.");
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters. A rule needs at " +
+                                "least one filter; imported disabled.");
                         }
 
-                        // Load label provider
+                        // Load label provider. The reason is kept, not discarded with `out _`: a rule
+                        // that imported without its provider needs to be able to say why.
+                        rule.LabelProvider = ResolveOrCreate<LabelProviderBase>(
+                            ruleImport.labelProviderPath, ruleImport.labelProviderType,
+                            ruleImport.labelProviderJson, ruleData, out string labelProblem);
+
+                        if (rule.LabelProvider == null)
                         {
-                            rule.LabelProvider = ResolveOrCreate<LabelProviderBase>(
-                                ruleImport.labelProviderPath, ruleImport.labelProviderType,
-                                ruleImport.labelProviderJson, ruleData, out _);
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}': label provider could not be " +
+                                $"resolved ({labelProblem}).");
+                        }
+
+                        if (degraded)
+                        {
+                            // Imported but disarmed, and counted as a failure. The two counters are
+                            // mutually exclusive: incrementing both, which the zero-filter branch used
+                            // to do, made `failCount == 0` and the printed summary disagree.
+                            rule.Enabled = false;
+                            ruleData.AddLabelRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Label rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters or its provider could not be resolved, and running it as-is " +
+                                "would label more assets than the rule was written to match. Re-point it and " +
+                                "re-enable it by hand.");
+                            continue;
                         }
 
                         ruleData.AddLabelRule(rule);
@@ -565,6 +599,16 @@ namespace AddressableManager.Editor.Rules
                         // template imported its label and version rules with ZERO filters (their
                         // filterAssetPath is empty by design now that filters travel inline), which
                         // fails validation and aborts the entire run.
+                        // Losing SOME filters is the dangerous case, not losing all of them. Filters
+                        // are ANDed, so dropping one makes the rule match STRICTLY MORE than it was
+                        // written to: PathFilter("Assets/UI") AND ExtensionFilter(".png") degrades to
+                        // "every .png". This loop used to log the error and carry on, leaving the rule
+                        // ENABLED and counting it as a success - so the CLI printed
+                        // "Rules imported successfully" and exited 0, and the next Apply relabelled
+                        // every addressable asset the surviving filters happened to match. The address
+                        // loop above has always tracked this; label and version did not.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
                             var filter = ResolveOrCreate<AssetFilterBase>(
@@ -577,6 +621,7 @@ namespace AddressableManager.Editor.Rules
                             }
                             else
                             {
+                                degraded = true;
                                 Debug.LogError(
                                     $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
                                     $"({filterProblem}).");
@@ -585,17 +630,36 @@ namespace AddressableManager.Editor.Rules
 
                         if (rule.Filters.Count == 0)
                         {
-                            rule.Enabled = false;
-                            failCount++;
+                            degraded = true;
                             Debug.LogError(
-                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters; imported disabled.");
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters. A rule needs at " +
+                                "least one filter; imported disabled.");
                         }
 
-                        // Load version provider
+                        // Load version provider. The reason is kept, not discarded with `out _`.
+                        rule.VersionProvider = ResolveOrCreate<VersionProviderBase>(
+                            ruleImport.versionProviderPath, ruleImport.versionProviderType,
+                            ruleImport.versionProviderJson, ruleData, out string versionProblem);
+
+                        if (rule.VersionProvider == null)
                         {
-                            rule.VersionProvider = ResolveOrCreate<VersionProviderBase>(
-                                ruleImport.versionProviderPath, ruleImport.versionProviderType,
-                                ruleImport.versionProviderJson, ruleData, out _);
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}': version provider could not be " +
+                                $"resolved ({versionProblem}).");
+                        }
+
+                        if (degraded)
+                        {
+                            rule.Enabled = false;
+                            ruleData.AddVersionRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Version rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters or its provider could not be resolved, and running it as-is " +
+                                "would version more assets than the rule was written to match. Re-point it and " +
+                                "re-enable it by hand.");
+                            continue;
                         }
 
                         ruleData.AddVersionRule(rule);
