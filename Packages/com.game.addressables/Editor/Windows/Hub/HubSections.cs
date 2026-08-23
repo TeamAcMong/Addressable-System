@@ -157,13 +157,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 new ProfilesSection(),
                 new RulesSection(),
 
-                new CdnTabSection(
-                    Ids.UpdatePreview,
-                    "Update Preview",
-                    "What a returning player would download",
-                    PipelineStage.Build,
-                    new UpdatePreviewTab(),
-                    Probes.UpdatePreview),
+                new UpdatePreviewSection(),
 
                 // A section of its own rather than the old tab: the tab offered the two build
                 // buttons and let the pipeline explain itself afterwards, which is too late for the
