@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine.UIElements;
 
 namespace AddressableManager.Editor.Windows.Hub
 {
@@ -22,6 +23,24 @@ namespace AddressableManager.Editor.Windows.Hub
 
         /// <summary>Show a section by <see cref="IHubSection.Id"/>.</summary>
         void Navigate(string sectionId);
+    }
+
+    /// <summary>
+    /// Implemented by a section that wants buttons in the window's section header.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in, and the shell HIDES the container when nothing fills it. The header's action area was
+    /// queried, cleared on every navigation, and never added to by anything — an empty box drawn
+    /// forever, which is the same dead-UI defect this window was built to remove and which I managed
+    /// to reintroduce while building it. A container that can be empty must be able to disappear.
+    ///
+    /// A section puts an action here when it is the screen's primary verb and should stay reachable
+    /// while the body is scrolled. Everything else belongs next to the thing it acts on.
+    /// </remarks>
+    public interface IHubSectionActions
+    {
+        /// <summary>Add buttons to <paramref name="container"/>. Adding none is fine.</summary>
+        void PopulateHeaderActions(VisualElement container);
     }
 
     /// <summary>

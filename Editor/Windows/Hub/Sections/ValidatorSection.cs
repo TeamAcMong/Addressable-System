@@ -29,7 +29,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// They are detected by the marker <c>CdnBuildModes.NotApplicable</c> that the contract already
     /// puts at the front of their current-value display, and shown in their own group as unmeasured.
     /// </remarks>
-    public sealed class ValidatorSection : IHubSection
+    public sealed class ValidatorSection : IHubSection, IHubSectionActions
     {
         /// <summary>How a rule is grouped, in the order the groups are shown.</summary>
         private enum Verdict
@@ -102,6 +102,60 @@ namespace AddressableManager.Editor.Windows.Hub
                 return SectionHealth.Warning($"{warns} to watch");
 
             return SectionHealth.Ok();
+        }
+
+        /// <summary>Re-check and Fix All live in the header, not in the body.</summary>
+        /// <remarks>
+        /// They are the screen's two verbs and they apply to the whole checklist, so they should stay
+        /// put while fifty-eight rules scroll past underneath. A "Fix all" that scrolls out of reach
+        /// on the screen whose whole job is a long list is a button placed for the layout rather than
+        /// for the reader.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var recheck = new Button(() => { _health.Invalidate(); Rebuild(); }) { text = "Re-check" };
+            recheck.AddToClassList("hub-btn");
+            container.Add(recheck);
+
+            if (AddressableAssetSettingsDefaultObject.Settings == null) return;
+
+            int fixable = 0;
+            try
+            {
+                foreach (var e in Evaluate())
+                {
+                    var verdict = Classify(e);
+                    if (verdict != Verdict.FailsGate && verdict != Verdict.CostsLater) continue;
+                    if (e.Rule.CanAutoFix) fixable++;
+                }
+            }
+            catch (Exception)
+            {
+                // The body reports the failure in full; the header just does not offer an action it
+                // cannot count.
+                return;
+            }
+
+            if (fixable == 0) return;
+
+            var fixAll = new Button(FixAllFromHeader)
+            {
+                text = fixable == 1 ? "Fix 1 safe issue" : $"Fix {fixable} safe issues",
+            };
+            fixAll.AddToClassList("hub-btn");
+            container.Add(fixAll);
+        }
+
+        private void FixAllFromHeader()
+        {
+            var buckets = new Dictionary<Verdict, List<SettingsRuleEvaluation>>();
+            foreach (Verdict v in Enum.GetValues(typeof(Verdict)))
+                buckets[v] = new List<SettingsRuleEvaluation>();
+
+            foreach (var e in Evaluate())
+                buckets[Classify(e)].Add(e);
+
+            FixAll(buckets);
         }
 
         /// <inheritdoc />
@@ -343,18 +397,17 @@ namespace AddressableManager.Editor.Windows.Hub
             foreach (var e in buckets[Verdict.CostsLater])
                 if (e.Rule.CanAutoFix) fixable++;
 
-            var recheck = new Button(Rebuild) { text = "Re-check" };
-            recheck.AddToClassList("hub-btn");
-            strip.Add(recheck);
-
+            // The buttons live in the section header now — see PopulateHeaderActions. Repeating
+            // them here would mean two "Fix all" controls on one screen, and a reader would
+            // reasonably wonder whether they do the same thing.
             if (fixable > 0)
             {
-                var fixAll = new Button(() => FixAll(buckets))
-                {
-                    text = fixable == 1 ? "Fix 1 safe issue" : $"Fix {fixable} safe issues",
-                };
-                fixAll.AddToClassList("hub-btn");
-                strip.Add(fixAll);
+                var hint = new Label(fixable == 1
+                    ? "1 of these can be fixed automatically."
+                    : $"{fixable} of these can be fixed automatically.");
+                hint.AddToClassList("hub-summary-label");
+                hint.style.opacity = 0.65f;
+                strip.Add(hint);
             }
 
             return strip;

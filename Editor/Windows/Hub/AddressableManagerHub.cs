@@ -68,6 +68,7 @@ namespace AddressableManager.Editor.Windows.Hub
         private readonly List<KeyValuePair<PipelineStage, VisualElement>> _railLines =
             new List<KeyValuePair<PipelineStage, VisualElement>>();
 
+        private VisualElement _headerChips;
         private VisualElement _railStages;
         private VisualElement _sectionBody;
         private VisualElement _sectionActions;
@@ -164,6 +165,7 @@ namespace AddressableManager.Editor.Windows.Hub
             _blocker         = root.Q<VisualElement>("hub-rail-blocker");
             _statusDot       = root.Q<VisualElement>("hub-status-dot");
             _headerContext   = root.Q<Label>("hub-header-context");
+            _headerChips     = root.Q<VisualElement>("hub-header-chips");
             _sectionTitle    = root.Q<Label>("hub-section-title");
             _sectionSubtitle = root.Q<Label>("hub-section-subtitle");
             _blockerTitle    = root.Q<Label>("hub-rail-blocker-title");
@@ -360,7 +362,16 @@ namespace AddressableManager.Editor.Windows.Hub
 
             _sectionTitle.text = section.Title;
             _sectionSubtitle.text = section.Subtitle;
+            // Fill it, or hide it. Leaving an empty container on screen is how this window ended
+            // up with a permanently blank action area in the first place.
             _sectionActions.Clear();
+
+            if (section is IHubSectionActions withActions)
+                withActions.PopulateHeaderActions(_sectionActions);
+
+            _sectionActions.style.display = _sectionActions.childCount > 0
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
 
             _sectionBody.Clear();
 
@@ -570,10 +581,48 @@ namespace AddressableManager.Editor.Windows.Hub
 
             // The three facts that change what every other screen means. They were spread across
             // three windows before, which is how a build went out against the wrong profile.
-            _headerContext.text = $"{profile}   ·   {target}   ·   {mode}";
+            //
+            // Chips rather than a run of text, and each one goes somewhere: a fact you cannot act on
+            // is a fact you have to go and find the screen for, which is the arrangement this window
+            // replaced.
+            if (_headerChips != null)
+            {
+                _headerChips.Clear();
+                _headerChips.Add(Chip("Profile", profile, HubSections.Ids.Profiles));
+                _headerChips.Add(Chip("Target", target, null));
+                _headerChips.Add(Chip("Mode", mode, HubSections.Ids.Validator));
+            }
+
+            // The label survives as the narrow-window fallback: below roughly 700px the chips are the
+            // first thing worth dropping, and something still has to say which profile is active.
+            _headerContext.text = string.Empty;
 
             if (_statusContext != null)
-                _statusContext.text = $"{profile} · {target}";
+                _statusContext.text = $"{profile} · {target} · {mode}";
+        }
+
+        /// <summary>One header fact, clickable when there is a screen that owns it.</summary>
+        private VisualElement Chip(string key, string value, string target)
+        {
+            var chip = new VisualElement();
+            chip.AddToClassList("hub-chip");
+
+            var keyLabel = new Label(key);
+            keyLabel.AddToClassList("hub-chip-key");
+            chip.Add(keyLabel);
+
+            var valueLabel = new Label(value);
+            valueLabel.AddToClassList("hub-chip-value");
+            chip.Add(valueLabel);
+
+            if (!string.IsNullOrEmpty(target))
+            {
+                chip.AddToClassList("hub-chip--clickable");
+                chip.tooltip = $"Go to the screen that owns this";
+                chip.RegisterCallback<ClickEvent>(_ => ShowSection(target));
+            }
+
+            return chip;
         }
 
         /// <summary>The active Addressables profile, or an honest placeholder.</summary>

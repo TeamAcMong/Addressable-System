@@ -32,7 +32,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// <c>IsAlive</c> and nothing else), so this reports leaks at scope granularity rather than
     /// naming which holder failed to release. That is the useful half.
     /// </remarks>
-    public sealed class AssetLifetimeSection : IHubSection
+    public sealed class AssetLifetimeSection : IHubSection, IHubSectionActions
     {
         private VisualElement _body;
 
@@ -81,6 +81,15 @@ namespace AddressableManager.Editor.Windows.Hub
             return SectionHealth.Ok($"{assets} held");
         }
 
+        /// <summary>A snapshot is this screen's only verb, and it belongs where it stays reachable.</summary>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var snapshot = new Button(Rebuild) { text = "Take a snapshot" };
+            snapshot.AddToClassList("hub-btn");
+            snapshot.tooltip = "Re-reads every live scope. The list is a moment in time, not a live view.";
+            container.Add(snapshot);
+        }
+
         /// <inheritdoc />
         public VisualElement CreateView()
         {
@@ -124,10 +133,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             _body.Add(BuildLimitsNote());
 
-            var refresh = new Button(Rebuild) { text = "Take a snapshot" };
-            refresh.AddToClassList("hub-btn");
-            refresh.style.alignSelf = Align.FlexStart;
-            _body.Add(refresh);
+            // The snapshot button is in the section header — see PopulateHeaderActions.
         }
 
         private sealed class ScopeRow

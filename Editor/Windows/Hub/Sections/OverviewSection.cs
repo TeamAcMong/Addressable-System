@@ -64,6 +64,17 @@ namespace AddressableManager.Editor.Windows.Hub
             if (_body == null) return;
             _body.Clear();
 
+            // A project with nothing set up gets the three steps, not a pipeline of hollow dots.
+            // Five stages all reporting "not measured" is technically honest and completely useless
+            // to someone who has just installed the package: it describes a machine they have not
+            // built yet instead of telling them how to build it.
+            if (NeedsSetup())
+            {
+                _body.Add(BuildFirstRun());
+                _body.Add(BuildHonestyNote());
+                return;
+            }
+
             var health = CollectHealth();
 
             _body.Add(BuildPipelineStrip(health));
@@ -86,6 +97,122 @@ namespace AddressableManager.Editor.Windows.Hub
             }
 
             return result;
+        }
+
+        // ---------------------------------------------------------------- first run
+
+        /// <summary>
+        /// True when the project has not got far enough for the pipeline to mean anything.
+        /// </summary>
+        /// <remarks>
+        /// Only the FIRST step is a hard prerequisite. A project with Addressables and no CdnSettings
+        /// is a perfectly good local-only project, so the moment Addressables exists this screen goes
+        /// back to reporting rather than instructing - a setup guide that will not go away once you
+        /// have deliberately stopped following it is a nag, not help.
+        /// </remarks>
+        private static bool NeedsSetup() =>
+            UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject.Settings == null;
+
+        private VisualElement BuildFirstRun()
+        {
+            var card = new VisualElement();
+            card.AddToClassList("hub-card");
+
+            var head = new VisualElement();
+            head.AddToClassList("hub-card-header");
+            var title = new Label("Three things before content can ship");
+            title.AddToClassList("hub-card-title");
+            head.Add(title);
+
+            var note = new Label("each one is reversible, and none of them touch your assets");
+            note.AddToClassList("hub-card-count");
+            head.Add(note);
+            card.Add(head);
+
+            bool hasAddressables =
+                UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject.Settings != null;
+            bool hasCdnSettings = CdnSettingsExists();
+
+            card.Add(Step(1, hasAddressables,
+                "Initialise Addressables",
+                hasAddressables
+                    ? "Found the settings asset."
+                    : "Unity creates the settings asset the first time you open the Groups window.",
+                hasAddressables ? null : "Open Addressables Groups",
+                () => EditorApplication.ExecuteMenuItem("Window/Asset Management/Addressables/Groups")));
+
+            card.Add(Step(2, hasCdnSettings,
+                "Tell it where your CDN lives",
+                hasCdnSettings
+                    ? "Found a CdnSettings asset."
+                    : "One origin per environment. You can add the rest later — and if this project " +
+                      "ships everything inside the player, set Build Mode to Local-only and steps 2 " +
+                      "and 3 stop applying rather than sitting here unfinished.",
+                hasCdnSettings || !hasAddressables ? null : "Create CdnSettings",
+                () => EditorApplication.ExecuteMenuItem("Assets/Create/Addressable Manager/CDN Settings")));
+
+            card.Add(Step(3, false,
+                "Point a profile at it",
+                hasCdnSettings
+                    ? "Generated for you, then checked on the Profiles screen."
+                    : "Waits for step 2.",
+                hasCdnSettings ? "Go to Profiles" : null,
+                () => _host?.Navigate(HubSections.Ids.Profiles)));
+
+            return card;
+        }
+
+        /// <summary>Does a CdnSettings asset exist anywhere the runtime could load it?</summary>
+        /// <remarks>
+        /// Asked through the runtime's own loader rather than by searching the AssetDatabase: the
+        /// runtime reads it out of Resources, so an asset the AssetDatabase can see but Resources
+        /// cannot would make this screen tick a box the game will not honour.
+        /// </remarks>
+        private static bool CdnSettingsExists()
+        {
+            var loaded = AddressableManager.Cdn.CdnSettings.Load();
+            return loaded.IsSuccess && loaded.Value != null;
+        }
+
+        private static VisualElement Step(
+            int number, bool done, string title, string body, string cta, System.Action onClick)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("hub-rule");
+
+            var marker = new VisualElement();
+            marker.AddToClassList("hub-step-marker");
+            ApplyState(marker, done ? HealthState.Ok : HealthState.NotMeasured);
+
+            var numberLabel = new Label(done ? "✓" : number.ToString());
+            numberLabel.AddToClassList("hub-step-number");
+            marker.Add(numberLabel);
+            row.Add(marker);
+
+            var text = new VisualElement();
+            text.AddToClassList("hub-rule-text");
+
+            var titleLabel = new Label(title);
+            titleLabel.AddToClassList("hub-rule-headline");
+            if (done) titleLabel.style.opacity = 0.6f;
+            text.Add(titleLabel);
+
+            var bodyLabel = new Label(body);
+            bodyLabel.AddToClassList("hub-rule-meta");
+            text.Add(bodyLabel);
+
+            if (!string.IsNullOrEmpty(cta))
+            {
+                var button = new Button(() => onClick?.Invoke()) { text = cta };
+                button.AddToClassList("hub-btn");
+                button.style.marginLeft = 0;
+                button.style.marginTop = 6;
+                button.style.alignSelf = Align.FlexStart;
+                text.Add(button);
+            }
+
+            row.Add(text);
+            return row;
         }
 
         // ---------------------------------------------------------------- pipeline
