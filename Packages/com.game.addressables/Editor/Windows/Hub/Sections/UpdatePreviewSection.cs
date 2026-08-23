@@ -21,7 +21,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// same output is circular and proves nothing, which is the shape the build verification used to
     /// have.
     /// </remarks>
-    public sealed class UpdatePreviewSection : IHubSection, IHubHostAware
+    public sealed class UpdatePreviewSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         /// <summary>Where the archived previous manifest is looked for, relative to the project.</summary>
         /// <remarks>
@@ -73,6 +73,14 @@ namespace AddressableManager.Editor.Windows.Hub
                 return SectionHealth.NotMeasured("The two manifests have not been compared yet.");
 
             return SectionHealth.Ok(FormatBytes(_diff.PatchSizeBytes));
+        }
+
+        /// <inheritdoc />
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var compare = new Button(Compare) { text = "Re-compare" };
+            compare.AddToClassList("hub-btn");
+            container.Add(compare);
         }
 
         /// <inheritdoc />
@@ -158,11 +166,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 "installing fresh downloads every bundle in the build — that is a different number, " +
                 "and it is not the one a patch is judged on."));
 
-            var refresh = new Button(Compare) { text = "Re-compare" };
-            refresh.AddToClassList("hub-btn");
-            refresh.style.alignSelf = Align.FlexStart;
-            refresh.style.marginLeft = 0;
-            _body.Add(refresh);
+            // Re-compare is in the section header — see PopulateHeaderActions.
         }
 
         private VisualElement BuildStats()

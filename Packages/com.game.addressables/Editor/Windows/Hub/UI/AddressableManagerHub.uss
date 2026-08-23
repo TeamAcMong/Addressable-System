@@ -767,3 +767,107 @@
     color: var(--unity-colors-default-text);
     opacity: 0.45;
 }
+
+/* ---------- header chips ---------- */
+
+.hub-header-chips {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.hub-chip {
+    flex-direction: row;
+    align-items: center;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: var(--unity-colors-window-border);
+    background-color: var(--unity-colors-default-background);
+}
+
+.hub-chip--clickable:hover {
+    background-color: var(--unity-colors-highlight-background-hover);
+}
+
+.hub-chip-key {
+    font-size: 9px;
+    margin-right: 5px;
+    color: var(--unity-colors-default-text);
+    opacity: 0.55;
+}
+
+.hub-chip-value {
+    font-size: 11px;
+    color: var(--unity-colors-default-text);
+}
+
+/* ---------- build: what ships where ---------- */
+
+.hub-splitbar {
+    flex-direction: row;
+    height: 18px;
+    margin: 7px 8px 4px 8px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: var(--unity-colors-window-border);
+    overflow: hidden;
+}
+
+.hub-splitbar-remote {
+    background-color: var(--unity-colors-highlight-background);
+}
+
+.hub-splitbar-local {
+    background-color: var(--unity-colors-default-text);
+    opacity: 0.45;
+}
+
+.hub-splitbar-none {
+    background-color: var(--unity-colors-warning-text);
+}
+
+.hub-splitlegend {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 8px 6px 8px;
+}
+
+.hub-splitlegend-item {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 14px;
+}
+
+.hub-splitlegend-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 5px;
+}
+
+.hub-splitlegend-label {
+    font-size: 10px;
+    color: var(--unity-colors-default-text);
+    opacity: 0.75;
+}
+
+/* ---------- first run ---------- */
+
+.hub-step-marker {
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border-width: 2px;
+    flex-shrink: 0;
+    margin-right: 9px;
+    align-items: center;
+    justify-content: center;
+}
+
+.hub-step-number {
+    font-size: 9px;
+    -unity-font-style: bold;
+    color: var(--unity-colors-window-background);
+}

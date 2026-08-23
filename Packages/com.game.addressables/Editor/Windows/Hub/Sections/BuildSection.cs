@@ -297,13 +297,33 @@ namespace AddressableManager.Editor.Windows.Hub
             head.Add(count);
             card.Add(head);
 
-            card.Add(Fact("Fetched from the CDN", $"{remote} group(s)", HealthState.Ok));
-            card.Add(Fact("Ships inside the player", $"{local} group(s)", HealthState.Ok));
+            int total = remote + local + unschemad;
 
-            if (unschemad > 0)
+            if (total > 0)
             {
-                card.Add(Fact("Builds nothing", $"{unschemad} group(s) have no bundled schema",
-                    HealthState.Warning));
+                // A proportional bar rather than three numbers: the question here is a ratio - how
+                // much of the game is a download on first launch - and a ratio is read faster than
+                // it is computed.
+                var bar = new VisualElement();
+                bar.AddToClassList("hub-splitbar");
+
+                if (remote > 0) bar.Add(Segment("hub-splitbar-remote", remote, total));
+                if (local > 0) bar.Add(Segment("hub-splitbar-local", local, total));
+                if (unschemad > 0) bar.Add(Segment("hub-splitbar-none", unschemad, total));
+
+                card.Add(bar);
+
+                var legend = new VisualElement();
+                legend.AddToClassList("hub-splitlegend");
+
+                if (remote > 0)
+                    legend.Add(LegendItem("hub-splitbar-remote", $"{remote} fetched from the CDN"));
+                if (local > 0)
+                    legend.Add(LegendItem("hub-splitbar-local", $"{local} inside the player"));
+                if (unschemad > 0)
+                    legend.Add(LegendItem("hub-splitbar-none", $"{unschemad} build nothing"));
+
+                card.Add(legend);
             }
 
             var note = new Label(
@@ -440,6 +460,40 @@ namespace AddressableManager.Editor.Windows.Hub
             return CdnProfileManager.PathConvention.ContainsOriginPlaceholder(raw)
                 ? raw
                 : settings.profileSettings.EvaluateString(profileId, raw);
+        }
+
+        /// <summary>One slice of the split bar, sized by its share of the whole.</summary>
+        /// <remarks>
+        /// A minimum width so a single group out of hundreds is still visible. A slice rounded to
+        /// nothing would be a category silently missing from the picture, which is worse than one
+        /// drawn slightly too wide.
+        /// </remarks>
+        private static VisualElement Segment(string styleClass, int count, int total)
+        {
+            var segment = new VisualElement();
+            segment.AddToClassList(styleClass);
+            segment.style.flexGrow = count;
+            segment.style.flexBasis = 0;
+            segment.style.minWidth = 4;
+            segment.tooltip = $"{count} of {total} group(s)";
+            return segment;
+        }
+
+        private static VisualElement LegendItem(string styleClass, string text)
+        {
+            var item = new VisualElement();
+            item.AddToClassList("hub-splitlegend-item");
+
+            var swatch = new VisualElement();
+            swatch.AddToClassList("hub-splitlegend-swatch");
+            swatch.AddToClassList(styleClass);
+            item.Add(swatch);
+
+            var label = new Label(text);
+            label.AddToClassList("hub-splitlegend-label");
+            item.Add(label);
+
+            return item;
         }
 
         private static VisualElement Fact(string key, string value, HealthState state)
