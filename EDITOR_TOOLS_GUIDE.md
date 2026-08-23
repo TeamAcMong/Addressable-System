@@ -1,12 +1,13 @@
 # Editor Tools Guide
 
-Companion to the [README](README.md) and [MONITORING_GUIDE](MONITORING_GUIDE.md). This document covers everything you only ever touch inside the Editor: the Dashboard window, custom inspectors, ScriptableObject configs, the runtime progress-bar component, menu shortcuts, and the `ScopeManager` API for multi-instance scope setups.
+Companion to the [README](README.md) and [MONITORING_GUIDE](MONITORING_GUIDE.md). This document covers everything you only ever touch inside the Editor: the Addressable Manager hub, the Dashboard window, custom inspectors, ScriptableObject configs, the runtime progress-bar component, menu shortcuts, and the `ScopeManager` API for multi-instance scope setups.
 
 ## Quick start
 
 | Action | Where |
 |---|---|
-| Open the Dashboard | **Window → Addressable Manager → Dashboard** (`Ctrl+Alt+A`) |
+| Start anywhere — see what is blocking content | **Window → Addressable Manager → Open** (`Ctrl+Alt+A`) |
+| Open the Dashboard | **Window → Addressable Manager → Dashboard** |
 | Drop scope objects into a scene | **Tools → Addressable Manager → Quick Setup → Create All Scope Objects** |
 | Create a config asset | **Assets → Create → Addressable Manager → …** |
 
@@ -14,9 +15,52 @@ Asset loading is auto-monitored. Anything that goes through `AssetLoader.LoadAss
 
 > **Monitoring is Editor-only.** `EditorAssetMonitor` lives in the Editor assembly, and the tracker is cleared on `ExitingPlayMode`. There is no dashboard, and no tracking, in a player build.
 
+## The Addressable Manager hub
+
+**Window → Addressable Manager → Open** (`Ctrl+Alt+A`). Added in 4.1.0. One window in place of the
+four below, reached through a left rail.
+
+**The rail is not a menu.** It is the delivery pipeline — Configure, Author, Build, Publish, Run —
+and each stage is coloured by its own health right now, with the connector drawn dead below the
+first blocked stage. So *"how far does my content get, and what stops it"* is answered before you
+click anything, and the blocker itself is clickable: it takes you to the screen that is blocking it.
+
+Ten sections live on that rail:
+
+| Stage | Sections |
+|---|---|
+| Configure | Overview · Validator · Profiles |
+| Author | Layout Rules |
+| Build | Update Preview · Build |
+| Publish | Catalog Inspector · Local Server |
+| Run | Runtime Monitor · Asset Lifetime |
+
+Four things are worth knowing before you use it:
+
+- **There are four health states, and the fourth is the point.** `NotMeasured` is drawn *hollow*
+  rather than filled, and cannot exist without a reason attached. "We checked and found nothing" and
+  "we did not check" used to render identically across the Validator, the build manifest, the
+  restriction check and the Runtime Monitor — which is how a CDN nobody had ever reached read as
+  healthy.
+- **The Validator groups by consequence,** not by severity: *Fails the CI gate* is a checkable claim
+  against `CatalogVerifier`, not a figure of speech. Rules skipped in Local-only mode get their own
+  group instead of being counted as passing.
+- **Layout Rules has a dry run,** which the rule system never had. It runs the identical code path
+  behind a flag, so it cannot describe a run that will not happen, and Apply is reachable only past
+  it. Address collisions come with a *Show both* button rather than a sentence naming two paths you
+  then have to find.
+- **`Ctrl+K` searches the sections** while the hub has focus. Navigation only — it does not run
+  actions.
+
+`CdnManagerWindow` and the Dashboard still open and still work. Three of its six tabs — Catalog
+Inspector, Local Server, Runtime Monitor — the hub hosts through an adapter, so they behave
+identically in both windows. Validator, Build and Update Preview were rebuilt as hub sections; the
+old tabs stay in `CdnManagerWindow` until that window retires. Nothing you had bookmarked has moved.
+
 ## Dashboard window
 
-Shortcut: `Ctrl+Alt+A` (`Cmd+Alt+A` on macOS). Window title "Addressable Manager", minimum size 800×600.
+**Window → Addressable Manager → Dashboard.** Window title "Addressable Manager", minimum size
+800×600. This no longer binds `Ctrl+Alt+A` — the hub does.
 
 A one-line **CDN status strip** sits above the tabs: environment id, app version, cache size and network state while playing (`not in play mode` / `not initialised` otherwise), plus a **CDN Manager** button that opens that window. It polls once per second while the Dashboard is open.
 
@@ -247,15 +291,17 @@ Every menu path below is registered by this package; nothing else is.
 **Assets → Addressable Manager →** Create Preload Config · Create Pool Config · Create Debug Settings
 **Assets → Addressables →** Apply Layout Rules *(enabled when something is selected)*
 **Assets → Create → Addressable Manager →** Layout Rule Data · Composite Layout Rule Data · Preload Configuration · Pool Configuration · Debug Settings · CDN Settings · Filters → … · Providers → …
-**Window → Addressable Manager →** Dashboard (`Ctrl+Alt+A`) · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches
+**Window → Addressable Manager →** Open (`Ctrl+Alt+A`) · Validate Setup · Profiles · Build Content · Dashboard · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches
 **Tools → Addressable Manager →** Force Process All Assets · Batch Address Updater · Repair Groups Missing Schemas · Start Local Content Server · Stop Local Content Server
 **Tools → Addressable Manager → Quick Setup →** Create All Scope Objects · Create Sample Configs
 
-`Ctrl+Alt+A` on the Dashboard is the **only** keyboard shortcut in the package.
+`Ctrl+Alt+A` opens the **hub**, and it is the only `[MenuItem]` shortcut the package registers.
+Before 4.1.0 it opened the Dashboard — and three separate menu items claimed the same chord, which
+Unity accepts without defining which one wins. `Ctrl+K` inside the hub is a key handler on that
+window rather than a menu shortcut, so it works only while the hub has focus.
 
-Three of these do less than their names suggest:
+Two of these do less than their names suggest:
 
-- **Window → … → Documentation** looks for `Assets/com.game.addressables/README.md`. Installed under `Packages/`, that path does not exist and you get a "not found" dialog. Open `Packages/com.game.addressables/README.md` directly.
 - **Window → … → Clear All Caches** clears **Editor tracking data only** (`AssetTrackerService` and `PerformanceMetrics`). No runtime asset is released.
 - **Tools → … → Batch Address Updater** is not a window. It shows a dialog listing the `BatchAddressUpdater` static methods you can call from code: `FindAndReplace`, `AddPrefix`, `RemovePrefix`, `ConvertToLowercase`.
 
