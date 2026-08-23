@@ -871,3 +871,22 @@
     -unity-font-style: bold;
     color: var(--unity-colors-window-background);
 }
+
+/* ---------- two-pane split ---------- */
+
+.hub-split {
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.hub-split-left {
+    width: 280px;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.hub-split-right {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}

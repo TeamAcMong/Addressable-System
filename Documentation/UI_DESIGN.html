@@ -292,7 +292,9 @@ case kia có thể xanh một cách rỗng.</p>
 <table>
 <tr><th>Đường dẫn</th><th>Là gì</th></tr>
 <tr><td><code>Documentation/UI_DESIGN.html</code></td><td>file này — đặc tả, mở bằng trình duyệt</td></tr>
-<tr><td><code>Documentation/design/*.dc.html</code></td><td>artboard nguồn (cần canvas runtime để xem tương tác)</td></tr>
+<tr><td><code>Documentation/DESIGN_PREVIEW.html</code></td><td><strong>bản xem bấm được</strong> — mở bằng double-click, không cần mạng</td></tr>
+<tr><td><code>Documentation/design/*.dc.html</code></td><td>artboard nguồn — nơi duy nhất thiết kế được viết</td></tr>
+<tr><td><code>Documentation/design/build-local-preview.mjs</code></td><td>sinh bản xem từ nguồn: <code>node Documentation/design/build-local-preview.mjs</code></td></tr>
 <tr><td><code>Documentation/design/canvas.json</code></td><td>bố cục canvas</td></tr>
 <tr><td><code>Documentation/REVIEW_4.1.0-pre.15.html</code></td><td>đợt review 72 phát hiện dẫn tới thiết kế này</td></tr>
 <tr><td><code>Packages/…/Editor/Windows/Hub/</code></td><td>bản dựng</td></tr>
@@ -300,7 +302,14 @@ case kia có thể xanh một cách rỗng.</p>
 </div>
 
 <p>Payload canvas đã seed (~2.4 MB editor code nhúng) bị gitignore — tái tạo được từ nguồn, và
-không đáng nằm trong lịch sử git.</p>
+không đáng nằm trong lịch sử git. <code>DESIGN_PREVIEW.html</code> là thứ thay thế nó: 124 KB, sinh
+từ chính nguồn <code>.dc.html</code>, mở được mà không cần link nào.</p>
+
+<blockquote>
+<strong>Một nguồn.</strong> Thiết kế chỉ được viết ở <code>.dc.html</code>. Bản xem là thứ sinh ra,
+và generator nằm trong repo để việc sinh lại tái tạo được — thay vì một bản export ai đó làm một lần
+rồi sửa tay. Sửa bản xem là sửa nhầm file; sửa nguồn rồi chạy lại script.
+</blockquote>
 
 <hr>
 <p class="sub">Cập nhật khi thiết kế đổi. Một đặc tả mô tả phần mềm không còn tồn tại thì tệ hơn là

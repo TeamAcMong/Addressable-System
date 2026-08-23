@@ -133,8 +133,24 @@ namespace AddressableManager.Editor.Windows.Hub
                 return;
             }
 
-            _body.Add(BuildRuleList());
-            _body.Add(BuildPreviewPanel());
+            // Two panes, as designed. The rule list and the dry run answer each other - "this rule
+            // matched nothing" and "26 matched nothing" are the same fact from two directions - and
+            // stacking them meant scrolling away from one to read the other on exactly the screen
+            // where they need to be compared.
+            var split = new VisualElement();
+            split.AddToClassList("hub-split");
+
+            var left = new VisualElement();
+            left.AddToClassList("hub-split-left");
+            left.Add(BuildRuleList());
+            split.Add(left);
+
+            var right = new VisualElement();
+            right.AddToClassList("hub-split-right");
+            right.Add(BuildPreviewPanel());
+            split.Add(right);
+
+            _body.Add(split);
         }
 
         private VisualElement BuildRuleList()
