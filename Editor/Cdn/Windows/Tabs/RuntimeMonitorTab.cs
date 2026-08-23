@@ -157,6 +157,10 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                 return;
             }
 
+            // A live transfer is more current than any previous outcome, so it takes the label
+            // back - and clears the stale message rather than restoring it when the download ends.
+            _lastOutcome = null;
+
             var p = CdnDownloadMonitor.Current;
 
             // No conversion: DownloadProgress.Percent is a 0..1 FRACTION (see its doc comment) and
@@ -202,7 +206,7 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
         {
             if (!CdnManager.IsInitialized) return;
 
-            _downloadLabel.text = "Checking for updates...";
+            ReportOutcome("Checking for updates...");
 
             try
             {
@@ -213,7 +217,7 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                 // how a stale write stays out of a live tab.
                 if (_downloadLabel == null || _downloadLabel.panel == null) return;
 
-                _downloadLabel.text = result.IsFailure
+                ReportOutcome(result.IsFailure
                     ? $"Check failed: {result.ErrorMessage}"
                     : result.Value.WasOfflineFallback
                         // Not the same as "up to date": the check never reached the server. Saying
@@ -222,14 +226,14 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
                         ? "Offline — could not check"
                         : result.Value.HasUpdate
                             ? $"{result.Value.CatalogsWithUpdates.Count} catalog(s) have updates"
-                            : "Content is up to date";
+                            : "Content is up to date");
 
                 Refresh();
             }
             catch (Exception ex)
             {
                 if (_downloadLabel != null && _downloadLabel.panel != null)
-                    _downloadLabel.text = $"Check threw: {ex.Message}";
+                    ReportOutcome($"Check threw: {ex.Message}");
             }
         }
 
@@ -245,7 +249,7 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             var cache = CdnManager.Cache;
             if (cache == null) return;
 
-            _downloadLabel.text = "Cleaning obsolete bundles...";
+            ReportOutcome("Cleaning obsolete bundles...");
 
             try
             {
@@ -253,16 +257,16 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
 
                 if (_downloadLabel == null || _downloadLabel.panel == null) return;
 
-                _downloadLabel.text = result.IsFailure
+                ReportOutcome(result.IsFailure
                     ? $"Clean failed: {result.ErrorMessage}"
-                    : $"Obsolete bundles removed — {FormatBytes(result.Value.OccupiedBytes)} still in cache";
+                    : $"Obsolete bundles removed — {FormatBytes(result.Value.OccupiedBytes)} still in cache");
 
                 Refresh();
             }
             catch (Exception ex)
             {
                 if (_downloadLabel != null && _downloadLabel.panel != null)
-                    _downloadLabel.text = $"Clean threw: {ex.Message}";
+                    ReportOutcome($"Clean threw: {ex.Message}");
             }
         }
 
@@ -280,7 +284,7 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             if (!confirmed) return;
 
             var result = cache.ClearAll();
-            _downloadLabel.text = result.IsFailure ? result.ErrorMessage : "Cache cleared";
+            ReportOutcome(result.IsFailure ? result.ErrorMessage : "Cache cleared");
             Refresh();
         }
 
@@ -299,9 +303,35 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
             _clearButton.SetEnabled(enabled);
         }
 
+        /// <summary>
+        /// What the last button press concluded. Survives the refresh that follows it.
+        /// </summary>
+        /// <remarks>
+        /// This label is the ONLY place the tab reports the outcome of Check, Clean and Clear, and
+        /// every one of those handlers wrote to it and then called Refresh() on the next line.
+        /// Refresh reaches SetDownloadIdle, which overwrote it with "No download in progress" -
+        /// synchronously, before a frame was drawn. The message never existed for the user, so all
+        /// three buttons looked like they did nothing at all.
+        ///
+        /// Cleared on the next action rather than on a timer: a result that vanishes while you are
+        /// reading it is only marginally better than one that never appears.
+        /// </remarks>
+        private string _lastOutcome;
+
+        /// <summary>Record and show what an action concluded.</summary>
+        private void ReportOutcome(string text)
+        {
+            _lastOutcome = text;
+
+            if (_downloadLabel != null && _downloadLabel.panel != null)
+                _downloadLabel.text = text;
+        }
+
         private void SetDownloadIdle(string text)
         {
-            _downloadLabel.text = text;
+            // The outcome of the last action outranks the idle text. Without this the refresh loop
+            // erases it once a second even when nothing else has happened.
+            _downloadLabel.text = string.IsNullOrEmpty(_lastOutcome) ? text : _lastOutcome;
             _downloadBar.value = 0;
         }
 
