@@ -23,7 +23,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// business logic: every section is a thin view over the same services the CLI drives, exactly
     /// as the tab contract it replaces required.
     /// </remarks>
-    public sealed class AddressableManagerHub : EditorWindow
+    public sealed class AddressableManagerHub : EditorWindow, IHubHost
     {
         private const string UxmlPath =
             "Packages/com.game.addressables/Editor/Windows/Hub/UI/AddressableManagerHub.uxml";
@@ -56,6 +56,18 @@ namespace AddressableManager.Editor.Windows.Hub
         private readonly Dictionary<PipelineStage, Label> _stageBadges =
             new Dictionary<PipelineStage, Label>();
 
+        /// <summary>
+        /// Every connector segment on the rail, in top-to-bottom order, tagged with the stage it
+        /// sits under.
+        /// </summary>
+        /// <remarks>
+        /// A list rather than a lookup because the order IS the meaning: segments up to the first
+        /// blocked stage are drawn live, everything after it is drawn dead. That is the same fact
+        /// the overview's horizontal strip shows, in the shape the rail can carry.
+        /// </remarks>
+        private readonly List<KeyValuePair<PipelineStage, VisualElement>> _railLines =
+            new List<KeyValuePair<PipelineStage, VisualElement>>();
+
         private VisualElement _railStages;
         private VisualElement _sectionBody;
         private VisualElement _sectionActions;
@@ -69,6 +81,7 @@ namespace AddressableManager.Editor.Windows.Hub
         private Label _statusText;
         private Label _statusContext;
 
+        private HubPalette _palette;
         private string _activeSectionId;
         private double _nextHealthRefresh;
 
@@ -100,6 +113,23 @@ namespace AddressableManager.Editor.Windows.Hub
 
             window.Show();
         }
+
+        /// <summary>Open straight to the configuration checklist.</summary>
+        /// <remarks>
+        /// Deep links exist so the menu can stay small without hiding anything. Every one of them
+        /// lands on a screen that is also reachable from the rail - the menu is the shortcut, the
+        /// window is the home, and nothing lives only in a menu.
+        /// </remarks>
+        [MenuItem("Window/Addressable Manager/Validate Setup", priority = 101)]
+        public static void OpenValidator() => Open(HubSections.Ids.Validator);
+
+        /// <summary>Open straight to profile conformance.</summary>
+        [MenuItem("Window/Addressable Manager/Profiles", priority = 102)]
+        public static void OpenProfiles() => Open(HubSections.Ids.Profiles);
+
+        /// <summary>Open straight to the content build screen.</summary>
+        [MenuItem("Window/Addressable Manager/Build Content", priority = 103)]
+        public static void OpenBuild() => Open(HubSections.Ids.Build);
 
         /// <summary>Navigate, whether or not the UI has been built yet.</summary>
         private void RequestSection(string sectionId)
@@ -152,6 +182,15 @@ namespace AddressableManager.Editor.Windows.Hub
             _sections.Clear();
             _sections.AddRange(HubSections.Create());
 
+            // Bind before anything is shown. The overview reads every other section's verdict, so
+            // an unbound one would render an empty "nothing outstanding" - the most confident
+            // possible way to say nothing was checked.
+            foreach (var section in _sections)
+            {
+                if (section is IHubHostAware aware)
+                    aware.Bind(this);
+            }
+
             BuildRail();
             UpdateContext();
 
@@ -160,6 +199,13 @@ namespace AddressableManager.Editor.Windows.Hub
 
             RefreshHealth();
 
+            // The palette overlays the whole window, so it is attached to the cloned root rather
+            // than to the content pane - it has to be able to dim the rail too.
+            _palette = new HubPalette(this, root);
+
+            // TrickleDown: the shortcut has to be seen before a focused TextField swallows the key.
+            rootVisualElement.RegisterCallback<KeyDownEvent>(OnShortcut, TrickleDown.TrickleDown);
+
             EditorApplication.update -= OnEditorUpdate;
             EditorApplication.update += OnEditorUpdate;
         }
@@ -167,6 +213,19 @@ namespace AddressableManager.Editor.Windows.Hub
         private void OnDisable()
         {
             EditorApplication.update -= OnEditorUpdate;
+        }
+
+        /// <summary>Ctrl+K / Cmd+K opens the palette.</summary>
+        private void OnShortcut(KeyDownEvent evt)
+        {
+            if (evt.keyCode != KeyCode.K) return;
+            if (!evt.ctrlKey && !evt.commandKey) return;
+            if (_palette == null) return;
+
+            if (_palette.IsOpen) _palette.Close();
+            else _palette.Open();
+
+            evt.StopPropagation();
         }
 
         private void OnEditorUpdate()
@@ -186,6 +245,7 @@ namespace AddressableManager.Editor.Windows.Hub
             _sectionRows.Clear();
             _stageDots.Clear();
             _stageBadges.Clear();
+            _railLines.Clear();
 
             foreach (var stage in PipelineStages.All)
             {
@@ -198,10 +258,24 @@ namespace AddressableManager.Editor.Windows.Hub
                 var header = new VisualElement { name = $"hub-stage-{stage}" };
                 header.AddToClassList("hub-stage");
 
+                // The gutter carries the dot AND the connector segment below it. Every row on the
+                // rail contributes one segment, so the segments stack into a single line running the
+                // height of the rail - which is what makes the rail read as a pipeline rather than
+                // as a list of headings.
+                var gutter = new VisualElement();
+                gutter.AddToClassList("hub-gutter");
+
                 var dot = new VisualElement();
                 dot.AddToClassList("hub-stage-dot");
-                header.Add(dot);
+                gutter.Add(dot);
                 _stageDots[stage] = dot;
+
+                var line = new VisualElement();
+                line.AddToClassList("hub-gutter-line");
+                gutter.Add(line);
+                _railLines.Add(new KeyValuePair<PipelineStage, VisualElement>(stage, line));
+
+                header.Add(gutter);
 
                 var label = new Label(PipelineStages.Label(stage).ToUpperInvariant());
                 label.AddToClassList("hub-stage-label");
@@ -215,14 +289,24 @@ namespace AddressableManager.Editor.Windows.Hub
                 _railStages.Add(header);
 
                 foreach (var section in sections)
-                    _railStages.Add(BuildSectionRow(section));
+                    _railStages.Add(BuildSectionRow(section, stage));
             }
         }
 
-        private VisualElement BuildSectionRow(IHubSection section)
+        private VisualElement BuildSectionRow(IHubSection section, PipelineStage stage)
         {
             var row = new VisualElement { name = $"hub-row-{section.Id}" };
             row.AddToClassList("hub-section-row");
+
+            var gutter = new VisualElement();
+            gutter.AddToClassList("hub-gutter");
+
+            var line = new VisualElement();
+            line.AddToClassList("hub-gutter-line");
+            gutter.Add(line);
+            _railLines.Add(new KeyValuePair<PipelineStage, VisualElement>(stage, line));
+
+            row.Add(gutter);
 
             var label = new Label(section.Title);
             label.AddToClassList("hub-section-row-label");
@@ -238,6 +322,14 @@ namespace AddressableManager.Editor.Windows.Hub
             _sectionRows[section.Id] = row;
             return row;
         }
+
+        // ---------------------------------------------------------------- IHubHost
+
+        /// <inheritdoc />
+        public IReadOnlyList<IHubSection> Sections => _sections;
+
+        /// <inheritdoc />
+        public void Navigate(string sectionId) => ShowSection(sectionId);
 
         // ---------------------------------------------------------------- navigation
 
@@ -323,8 +415,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var worstByStage = new Dictionary<PipelineStage, HealthState>();
             var badgeByStage = new Dictionary<PipelineStage, string>();
-            PipelineStage? firstBlocked = null;
-            string firstBlockedReason = null;
+            var blockedReasonByStage = new Dictionary<PipelineStage, string>();
 
             foreach (var section in _sections)
             {
@@ -357,13 +448,30 @@ namespace AddressableManager.Editor.Windows.Hub
                 if (worse == health.State && !string.IsNullOrEmpty(health.Badge))
                     badgeByStage[stage] = health.Badge;
 
-                if (health.State == HealthState.Blocked && firstBlocked == null)
+                if (health.State == HealthState.Blocked && !blockedReasonByStage.ContainsKey(stage))
                 {
-                    firstBlocked = stage;
-                    firstBlockedReason = string.IsNullOrEmpty(health.Reason)
+                    blockedReasonByStage[stage] = string.IsNullOrEmpty(health.Reason)
                         ? $"{section.Title} is blocking it."
                         : health.Reason;
                 }
+            }
+
+            // The EARLIEST blocked stage, walked in pipeline order rather than in whatever order
+            // sections happen to be registered in. Those two orders agree today, which is exactly why
+            // this was worth fixing before they stop agreeing: taking the first blocked section out
+            // of the registration list would, after one reordering, report a Publish failure as the
+            // thing stopping content that never got past Configure.
+            PipelineStage? firstBlocked = null;
+            string firstBlockedReason = null;
+
+            foreach (var stage in PipelineStages.All)
+            {
+                if (!worstByStage.TryGetValue(stage, out var state) || state != HealthState.Blocked)
+                    continue;
+
+                firstBlocked = stage;
+                blockedReasonByStage.TryGetValue(stage, out firstBlockedReason);
+                break;
             }
 
             foreach (var pair in _stageDots)
@@ -378,8 +486,34 @@ namespace AddressableManager.Editor.Windows.Hub
                 }
             }
 
+            UpdateRailConnector(firstBlocked);
             UpdateBlocker(firstBlocked, firstBlockedReason);
             UpdateStatus(firstBlocked, firstBlockedReason);
+        }
+
+        /// <summary>
+        /// Draw the rail's connector live down to the first blocked stage, and dead after it.
+        /// </summary>
+        /// <remarks>
+        /// Content does not reach past a blocked stage, so neither should the line that represents
+        /// it. Leaving the whole rail solid would say the pipeline runs end to end while the badge
+        /// three rows up says it does not - two claims in one control, and the reader has to work
+        /// out which to believe.
+        /// </remarks>
+        private void UpdateRailConnector(PipelineStage? blockedStage)
+        {
+            bool dead = false;
+
+            foreach (var pair in _railLines)
+            {
+                if (blockedStage.HasValue && pair.Key == blockedStage.Value)
+                    dead = true;
+
+                if (dead)
+                    pair.Value.AddToClassList("hub-gutter-line--dead");
+                else
+                    pair.Value.RemoveFromClassList("hub-gutter-line--dead");
+            }
         }
 
         private void UpdateBlocker(PipelineStage? blockedStage, string reason)
@@ -431,10 +565,25 @@ namespace AddressableManager.Editor.Windows.Hub
             if (_headerContext == null) return;
 
             string target = EditorUserBuildSettings.activeBuildTarget.ToString();
-            _headerContext.text = target;
+            string profile = ActiveProfileName();
+            string mode = Cdn.CdnBuildModes.IsLocalOnly ? "Local-only" : "Remote";
+
+            // The three facts that change what every other screen means. They were spread across
+            // three windows before, which is how a build went out against the wrong profile.
+            _headerContext.text = $"{profile}   ·   {target}   ·   {mode}";
 
             if (_statusContext != null)
-                _statusContext.text = target;
+                _statusContext.text = $"{profile} · {target}";
+        }
+
+        /// <summary>The active Addressables profile, or an honest placeholder.</summary>
+        private static string ActiveProfileName()
+        {
+            var settings = UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null) return "no settings";
+
+            string name = settings.profileSettings.GetProfileName(settings.activeProfileId);
+            return string.IsNullOrEmpty(name) ? "no profile" : name;
         }
 
         private void ShowLoadFailure()

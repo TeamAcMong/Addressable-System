@@ -16,8 +16,60 @@ namespace AddressableManager.Editor.Rules
         /// <summary>
         /// Result of rule processing
         /// </summary>
+        /// <summary>What kind of write a planned change would have been.</summary>
+        public enum ChangeKind
+        {
+            /// <summary>The asset is not addressable yet and would be registered.</summary>
+            CreateEntry,
+
+            /// <summary>An existing entry would move to a different group.</summary>
+            MoveGroup,
+
+            /// <summary>The entry's address would change.</summary>
+            Address,
+
+            /// <summary>A label would be added.</summary>
+            AddLabel,
+
+            /// <summary>A label would be removed.</summary>
+            RemoveLabel,
+        }
+
+        /// <summary>One write a dry run decided against making.</summary>
+        /// <remarks>
+        /// Recorded only when the value would actually DIFFER. A rule that re-applies the address an
+        /// asset already has is not a change, and listing it would bury the handful of real edits
+        /// under hundreds of no-ops - which is the same "counted intent, not effect" problem the
+        /// applied-counters had.
+        /// </remarks>
+        public sealed class PlannedChange
+        {
+            /// <summary>What would have been written.</summary>
+            public ChangeKind Kind;
+
+            /// <summary>The asset this concerns.</summary>
+            public string AssetPath;
+
+            /// <summary>The value now, formatted for display.</summary>
+            public string From;
+
+            /// <summary>The value the run would have written.</summary>
+            public string To;
+
+            /// <summary>The rule that decided it.</summary>
+            public string RuleName;
+        }
+
         public class ProcessResult
         {
+            /// <summary>
+            /// Every write a dry run withheld. Empty on a real run, which does not plan - it writes.
+            /// </summary>
+            public List<PlannedChange> Planned = new List<PlannedChange>();
+
+            /// <summary>True when this result came from a preview and nothing was written.</summary>
+            public bool WasDryRun;
+
             public int TotalAssetsProcessed;
             public int AddressesApplied;
             public int LabelsApplied;
@@ -71,6 +123,45 @@ namespace AddressableManager.Editor.Rules
             new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>
+        /// When true, every mutation is recorded instead of performed.
+        /// </summary>
+        /// <remarks>
+        /// The rule system had no preview at all: the only way to find out what "Apply All Rules"
+        /// would do to a project's Addressables layout was to let it do it. On a shared project that
+        /// is a change to every teammate's settings asset, discovered after the fact.
+        ///
+        /// This flag guards SEVEN write sites, and a missed one would make "preview" silently write.
+        /// That risk is not carried by review: LayoutRuleDryRunTests snapshots every entry's address,
+        /// group and labels, runs a preview, and fails if anything moved. A guard added to a new
+        /// write site without a test update will be caught there rather than in someone's project.
+        /// </remarks>
+        private bool _dryRun;
+
+        /// <summary>Record a write the dry run is withholding.</summary>
+        /// <summary>
+        /// Who a label change is attributed to.
+        /// </summary>
+        /// <remarks>
+        /// ApplyLabels receives the UNION of the labels every matching rule asked for, so by the time
+        /// a write happens no single rule owns it. Naming one would be a guess presented as a fact;
+        /// the honest attribution is the set.
+        /// </remarks>
+        private const string LabelRulesAttribution = "(label rules)";
+
+        private void Plan(ProcessResult result, ChangeKind kind, string assetPath,
+            string from, string to, string ruleName)
+        {
+            result.Planned.Add(new PlannedChange
+            {
+                Kind = kind,
+                AssetPath = assetPath,
+                From = string.IsNullOrEmpty(from) ? "(none)" : from,
+                To = string.IsNullOrEmpty(to) ? "(none)" : to,
+                RuleName = ruleName,
+            });
+        }
+
+        /// <summary>
         /// <see cref="LayoutRuleData.VersionExpression"/>, parsed once per run. Null when the rule data
         /// sets no expression.
         /// </summary>
@@ -100,6 +191,45 @@ namespace AddressableManager.Editor.Rules
             }
 
             _verboseLogging = ruleData.VerboseLogging;
+        }
+
+        /// <summary>
+        /// Work out what <see cref="ApplyRules"/> would do, without writing anything.
+        /// </summary>
+        /// <remarks>
+        /// Runs the identical code path with <see cref="_dryRun"/> set, so the preview cannot drift
+        /// from the apply: a second "what would happen" implementation is exactly how a preview ends
+        /// up describing a run nobody performs.
+        /// </remarks>
+        public ProcessResult PreviewRules(Action<float, string> progressCallback = null)
+        {
+            _dryRun = true;
+            try
+            {
+                var result = ApplyRules(progressCallback);
+                result.WasDryRun = true;
+                return result;
+            }
+            finally
+            {
+                _dryRun = false;
+            }
+        }
+
+        /// <summary>Work out what <see cref="ApplyRulesToAssets"/> would do, without writing.</summary>
+        public ProcessResult PreviewRulesForAssets(List<string> assetPaths, Action<float, string> progressCallback = null)
+        {
+            _dryRun = true;
+            try
+            {
+                var result = ApplyRulesToAssets(assetPaths, progressCallback);
+                result.WasDryRun = true;
+                return result;
+            }
+            finally
+            {
+                _dryRun = false;
+            }
         }
 
         /// <summary>
@@ -153,9 +283,16 @@ namespace AddressableManager.Editor.Rules
                 progressCallback?.Invoke(0.95f, "Saving changes...");
                 if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0 || _labelsTouched)
                 {
-                    FlushLabelEvent();
-                    EditorUtility.SetDirty(_settings);
-                    AssetDatabase.SaveAssets();
+                    // Unreachable on a dry run - the counters it keys off are only incremented on
+                    // the write branches - but guarded anyway. This is the line that would turn a
+                    // preview into an edit of everyone's settings asset, and defence in depth is
+                    // cheap next to that.
+                    if (!_dryRun)
+                    {
+                        FlushLabelEvent();
+                        EditorUtility.SetDirty(_settings);
+                        AssetDatabase.SaveAssets();
+                    }
                 }
 
                 progressCallback?.Invoke(1.0f, "Complete!");
@@ -209,9 +346,16 @@ namespace AddressableManager.Editor.Rules
                 // Save - only if something was actually applied (see ApplyRules() above).
                 if (result.AddressesApplied > 0 || result.LabelsApplied > 0 || result.VersionsApplied > 0 || _labelsTouched)
                 {
-                    FlushLabelEvent();
-                    EditorUtility.SetDirty(_settings);
-                    AssetDatabase.SaveAssets();
+                    // Unreachable on a dry run - the counters it keys off are only incremented on
+                    // the write branches - but guarded anyway. This is the line that would turn a
+                    // preview into an edit of everyone's settings asset, and defence in depth is
+                    // cheap next to that.
+                    if (!_dryRun)
+                    {
+                        FlushLabelEvent();
+                        EditorUtility.SetDirty(_settings);
+                        AssetDatabase.SaveAssets();
+                    }
                 }
             }
             catch (Exception ex)
@@ -559,7 +703,15 @@ namespace AddressableManager.Editor.Rules
                 // moved reach this line, not every label on every entry.
                 if (entry == null)
                 {
-                    entry = _settings.CreateOrMoveEntry(guid, targetGroup, false, true);
+                    if (_dryRun)
+                    {
+                        Plan(result, ChangeKind.CreateEntry, assetPath,
+                            "not addressable", targetGroup.Name, rule.RuleName);
+                    }
+                    else
+                    {
+                        entry = _settings.CreateOrMoveEntry(guid, targetGroup, false, true);
+                    }
                 }
                 else if (entry.parentGroup != targetGroup)
                 {
@@ -586,7 +738,10 @@ namespace AddressableManager.Editor.Rules
                             "rule's 'Allow Group Move' to keep rules from relocating entries they did " +
                             "not create.");
 
-                        _settings.MoveEntry(entry, targetGroup, false, true);
+                        if (_dryRun)
+                            Plan(result, ChangeKind.MoveGroup, assetPath, previousGroup, targetGroup.Name, rule.RuleName);
+                        else
+                            _settings.MoveEntry(entry, targetGroup, false, true);
                     }
                 }
 
@@ -607,7 +762,17 @@ namespace AddressableManager.Editor.Rules
                     _addressOwners[address] = assetPath;
                 }
 
-                if (entry != null)
+                if (_dryRun)
+                {
+                    // entry is null here when the asset is not addressable yet - the create above was
+                    // withheld - so the current address is "none" rather than unreadable.
+                    string currentAddress = entry != null ? entry.address : null;
+                    if (!string.Equals(currentAddress, address, StringComparison.Ordinal))
+                        Plan(result, ChangeKind.Address, assetPath, currentAddress, address, rule.RuleName);
+
+                    result.TotalAssetsProcessed++;
+                }
+                else if (entry != null)
                 {
                     entry.SetAddress(address, false);
                     result.AddressesApplied++;
@@ -722,6 +887,12 @@ namespace AddressableManager.Editor.Rules
 
                     foreach (var oldLabel in stale)
                     {
+                        if (_dryRun)
+                        {
+                            Plan(result, ChangeKind.RemoveLabel, assetPath, oldLabel, null, LabelRulesAttribution);
+                            continue;
+                        }
+
                         if (entry.SetLabel(oldLabel, false, false, false))
                         {
                             _labelsTouched = true;
@@ -749,6 +920,15 @@ namespace AddressableManager.Editor.Rules
                     // The counter now follows SetLabel's return value rather than being incremented
                     // unconditionally. An unconditional counter is what let this report "3591 labels
                     // applied" while none of them stuck.
+                    if (_dryRun)
+                    {
+                        // Only a label the entry does not already carry is a change.
+                        if (!entry.labels.Contains(label))
+                            Plan(result, ChangeKind.AddLabel, assetPath, null, label, LabelRulesAttribution);
+
+                        continue;
+                    }
+
                     if (entry.SetLabel(label, true, true, false))
                     {
                         result.LabelsApplied++;
@@ -858,6 +1038,13 @@ namespace AddressableManager.Editor.Rules
                 foreach (var oldLabel in existingVersionLabels)
                 {
                     if (oldLabel == versionLabel) continue;   // already correct, leave it alone
+
+                    if (_dryRun)
+                    {
+                        Plan(result, ChangeKind.RemoveLabel, assetPath, oldLabel, null, rule.RuleName);
+                        continue;
+                    }
+
                     if (entry.SetLabel(oldLabel, false, false, false))
                     {
                         _labelsTouched = true;
@@ -865,7 +1052,12 @@ namespace AddressableManager.Editor.Rules
                 }
 
                 // Add version label to entry (force:true registers it on the settings object).
-                if (entry.SetLabel(versionLabel, true, true, false))
+                if (_dryRun)
+                {
+                    if (!entry.labels.Contains(versionLabel))
+                        Plan(result, ChangeKind.AddLabel, assetPath, null, versionLabel, rule.RuleName);
+                }
+                else if (entry.SetLabel(versionLabel, true, true, false))
                 {
                     result.VersionsApplied++;
                     _labelsTouched = true;

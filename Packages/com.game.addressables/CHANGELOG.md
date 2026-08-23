@@ -1,6 +1,84 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [Unreleased] - One Editor window, and eleven fixes where the patch had landed on one side of a pair
+
+### Fixed - eleven defects, almost all the same shape
+
+A full read of the package turned up seventy-two findings; twenty-six survived an adversarial
+second pass. Nearly every one had the same cause: a change applied where it was written and never
+propagated to its counterpart. Reading the side that changed always looks correct, which is why six
+rounds of review had missed them.
+
+| One side was fixed | The other was not |
+| :-- | :-- |
+| Profile templates renamed `<domain>` to `<cdnBase>` | `InjectRemoteHostFromEnvironment` still matched `<domain>`, so CI host injection replaced nothing and the build then failed telling the operator to run it |
+| `CdnRequestDecorator` reset its statics for play mode | `CdnManager` did not, so a second Play session reported itself initialised with no URL rewriter |
+| `Install` rebound the host rewriter on a repeat call | It did not rebind the auth provider or the timeout, so a retry after a failed init went out unauthenticated |
+| The address import loop disarmed a degraded rule | The label and version loops did not, so a rule that lost some filters imported still enabled, matching wider, and the CLI exited 0 |
+| `DownloadProgress.Percent` is a 0..1 fraction, and the UXML bar is `high-value="1"` | The tab divided it by 100, so 4.1.0-pre.15's fix for a dead progress bar shipped it near-dead |
+| Version providers write four label shapes | `SemanticVersion` parsed one, so an unparseable label fell through to "match everything" |
+| The compile gate rebuilt dependencies | Its cache ignored their timestamps, so a Runtime rename that breaks Editor call sites reported PASS |
+
+Also: the metered-network and free-disk gates ran once before the retry loop rather than inside it,
+so a WiFi-to-cellular handoff mid-download resumed over metered data and returned success; a
+cancelled download left `CdnDownloadMonitor` reporting a transfer that had stopped; duplicate-address
+detection could only see inside its own batch, so the on-import path — one asset per call — could
+never catch a collision with an entry that already existed; and four filters memoised answers about
+state the rule run itself rewrites without clearing them, so `Match Mode = NoAddress` kept matching
+already-addressed assets for the rest of the editor session.
+
+### Added - `Window > Addressable Manager > Open`
+
+One window replaces four windows, ten tabs and twenty-one menu items spread across four root menus —
+four of which were registered twice at the same path, which Unity accepts without defining which
+handler runs.
+
+**The rail is not a menu.** It is the delivery pipeline — Configure, Author, Build, Publish, Run —
+and each stage's colour is that stage's real health right now, with the connector drawn dead below
+the first blocked stage. "How far does my content get, and what stops it" is answered before
+anything is clicked.
+
+- **Four health states, and the fourth is the point.** `NotMeasured` cannot be constructed without a
+  reason, and the stylesheet paints it hollow rather than filled. "We checked and found nothing" and
+  "we did not check" rendered identically across the Validator, the build manifest, the restriction
+  check and the Runtime Monitor — which is how a CDN nobody had ever reached read as healthy.
+- **Validator, grouped by consequence.** "Fails the CI gate" is a checkable claim, not a figure of
+  speech: `CatalogVerifier` files an unsatisfied rule under `Problems` unless it is warning-only.
+  Rules skipped in Local-only mode get their own group instead of being counted as passing.
+- **Profiles conformance** — four profiles, three checks each, and exactly one editable field: the
+  origin. Not a second profile editor; Addressables stays the single owner of those values.
+- **Layout Rules with a dry run.** The rule system had no preview at all. `PreviewRules` runs the
+  identical code path with a dry-run flag, so it cannot describe a run that will not happen, and
+  Apply is reachable only past it.
+- **Asset Lifetime** — what each scope is holding. The one question Unity's profiler cannot answer,
+  because scopes are this package's idea. Leak detection is not implemented and the screen says so
+  rather than showing a fabricated list.
+- **Ctrl+K** — subsequence search across sections. Navigation only; it does not run actions.
+
+### Added - public diagnostics on `AssetLoader`
+
+`SnapshotLoadedAssets()` and `CachedAssetCount`, so a QA build can log what a scope is holding
+without forking the package.
+
+### Changed
+
+- `Window > Addressable Manager > Dashboard` no longer binds Ctrl+Alt+A; the hub does. Three menu
+  items were claiming that chord.
+- `AddressableRuleMenuItems.OpenLayoutRuleEditor` / `OpenLayoutViewer` are `[Obsolete]` and no longer
+  carry menu items. They forward, and stay until 5.0.0.
+- `Create Debug Settings` writes to `Assets/Resources/AddressableManager/`, where
+  `DebugSettings.Instance` actually looks, and selects an existing asset instead of creating
+  `DebugSettings 1`, `DebugSettings 2`, and so on forever.
+- `Window > Addressable Manager > Documentation` looks under `Packages/`, not `Assets/` — a UPM
+  package is never under `Assets/`, and the error dialog used to send the reader to that same wrong
+  path.
+
+### Notes
+
+`CdnManagerWindow` and the Dashboard still work unchanged. The hub hosts the six CDN tabs through an
+adapter rather than a rewrite, so sections can move across one at a time instead of as one flag day.
+
 ## [4.1.0-pre.15] - 2026-08-21 - The pre.14 local-server fix could never fire, and a progress bar that was never wired
 
 Second round of the Icon Match integration report. `4.1.0-pre.14` closed all seven items from the

@@ -114,6 +114,20 @@ namespace AddressableManager.Editor.Cdn
                     .Replace(OriginPlaceholder, origin)
                     .Replace(LegacyOriginPlaceholder, origin);
             }
+
+            /// <summary>The shared bundle suffix every profile must end with.</summary>
+            /// <remarks>
+            /// Exposed because a convention nobody can check is a convention that drifts. These two
+            /// were private, so the only thing enforcing "the suffix is identical across profiles"
+            /// was that the templates happened to be written that way - and before 4.1.0-pre.14 they
+            /// were not: Local used <c>/[BuildTarget]/bundles</c> while Dev, Staging and Prod used
+            /// <c>/game/[BuildTarget]/bundles</c>, so content built with one profile and rewritten to
+            /// another landed somewhere the CDN had nothing.
+            /// </remarks>
+            public const string BundleSuffix = BundlePathDefaults.Suffix;
+
+            /// <summary>The shared catalog suffix every profile must end with.</summary>
+            public const string CatalogSuffix = CatalogPathDefaults.Suffix;
         }
 
         private static class CatalogPathDefaults
