@@ -70,6 +70,60 @@ namespace AddressableManager.Editor.Versioning
         }
 
         /// <summary>
+        /// Parse a version string, accepting the near-semver shapes real version sources emit.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TryParse"/> is strict semver, and strictness in the wrong place made the version
+        /// filter useless: the shipped providers write labels that strict semver rejects, and a
+        /// rejected label was treated as "unversioned", which with the default
+        /// <c>ExcludeUnversioned = false</c> means <b>matches everything</b>. A filter advertised as
+        /// scoping a run to a version range quietly scoped it to the whole project.
+        ///
+        /// Two shapes are genuinely ordered versions that merely fail the grammar, and both are
+        /// normalised here:
+        /// <list type="bullet">
+        /// <item><c>1.0</c> - Unity's stock <c>PlayerSettings.bundleVersion</c>, so this is the
+        /// DEFAULT output of BuildNumberVersionProvider. Read as <c>1.0.0</c>.</item>
+        /// <item><c>1.0.0.123</c> - the four-component "version.build" form
+        /// BuildNumberVersionProvider writes in Combined mode. The fourth component is build metadata
+        /// in semver terms, so it is read as <c>1.0.0+123</c>: it does not affect ordering, which is
+        /// the correct semantics for a build number.</item>
+        /// </list>
+        ///
+        /// What is deliberately NOT accepted: a git hash (<c>a1b2c3d</c>) or a date stamp
+        /// (<c>20260822</c>). Those are identifiers, not ordered versions, and inventing an ordering
+        /// for them would make a range filter silently answer a question it cannot answer. The caller
+        /// is expected to report them rather than guess - see
+        /// <c>LayoutRuleProcessor.PassesVersionFilter</c>.
+        /// </remarks>
+        public static bool TryParseLenient(string versionString, out SemanticVersion version)
+        {
+            if (TryParse(versionString, out version))
+                return true;
+
+            version = null;
+            if (string.IsNullOrWhiteSpace(versionString))
+                return false;
+
+            string trimmed = versionString.Trim();
+
+            // "1.0" -> "1.0.0"
+            var twoPart = Regex.Match(trimmed, @"^(0|[1-9]\d*)\.(0|[1-9]\d*)$");
+            if (twoPart.Success)
+                return TryParse(twoPart.Groups[1].Value + "." + twoPart.Groups[2].Value + ".0", out version);
+
+            // "1.0.0.123" -> "1.0.0+123"
+            var fourPart = Regex.Match(
+                trimmed, @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.([0-9a-zA-Z-]+)$");
+            if (fourPart.Success)
+                return TryParse(
+                    $"{fourPart.Groups[1].Value}.{fourPart.Groups[2].Value}.{fourPart.Groups[3].Value}" +
+                    $"+{fourPart.Groups[4].Value}", out version);
+
+            return false;
+        }
+
+        /// <summary>
         /// Parse a semantic version string (throws on failure)
         /// </summary>
         public static SemanticVersion Parse(string versionString)

@@ -36,6 +36,27 @@ namespace AddressableManager.Cdn
         /// repeat <see cref="Install"/> actually takes effect.
         /// </summary>
         private static IHostRewriter _activeRewriter;
+
+        /// <summary>
+        /// The auth-token provider the installed hook consults, rebound on every Install.
+        /// </summary>
+        /// <remarks>
+        /// A static rather than a captured local for exactly the reason <see cref="_activeRewriter"/>
+        /// is one. The hooks are installed once and the delegates below live for the process; a repeat
+        /// Install takes the idempotent early-return and never rebuilds them. So anything the hook
+        /// reads from a captured local is frozen at whichever call installed FIRST.
+        ///
+        /// That is not a hypothetical ordering: the first InitializeAsync commonly installs the hooks
+        /// and then fails at the catalog step (offline, captive portal, a stalled host), and the retry
+        /// that follows is where the caller passes a real token provider. With the provider captured,
+        /// the retry reported success while every request went out unauthenticated - a 401 storm whose
+        /// cause is two screens away from its symptom. The rewriter was fixed for this in an earlier
+        /// release and the provider one screen below it was not.
+        /// </remarks>
+        private static Func<string> _activeAuthProvider;
+
+        /// <summary>The per-request timeout the installed hook applies, rebound on every Install.</summary>
+        private static int _activeTimeoutSeconds;
         private static Action<UnityWebRequest> _previousWebRequestOverride;
         private static Func<IResourceLocation, string> _previousIdTransform;
 
@@ -87,6 +108,8 @@ namespace AddressableManager.Cdn
                 // installed the hooks and then failed later (offline, bad catalog) left every request
                 // permanently pointed at the first environment while the facade reported the second.
                 _activeRewriter = rewriter;
+                _activeAuthProvider = authHeaderProvider;
+                _activeTimeoutSeconds = policy.TimeoutSeconds;
                 return CdnResult<bool>.Success(true);
             }
 
@@ -105,11 +128,11 @@ namespace AddressableManager.Cdn
             // must resolve the CURRENT rewriter per request, not the one captured by whichever call
             // happened to install first.
             _activeRewriter = rewriter;
+            _activeAuthProvider = authHeaderProvider;
+            _activeTimeoutSeconds = policy.TimeoutSeconds;
 
             _previousWebRequestOverride = Addressables.WebRequestOverride;
             _previousIdTransform = Addressables.InternalIdTransformFunc;
-
-            int timeoutSeconds = policy.TimeoutSeconds;
 
             Addressables.WebRequestOverride = request =>
             {
@@ -138,7 +161,7 @@ namespace AddressableManager.Cdn
                 // need a CDN most.
                 if (!(request.downloadHandler is DownloadHandlerAssetBundle))
                 {
-                    request.timeout = timeoutSeconds;
+                    request.timeout = _activeTimeoutSeconds;
                 }
 
                 // Fetched per request so a refreshed token is picked up without reinstalling - which
@@ -146,7 +169,7 @@ namespace AddressableManager.Cdn
                 // and hash request. It must return an already-held token synchronously.
                 string token = null;
                 InvokeHook(
-                    () => token = authHeaderProvider?.Invoke(),
+                    () => token = _activeAuthProvider?.Invoke(),
                     "the authHeaderProvider passed to Cdn.InitializeAsync");
 
                 if (!string.IsNullOrEmpty(token))
@@ -194,6 +217,8 @@ namespace AddressableManager.Cdn
             _previousWebRequestOverride = null;
             _previousIdTransform = null;
             _activeRewriter = null;
+            _activeAuthProvider = null;
+            _activeTimeoutSeconds = 0;
             _installed = false;
         }
 
@@ -255,6 +280,8 @@ namespace AddressableManager.Cdn
             _previousWebRequestOverride = null;
             _previousIdTransform = null;
             _activeRewriter = null;
+            _activeAuthProvider = null;
+            _activeTimeoutSeconds = 0;
         }
     }
 }

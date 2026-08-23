@@ -177,10 +177,6 @@ namespace AddressableManager.Cdn
                     new DownloadReport(0, 0, stopwatch.Elapsed, 1, false));
             }
 
-            var preflight = RunPreflightChecks(request, requiredBytes);
-            if (preflight.IsFailure)
-                return CdnResult<DownloadReport>.Failure(preflight.Error);
-
             // ---- attempt loop ----
             int attempts = 0;
             bool repaired = false;
@@ -188,6 +184,17 @@ namespace AddressableManager.Cdn
             while (true)
             {
                 attempts++;
+
+                // Inside the loop, not before it. The metered-network and free-disk gates are
+                // decisions about the CURRENT conditions, and a retry happens seconds later under
+                // conditions that may have changed - a player walking out of WiFi range is the normal
+                // case on a phone, not an edge case. Checking once meant requireUnmeteredNetwork held
+                // only for the instant the download started: the WiFi transfer failed retryably, and
+                // one backoff later the same call resumed over cellular and returned Success, having
+                // spent the player's mobile data without ever producing MeteredNetworkBlocked.
+                var preflight = RunPreflightChecks(request, requiredBytes);
+                if (preflight.IsFailure)
+                    return CdnResult<DownloadReport>.Failure(preflight.Error);
 
                 var attempt = await RunOneDownloadAttempt(request, requiredBytes, progress, cancellationToken);
 
@@ -340,6 +347,10 @@ namespace AddressableManager.Cdn
                     // 3.5: release the handle but leave the partial cache alone. Unity keeps what it
                     // already wrote, which is what makes a restart resume rather than start over.
                     SafeRelease(handle);
+                    // Cancellation ends the download as surely as failure does. Only the failure path
+                    // used to say so, so a cancelled download left IsDownloading true for the rest of
+                    // the session and every UI reading it showed a transfer that had stopped.
+                    CdnDownloadMonitor.Complete();
                     return CdnResult<DownloadStatus>.Cancelled("The download was cancelled");
                 }
 
@@ -354,6 +365,7 @@ namespace AddressableManager.Cdn
                 catch (OperationCanceledException)
                 {
                     SafeRelease(handle);
+                    CdnDownloadMonitor.Complete();
                     return CdnResult<DownloadStatus>.Cancelled("The download was cancelled");
                 }
 

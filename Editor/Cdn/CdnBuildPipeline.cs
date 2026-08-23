@@ -314,11 +314,12 @@ namespace AddressableManager.Editor.Cdn
                 return CdnEditorResult<AddressableAssetSettings>.Failure(
                     $"Profile '{profileName}' still contains unresolved host placeholders, and they would " +
                     $"be baked into the catalog:\n  {string.Join("\n  ", placeholders)}\n\n" +
-                    "The Dev/Staging/Prod templates this package generates carry a literal \"<domain>\" " +
-                    "because the real host is environment-specific - their own doc comment calls the value " +
-                    "a fallback that env-var injection is meant to replace. Nothing injected it, so this " +
-                    "build would have succeeded, passed verification, and shipped a player that fetches " +
-                    "every bundle from a host that does not exist.\n\n" +
+                    $"The Dev/Staging/Prod templates this package generates carry a literal " +
+                    $"\"{CdnProfileManager.PathConvention.OriginPlaceholder}\" because the real host is " +
+                    "environment-specific - their own doc comment calls the value a fallback that env-var " +
+                    "injection is meant to replace. Nothing injected it, so this build would have " +
+                    "succeeded, passed verification, and shipped a player that fetches every bundle from " +
+                    "a host that does not exist.\n\n" +
                     "Fix: set the profile's Remote paths to the real host (Addressables > Profiles), or " +
                     "call CdnProfileManager.InjectRemoteHostFromEnvironment with CDN_HOST set before " +
                     "building.");

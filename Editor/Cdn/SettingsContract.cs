@@ -301,7 +301,7 @@ namespace AddressableManager.Editor.Cdn
             // request goes wherever the build was pointed.
             //
             // Nothing checked this. A build against a profile whose host is not in CdnSettings - the
-            // package's own Dev/Staging/Prod templates ship a literal "<domain>" placeholder, so this
+            // package's own Dev/Staging/Prod templates ship a literal "<cdnBase>" placeholder, so this
             // is the DEFAULT state - produced a successful build, a passing verifier, and a player
             // that fetched everything from a host that does not exist, with no log line anywhere.
             //

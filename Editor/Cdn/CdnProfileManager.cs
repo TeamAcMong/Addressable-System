@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
@@ -77,6 +78,42 @@ namespace AddressableManager.Editor.Cdn
         {
             /// <summary>The placeholder a generated profile carries until a real origin replaces it.</summary>
             public const string OriginPlaceholder = "<cdnBase>";
+
+            /// <summary>
+            /// The placeholder generated profiles carried before 4.1.0-pre.14, still accepted so a
+            /// project that upgraded rather than reinstalled keeps working.
+            /// </summary>
+            /// <remarks>
+            /// Renaming the token in the templates without renaming it in the injector is what broke
+            /// CI host injection between pre.14 and pre.16: the writer emitted
+            /// <see cref="OriginPlaceholder"/> while the reader still looked for this one, so
+            /// <c>InjectRemoteHostFromEnvironment</c> matched nothing, replaced nothing and returned
+            /// the untouched values - and the build then failed with a message telling the operator
+            /// to run the injector that had just done nothing.
+            ///
+            /// Both spellings are honoured from here on, and every test and substitution goes through
+            /// <see cref="ContainsOriginPlaceholder"/> / <see cref="ReplaceOriginPlaceholder"/> so a
+            /// future rename cannot split the writer from the reader again.
+            /// </remarks>
+            public const string LegacyOriginPlaceholder = "<domain>";
+
+            /// <summary>Both accepted spellings, for messages that have to name them.</summary>
+            public const string AcceptedPlaceholders =
+                OriginPlaceholder + " (or the pre-4.1.0-pre.14 spelling " + LegacyOriginPlaceholder + ")";
+
+            /// <summary>True when <paramref name="path"/> still carries an unresolved origin.</summary>
+            public static bool ContainsOriginPlaceholder(string path) =>
+                !string.IsNullOrEmpty(path) &&
+                (path.Contains(OriginPlaceholder) || path.Contains(LegacyOriginPlaceholder));
+
+            /// <summary>Substitute a real origin for whichever placeholder spelling the path carries.</summary>
+            public static string ReplaceOriginPlaceholder(string path, string origin)
+            {
+                if (string.IsNullOrEmpty(path)) return path;
+                return path
+                    .Replace(OriginPlaceholder, origin)
+                    .Replace(LegacyOriginPlaceholder, origin);
+            }
         }
 
         private static class CatalogPathDefaults
@@ -255,9 +292,10 @@ namespace AddressableManager.Editor.Cdn
         /// This is a utility for reading the env var and normalizing it. The actual host injection
         /// into profiles is performed by <see cref="InjectRemoteHostFromEnvironment"/>.
         ///
-        /// The domain is used to replace <domain> placeholders in profile paths.
-        /// Example: if the variable contains "example.com", it will replace <domain> in
-        /// "https://cdn-dev.<domain>/game/..." to produce "https://cdn-dev.example.com/game/...".
+        /// The origin is used to replace &lt;cdnBase&gt; placeholders in profile paths
+        /// (the pre-4.1.0-pre.14 spelling &lt;domain&gt; is still accepted).
+        /// Example: if the variable contains "example.com", it will replace the placeholder in
+        /// "https://cdn-dev.&lt;cdnBase&gt;/..." to produce "https://cdn-dev.example.com/...".
         /// </remarks>
         public static string GetRemoteHostFromEnvironment(string envVarName)
         {
@@ -272,13 +310,13 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Temporarily inject the CDN domain from an environment variable, replacing <domain>
+        /// Temporarily inject the CDN origin from an environment variable, replacing the origin
         /// placeholders in the active profile's Remote.LoadPath and Remote.CatalogLoadPath.
         /// This is scoped to the current build: the old values are returned so the caller
         /// can revert them after BuildPlayerContent completes.
         /// </summary>
         /// <param name="envVarName">Environment variable name to read (default "CDN_HOST")</param>
-        /// <param name="validatePlaceholders">If true, throw when env var is unset and <domain> placeholders remain</param>
+        /// <param name="validatePlaceholders">If true, throw when the env var is unset and an origin placeholder remains</param>
         /// <returns>Dictionary of old values (keys: RemoteCatalogLoadPathVariable, kRemoteLoadPath)
         /// for reverting via <see cref="RevertRemoteHostInjection"/></returns>
         /// <remarks>
@@ -322,15 +360,16 @@ namespace AddressableManager.Editor.Cdn
                     string existingBundlePath = settings.profileSettings.GetValueByName(
                         activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty;
 
-                    bool hasCatalogPlaceholder = existingCatalogPath.Contains("<domain>");
-                    bool hasBundlePlaceholder = existingBundlePath.Contains("<domain>");
+                    bool hasCatalogPlaceholder = PathConvention.ContainsOriginPlaceholder(existingCatalogPath);
+                    bool hasBundlePlaceholder = PathConvention.ContainsOriginPlaceholder(existingBundlePath);
 
                     if (hasCatalogPlaceholder || hasBundlePlaceholder)
                     {
                         throw new InvalidOperationException(
                             $"CdnProfileManager.InjectRemoteHostFromEnvironment: environment variable '{envVarName}' is not set, " +
-                            $"but the active profile's load paths contain <domain> placeholders. " +
-                            $"Set {envVarName} to the domain you want to inject (e.g., {envVarName}=example.com) and retry.");
+                            $"but the active profile's load paths still contain an origin placeholder " +
+                            $"{PathConvention.AcceptedPlaceholders}. " +
+                            $"Set {envVarName} to the origin you want to inject (e.g., {envVarName}=cdn.example.com) and retry.");
                     }
                 }
 
@@ -345,20 +384,38 @@ namespace AddressableManager.Editor.Cdn
                 { AddressableAssetSettings.kRemoteLoadPath, settings.profileSettings.GetValueByName(activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty }
             };
 
-            // Replace <domain> in catalog load path
+            // Substitute the origin into the catalog load path.
+            int replaced = 0;
             string catalogPath = oldValues[RemoteCatalogLoadPathVariable];
-            if (!string.IsNullOrEmpty(catalogPath) && catalogPath.Contains("<domain>"))
+            if (PathConvention.ContainsOriginPlaceholder(catalogPath))
             {
-                string newCatalogPath = catalogPath.Replace("<domain>", domain);
-                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable, newCatalogPath);
+                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable,
+                    PathConvention.ReplaceOriginPlaceholder(catalogPath, domain));
+                replaced++;
             }
 
-            // Replace <domain> in bundle load path
+            // ...and into the bundle load path.
             string bundlePath = oldValues[AddressableAssetSettings.kRemoteLoadPath];
-            if (!string.IsNullOrEmpty(bundlePath) && bundlePath.Contains("<domain>"))
+            if (PathConvention.ContainsOriginPlaceholder(bundlePath))
             {
-                string newBundlePath = bundlePath.Replace("<domain>", domain);
-                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath, newBundlePath);
+                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath,
+                    PathConvention.ReplaceOriginPlaceholder(bundlePath, domain));
+                replaced++;
+            }
+
+            // Say so when the variable was set and nothing matched. Silence here is what let the
+            // pre.14 token rename go unnoticed: CI set CDN_HOST, the injector replaced nothing, and
+            // the only signal was a later build failure that named the injector as the fix.
+            if (replaced == 0)
+            {
+                Debug.LogWarning(
+                    $"[CdnProfileManager] {envVarName}='{domain}' was set, but neither load path on profile " +
+                    $"'{settings.profileSettings.GetProfileName(activeProfileId)}' contains an origin placeholder " +
+                    $"{PathConvention.AcceptedPlaceholders}, so nothing was injected.\n" +
+                    $"  Remote.CatalogLoadPath = {(string.IsNullOrEmpty(catalogPath) ? "(empty)" : catalogPath)}\n" +
+                    $"  Remote.LoadPath        = {(string.IsNullOrEmpty(bundlePath) ? "(empty)" : bundlePath)}\n" +
+                    $"If those paths already hold the real origin this is harmless; if you expected them to be " +
+                    $"templated, regenerate the profile with CdnProfileManager.EnsureProfilesExist().");
             }
 
             return oldValues;

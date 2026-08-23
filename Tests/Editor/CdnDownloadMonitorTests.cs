@@ -33,8 +33,12 @@ namespace AddressableManager.Tests
             Assert.IsTrue(CdnDownloadMonitor.IsDownloading);
             Assert.AreEqual(512, CdnDownloadMonitor.Current.DownloadedBytes);
             Assert.AreEqual(2048, CdnDownloadMonitor.Current.TotalBytes);
-            Assert.AreEqual(25f, CdnDownloadMonitor.Current.Percent, 0.01f,
-                "Percent is what the progress bar binds to.");
+            // 0.25, not 25: Percent is a FRACTION, and monitor-download-bar is declared
+            // low-value="0" high-value="1" so it binds to the fraction directly. This assertion
+            // asserted 25f in 4.1.0-pre.15 and failed - correctly, because the tab was dividing by
+            // 100 to reach a scale nothing in the package uses. The consumer was the wrong side.
+            Assert.AreEqual(0.25f, CdnDownloadMonitor.Current.Percent, 0.001f,
+                "Percent is a 0..1 fraction and is what the progress bar binds to unconverted.");
         }
 
         [Test]
