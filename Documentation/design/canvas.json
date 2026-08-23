@@ -1,0 +1,98 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Product"
+    },
+    {
+      "id": "page-2",
+      "name": "Foundations"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 880,
+      "title": "Addressable Manager — prototype",
+      "page": "page-1"
+    },
+    {
+      "file": "Flows.dc.html",
+      "x": 1400,
+      "y": 0,
+      "w": 1280,
+      "h": 820,
+      "title": "Task flows",
+      "page": "page-1"
+    },
+    {
+      "file": "Decisions.dc.html",
+      "x": 2800,
+      "y": 0,
+      "w": 1180,
+      "h": 940,
+      "title": "Decisions & build order",
+      "page": "page-1"
+    },
+    {
+      "file": "States.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 900,
+      "title": "States & first run",
+      "page": "page-2"
+    },
+    {
+      "file": "Components.dc.html",
+      "x": 1400,
+      "y": 0,
+      "w": 1060,
+      "h": 900,
+      "title": "Shared vocabulary",
+      "page": "page-2"
+    },
+    {
+      "file": "MenuMap.dc.html",
+      "x": 2560,
+      "y": 0,
+      "w": 1060,
+      "h": 700,
+      "title": "Menu consolidation",
+      "page": "page-2"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "read-me",
+      "x": 0,
+      "y": -190,
+      "w": 520,
+      "text": "Click the rail on the left. Overview, Validator, Layout Rules, Build, Update Preview and Runtime Monitor are all drawn.\n\nThe rail is the change: it is not a menu, it is the pipeline, and its colour is where content actually stops today. \"What is broken\" is answered before you click anything.",
+      "page": "page-1"
+    },
+    {
+      "id": "open-qs",
+      "x": 1400,
+      "y": 880,
+      "w": 470,
+      "text": "Closed — see Decisions & build order:\n· Diagnostics: cut Assets + Performance, re-aim Scopes as Asset Lifetime.\n· Profiles: conformance view, not a second editor.\n· Ctrl+K: yes, built last.",
+      "page": "page-1"
+    },
+    {
+      "id": "foundations-note",
+      "x": 0,
+      "y": -130,
+      "w": 500,
+      "text": "Colours resolve from --unity-colors-* so the window follows the Editor skin. Spacing, radii and the 150px key column are lifted from the package's existing USS. USS has no grid, no ::before, no box-shadow, no rem and no media queries — nothing here needs them.",
+      "page": "page-2"
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

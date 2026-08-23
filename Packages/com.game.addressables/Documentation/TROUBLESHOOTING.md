@@ -10,13 +10,15 @@ This guide helps you diagnose and fix common problems with the Addressable Manag
 
 | Symptom | Likely Cause | Section |
 |---------|-------------|---------|
-| Assets not loading | Address typo or scope issue | [Runtime Loading](#runtime-loading-issues) |
-| Rules not matching | Filter misconfiguration | [Rule Matching](#rule-matching-issues) |
-| Editor window blank | UXML file missing | [Editor Windows](#editor-window-issues) |
+| Loads return null | Address typo, wrong type, or disposed scope | [Runtime Loading](#runtime-loading-issues) |
+| Rules not matching | Filter misconfiguration (usually Match Mode) | [Rule Matching](#rule-matching-issues) |
+| Dashboard blank | UXML file missing | [Editor Windows](#editor-window-issues) |
 | Slow performance | Too many tracked assets | [Performance](#performance-issues) |
-| Memory leak | Handles not released | [Memory Management](#memory-management-issues) |
-| Compilation errors | Missing dependencies | [Compilation](#compilation-errors) |
+| Memory not freed | Handles not released | [Memory Management](#memory-management-issues) |
+| Compilation errors | Missing assembly reference or old API | [Compilation](#compilation-errors) |
 | Version errors | Git/Build config | [Versioning](#versioning-issues) |
+| CDN error code | See the per-code table | [CDN Content Delivery](#cdn-content-delivery) |
+| `Reentering the Update method is not allowed` every frame | A failed catalog check, **not** `WaitForCompletion` | [Reentering the Update method](#reentering-the-update-method) |
 
 ---
 
@@ -32,35 +34,51 @@ This guide helps you diagnose and fix common problems with the Addressable Manag
 8. [CI/CD Issues](#cicd-issues)
 9. [Platform-Specific Issues](#platform-specific-issues)
 10. [Data Corruption](#data-corruption)
+11. [CDN Content Delivery](#cdn-content-delivery)
+
+> **API orientation.** The public entry points are the three tiers —
+> `AddressableManager.API.Simple`, `.Standard`, `.Advanced` — plus the
+> `AddressableManager.Facade.Assets` facade. There is no `AddressableManager` *type*;
+> `AddressableManager` is a namespace root. Nothing in this package loads a Unity
+> **scene**: "scene scope" means a cache whose lifetime is tied to a scene.
 
 ---
 
 ## Runtime Loading Issues
 
-### Issue: "Failed to load asset" Error
+### Issue: "Failed to load asset" in the Console
 
 **Symptoms**:
 ```
 InvalidKeyException: Exception of type 'UnityEngine.AddressableAssets.InvalidKeyException' was thrown
 No locations found for key: 'my_asset'
+[AssetLoader] Failed to load asset: my_asset. Error: ...
 ```
 
 **Causes**:
 1. Address doesn't exist
 2. Asset not marked as addressable
 3. Typo in address string
-4. Label filter excludes asset
+4. Content built for a different platform or not built at all
+
+**Note**: `AssetLoader.LoadAssetAsync<T>` does **not** rethrow. It logs the error and
+returns `null`, so the exception you see in the Console comes from Addressables itself.
+Your `IAssetHandle<T>` will simply be null — always null-check it.
 
 **Solutions**:
 
 **Step 1: Verify Address Exists**
 ```csharp
-// Check if address exists
-var locations = await Addressables.LoadResourceLocationsAsync("my_asset");
-if (locations.Count == 0)
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.ResourceLocations;
+
+var handle = Addressables.LoadResourceLocationsAsync("my_asset");
+IList<IResourceLocation> locations = await handle.Task;
+if (locations == null || locations.Count == 0)
 {
     Debug.LogError("Address 'my_asset' not found");
 }
+Addressables.Release(handle);
 ```
 
 **Step 2: Check Addressable Settings**
@@ -81,9 +99,33 @@ if (locations.Count == 0)
 **Step 4: Use Layout Viewer**
 ```
 1. Window > Addressable Manager > Layout Viewer
-2. Search for your asset
-3. Check computed address and labels
+2. Type the asset name into the toolbar Search field
+3. Check the computed address and labels
 ```
+
+**Step 5: Get a typed error instead of a null**
+
+`LoadAssetAsync` throws nothing and tells you nothing. The `Safe` variants return a
+`LoadResult<T>` carrying a `LoadErrorCode`:
+
+```csharp
+using AddressableManager.API;
+using AddressableManager.Core;
+
+var result = await Standard.LoadSafe<Texture2D>("texture");
+if (result.IsFailure)
+{
+    Debug.LogError($"{result.ErrorCode}: {result.ErrorMessage}\n{result.Error.Hint}");
+}
+```
+
+`LoadErrorCode` values: `None`, `InvalidAddress`, `AssetNotFound`,
+`InvalidAssetReference`, `InvalidLabel`, `OperationFailed`, `LoaderDisposed`,
+`ThreadSafetyViolation`, `TypeMismatch`, `NetworkError`, `ContentNotDownloaded`.
+
+**`ContentNotDownloaded` is the one people misdiagnose.** It means the address is valid
+and the bundle simply is not on this device yet — download it, do not go hunting for a
+missing entry in your Addressables groups.
 
 ---
 
@@ -91,102 +133,117 @@ if (locations.Count == 0)
 
 **Symptoms**:
 ```csharp
-var asset = await AddressableManager.LoadAsync<Texture2D>("texture");
-// asset is null, but no exception thrown
+var handle = await Standard.LoadGlobal<Texture2D>("texture");
+// handle is null, but no exception thrown
 ```
 
 **Causes**:
-1. Wrong type specified
-2. Asset not ready
-3. Scope lifetime ended
-
-**Solutions**:
+1. Wrong type specified (`TypeMismatch`)
+2. Empty or null address
+3. The loader was disposed, or its scope was
+4. The load was started off the main thread
 
 **Check Asset Type**:
 ```csharp
-// If asset is actually a Sprite, not Texture2D:
-var sprite = await AddressableManager.LoadAsync<Sprite>("texture");
+// If the asset is actually a Sprite, not a Texture2D:
+var handle = await Standard.LoadGlobal<Sprite>("texture");
 ```
+
+The cache is keyed by `(address, Type)`, so loading the same address as two different
+types produces two independent cache entries — that is by design, not a bug.
 
 **Verify Asset Loaded**:
 ```csharp
-try
+var handle = await Standard.LoadGlobal<Texture2D>("texture");
+if (handle != null && handle.IsValid)   // IsValid is a PROPERTY, not a method
 {
-    var handle = await AddressableManager.LoadAsync<Texture2D>("texture");
-    if (handle.IsValid())
-    {
-        Debug.Log("Asset loaded successfully");
-    }
-}
-catch (Exception ex)
-{
-    Debug.LogError($"Failed to load: {ex.Message}");
+    Debug.Log($"Loaded {handle.Asset.name}, refs: {handle.ReferenceCount}");
 }
 ```
 
 **Check Scope Lifetime**:
 ```csharp
-// BAD: Scope disposed before using asset
-using var scope = AddressableManager.CreateSessionScope();
-var texture = await scope.LoadAsync<Texture2D>("texture");
-// scope disposed here
+using AddressableManager.API;
+using AddressableManager.Scopes;
 
-// Later...
-myRenderer.material.mainTexture = texture; // May fail!
+// BAD: the scope's cache is cleared while the caller is still using the asset
+var scope = SceneAssetScope.GetOrCreate();
+var handle = await scope.Loader.LoadAssetAsync<Texture2D>("texture");
+scope.Deactivate();                        // ClearCache() runs here
+myRenderer.material.mainTexture = handle.Asset;   // handle.IsValid is now false
 
-// GOOD: Keep scope alive while using asset
-_scope = AddressableManager.CreateSessionScope();
-_texture = await _scope.LoadAsync<Texture2D>("texture");
-// Use texture...
-// Dispose scope when done
+// GOOD: keep the handle for as long as you use the asset, and release it yourself
+_handle = await Standard.LoadGlobal<Texture2D>("texture");
+myRenderer.material.mainTexture = _handle.Asset;
+// ... later ...
+_handle.Release();
 ```
+
+**Simple.Load hands you a raw asset you do not control.**
+`Simple.Load<T>(address)` returns the asset, not a handle, and disposes the handle
+internally. That is fine for a long-lived asset in the Global scope, but it means you
+have no way to keep it alive: applying a CDN catalog update invalidates every loader
+cache, and `Simple.ReleaseAddress` / `Simple.ClearAll` evict unconditionally — either
+can destroy the object while you are still holding the reference. Use
+`Standard.LoadGlobal<T>` when the lifetime matters.
 
 ---
 
-### Issue: "Scope Not Found" Exception
+### Issue: A named scope is missing
 
 **Symptoms**:
 ```
-ScopeNotFoundException: Scope 'SessionScope' not found or has been disposed
+[Standard.ClearCache] ...  Registered scopes: Global, Session, ...
+[ScopeManager] 'Global' is reserved for GlobalAssetScope ...
 ```
 
 **Causes**:
-1. Scope disposed too early
-2. Trying to use asset after scope cleanup
-3. Scope name typo
+1. The scope was disposed (its GameObject was destroyed, or the scene unloaded)
+2. The scope id is not what you think it is
+3. You tried to create a manager-owned scope named `"Global"`
 
-**Solutions**:
-
-**Use Correct Scope Lifetime**:
+**Check before you use it**:
 ```csharp
-// Scene scope - lives until scene unloads
-using var scope = AddressableManager.CreateSceneScope();
-var prefab = await scope.LoadAsync<GameObject>("enemy");
-Instantiate(prefab); // Safe - scene keeps it alive
+using AddressableManager.Managers;
 
-// Session scope - lives until manually disposed
-_sessionScope = AddressableManager.CreateSessionScope();
-_texture = await _sessionScope.LoadAsync<Texture2D>("logo");
-// Keep _sessionScope as field, dispose when appropriate
-
-// Global scope - lives forever (use sparingly)
-var globalAsset = await AddressableManager.LoadAsync<T>(
-    "persistent_data",
-    scope: AddressableScope.Global
-);
-```
-
-**Check Scope Before Using**:
-```csharp
-if (AddressableManager.ScopeExists("MyScope"))
+if (ScopeManager.Instance.HasScope("PlayerSession"))
 {
-    var asset = await AddressableManager.LoadAsync<T>("address", scope: "MyScope");
+    var loader = ScopeManager.Instance.GetScope("PlayerSession");
+    var handle = await loader.LoadAssetAsync<Texture2D>("logo");
 }
 else
 {
-    Debug.LogWarning("Scope 'MyScope' no longer exists");
+    Debug.LogWarning("Scope 'PlayerSession' no longer exists");
 }
 ```
+
+`ScopeManager.Instance.ActiveScopes` enumerates every registered scope id, which is the
+fastest way to see what the ids actually are.
+
+**Scope ids are not always the names you typed.** Scene and Hierarchy scopes qualify
+their ids with the owner's identity so two scopes with the same name stay distinct:
+
+| Scope | Id |
+|---|---|
+| `GlobalAssetScope` | `Global` |
+| Facade session | `Session` |
+| `SceneAssetScope` | `Scene-<sceneName>#h<sceneHandle>` |
+| `HierarchyAssetScope` | `Hierarchy-<goName>#<instanceTag>` |
+| `HybridScope` | `Hybrid:Global`, `Hybrid:Session`, `Hybrid:<type>:<name>` |
+| `ScopeManager.GetOrCreateScope("X")` | `X` |
+
+Both `SceneAssetScope` and `HierarchyAssetScope` accept a `customScopeId` (a
+constructor argument on `CreateForScene` / `AddTo`, and a serialized field in the
+Inspector) if you need a stable id.
+
+**`GetOrCreateScope("Global")` returns null** and logs an error — that id belongs to
+`GlobalAssetScope`. Use `GlobalAssetScope.Instance.Loader`, or
+`AddressablesFacade.Instance.GlobalLoader`, for the real Global cache.
+
+**These are four separate caches, not one.** `GlobalAssetScope`, the ScopeManager's
+`"Session"` entry, Scene/Hierarchy scopes and `HybridScope` share no state.
+`HybridScope.Global` is **not** `AddressablesFacade.Instance.GetGlobalScope()`. Loading
+through one and clearing another does nothing.
 
 ---
 
@@ -195,36 +252,52 @@ else
 ### Issue: Rules Not Matching Any Assets
 
 **Symptoms**:
-- Preview Panel shows "No assets match this rule"
-- Apply Rules reports 0 assets processed
+- Preview pane shows nothing
+- Apply reports 0 assets processed
 
-**Causes**:
-1. Filter path incorrect
-2. File extensions don't match
-3. Asset type mismatch
-4. No assets exist at specified path
+**Cause #1 — and by a wide margin the most common: PathFilter's Match Mode.**
+
+`PathFilter` defaults to **`Contains`**, with `_pattern = "Assets/"` and
+`_caseSensitive = false`. In `Contains`, `StartsWith`, `EndsWith` and `Exact` the
+pattern is compared with plain string operations, so **a pattern containing `*` or `**`
+matches nothing at all**.
+
+```
+Match Mode: Contains  +  Pattern "Assets/UI/**/*.png"   →  0 assets. Always.
+Match Mode: Glob      +  Pattern "Assets/UI/**/*.png"   →  works
+Match Mode: Contains  +  Pattern "Assets/UI/"           →  works
+```
+
+`PathMatchMode` values, in declaration order: `Contains`, `StartsWith`, `EndsWith`,
+`Exact`, `Regex`, `Glob`. (`Glob` is last for serialization compatibility — do not
+reorder them.)
+
+Glob syntax, when Match Mode is `Glob`: `*` matches within one path segment, `?`
+matches one character, `**/` matches zero or more segments, and a trailing `**` matches
+the rest of the path.
+
+Setting Match Mode to `Regex` and typing `**` is not a workaround: it throws, the
+exception is caught and logged as `[PathFilter] Invalid Regex pattern …`, and the
+filter then returns false for everything.
+
+**Cause #2 — a disabled filter is not a no-op you can ignore.** `AssetFilterBase.IsMatch`
+returns **true** for a disabled filter, so disabling one widens the rule rather than
+narrowing it. `Invert` flips the result of an enabled filter.
+
+**Other causes**: file extension mismatch, asset type mismatch, or no assets at the path.
 
 **Solutions**:
 
-**Verify Path Pattern**:
+**Test Filter Individually**
 ```
-✅ CORRECT: "Assets/UI/**/*.png"
-❌ WRONG: "Assets/UI/*.png" (doesn't search subdirectories)
-❌ WRONG: "Assets/ui/**/*.png" (case mismatch)
-❌ WRONG: "/Assets/UI/**/*.png" (leading slash)
-```
-
-**Test Filter Individually**:
-```
-1. Remove all but one filter from rule
+1. Remove all but one filter from the rule
 2. Click "Refresh Preview"
-3. If it matches, add next filter
-4. Find which filter is excluding assets
+3. If it matches, add the next filter back
+4. Filters combine with AND — find which one excludes everything
 ```
 
-**Check Asset Database**:
+**Check Asset Database**
 ```csharp
-// Manually check if assets exist
 var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/UI" });
 Debug.Log($"Found {guids.Length} textures in Assets/UI");
 
@@ -248,144 +321,148 @@ foreach (var guid in guids)
 2. Multiple rules conflict
 3. Priority ordering issue
 
-**Solutions**:
-
-**Make Filter More Specific**:
+**Make Filter More Specific** (with Match Mode set to `Glob`):
 ```
 TOO BROAD: "Assets/**/*.png"
-BETTER: "Assets/UI/**/*.png"
-SPECIFIC: "Assets/UI/Buttons/**/*.png"
+BETTER:    "Assets/UI/**/*.png"
+SPECIFIC:  "Assets/UI/Buttons/**/*.png"
 ```
 
-**Check Rule Priority**:
+**Check Rule Priority**
 ```
-Rules are processed in priority order (highest first)
-If two rules match the same asset, higher priority wins
+Rules are processed in priority order (highest first).
+If two rules match the same asset, the higher priority wins.
 
 Example:
 - Rule A (Priority 200): "Assets/UI/**/*.png" → Group "UI"
-- Rule B (Priority 100): "Assets/**/*.png" → Group "All"
+- Rule B (Priority 100): "Assets/**/*.png"    → Group "All"
 Result: UI assets go to "UI" group (Rule A wins)
 ```
 
-**Use Rule Conflict Detector**:
+**Find conflicts**
 ```
 1. Window > Addressable Manager > Layout Viewer
-2. Click "Detect Conflicts"
-3. Review reported conflicts
-4. Adjust priorities or filters
+2. Click "Refresh" — conflicts are computed as part of the scan
+3. Tick "Conflicts Only" to hide everything else
+4. "Export Report" writes the result to a file
 ```
+
+There is no "Detect Conflicts" button; the Layout Viewer toolbar is
+**Refresh / Auto Refresh / Search / Conflicts Only / Export Report**. For CI, use
+`AddressableCLI.DetectConflicts`, which writes JSON to `-reportFilePath` (default
+`conflicts.json`) and exits 1 when conflicts exist.
 
 ---
 
 ### Issue: Provider Generating Empty Output
 
 **Symptoms**:
-- Preview shows "Empty address generated" error
-- Assets have blank addresses
+- Assets end up with blank addresses
 
 **Causes**:
 1. Provider misconfigured
-2. Base path incorrect
+2. Every path segment stripped away
 3. Asset filename issues
 
-**Solutions**:
+**Real provider settings** (these are the fields that exist — there is no "Base
+Directory" or "Strip Extension" field anywhere):
 
-**Check Provider Settings**:
 ```
-FileNameAddressProvider:
-✅ Strip Extension: true
-✅ To Lower Case: optional
+FileNameAddressProvider
+  Include Extension   (default false — the address is the bare file name)
+  To Lower Case       (default false)
+  Prefix / Suffix     (default empty)
 
-PathAddressProvider:
-✅ Base Directory: "Assets/MyFolder"
-❌ Base Directory: "Assets/MyFolder/" (trailing slash may cause issues)
+PathAddressProvider
+  Remove Assets Prefix        (default true)
+  Remove Extension            (default true)
+  Remove Root Folder          (default "" — a folder name, not a path)
+  Path Separator Replacement  (default "/")
+  To Lower Case               (default false)
+  Prefix / Suffix             (default empty)
 ```
 
-**Test Provider Manually**:
+If `PathAddressProvider` produces an empty address, check `Remove Root Folder`: it
+strips a named folder from the front of the path and can leave nothing behind for
+shallow assets.
+
+**Test a provider manually**:
 ```csharp
-// Create test provider
-var provider = CreateInstance<FileNameAddressProvider>();
+using AddressableManager.Editor.Providers;
+
+var provider = ScriptableObject.CreateInstance<FileNameAddressProvider>();
 provider.Setup();
 
-// Test on known asset
 string address = provider.Provide("Assets/UI/button_start.png");
-Debug.Log($"Generated address: {address}"); // Should be "button_start"
+Debug.Log($"Generated address: {address}"); // "button_start"
 ```
 
 ---
 
 ## Editor Window Issues
 
-### Issue: Layout Rule Editor Shows Blank
+### Issue: Dashboard Shows Only an Error Label
 
 **Symptoms**:
-- Window opens but is empty
-- Shows "Failed to load UXML file" error
+- **Window > Addressable Manager > Dashboard** opens with a single label:
+  `Failed to load UI. Check UXML file path.`
+- Console shows `[AddressableManager] Failed to load UXML file. Creating fallback UI.`
 
-**Causes**:
-1. UXML file missing
-2. USS stylesheet missing
-3. Package not installed correctly
+**Cause**: The Dashboard is the only window built from UXML, and it loads its assets by
+absolute package path. If either is missing, the window falls back to that one label —
+the fallback has **no functionality at all**, it is purely a diagnostic.
 
-**Solutions**:
-
-**Verify Package Installation**:
-```
-1. Window > Package Manager
-2. Find "Addressable Manager" package
-3. If not found, reinstall:
-   - Delete Packages/com.game.addressables
-   - Reimport package
-```
-
-**Check File Exists**:
+**Check the files exist**:
 ```
 Packages/com.game.addressables/Editor/UI/AddressableManagerWindow.uxml
 Packages/com.game.addressables/Editor/UI/Styles.uss
 ```
 
-**Use Fallback UI**:
+**Verify Package Installation**:
 ```
-If UXML fails, window creates fallback IMGUI
-This provides basic functionality
-Consider reporting the issue
+1. Window > Package Manager
+2. Find "Addressable Manager"
+3. If the package was copied rather than installed, the hard-coded
+   "Packages/com.game.addressables/..." path will not resolve — install it under
+   Packages/ with that exact folder name.
 ```
+
+The **Layout Rule Editor**, **Layout Viewer** and the scope Inspectors are IMGUI and use
+no UXML, so a missing UXML file cannot blank them. The **CDN Manager** window has its own
+UXML under `Editor/Cdn/UI/`.
 
 ---
 
-### Issue: Preview Panel Not Updating
+### Issue: Preview Pane Not Updating
 
 **Symptoms**:
-- Click "Refresh Preview" but nothing happens
+- Click "Refresh Preview" and nothing changes
 - Preview shows old data
 
 **Causes**:
-1. Filter Setup() not called
+1. Filter `Setup()` not called
 2. Asset database out of sync
-3. Too many assets (performance)
-
-**Solutions**:
+3. The preview limit was already reached
 
 **Force Asset Database Refresh**:
 ```
-1. Right-click in Project window
+1. Right-click in the Project window
 2. Reimport All
-3. Wait for import to complete
-4. Try preview again
+3. Wait for the import to complete
+4. Try the preview again
 ```
 
-**Reduce Preview Limit**:
+**Preview Limit**:
 ```
-1. In Preview Panel, use the slider
-2. Set limit to 20-30 instead of 200
-3. Click "Refresh Preview"
+The Layout Rule Editor's preview pane has a "Preview Limit:" slider, range 10-200,
+default 50. The preview stops collecting once it hits the limit, so a rule that matches
+thousands of assets shows only the first N. Raise it to see more; lower it if generating
+the preview is slow.
 ```
 
 **Check Console for Errors**:
 ```
-Preview generation may log errors
-Check Console for filter/provider issues
+Preview generation logs filter and provider errors rather than surfacing them in the UI.
 ```
 
 ---
@@ -401,28 +478,26 @@ Check Console for filter/provider issues
 **Causes**:
 1. Too many assets in project
 2. Complex filter combinations
-3. DependentObjectFilter on large sets
+3. `DependentObjectFilter` in `Recursive` mode on large sets
 4. Verbose logging enabled
-
-**Solutions**:
 
 **Optimize Filters**:
 ```
-❌ SLOW:
-- FindAssetsFilter (searches entire database)
-- DependentObjectFilter (recursive dependencies)
-- Multiple wildcard paths
+SLOW:
+- FindAssetsFilter (runs an AssetDatabase search per evaluation)
+- DependentObjectFilter with Dependency Mode = Recursive
+- Broad glob patterns
 
-✅ FAST:
-- PathFilter with specific patterns
+FAST:
+- PathFilter with a specific pattern
 - TypeFilter
 - ExtensionFilter
 ```
 
 **Disable Verbose Logging**:
 ```
-1. Select LayoutRuleData asset
-2. Uncheck "Verbose Logging"
+1. Select the LayoutRuleData asset
+2. Uncheck "Verbose Logging" (it is off by default)
 3. Apply rules
 ```
 
@@ -433,52 +508,54 @@ Instead of one giant rule set:
 - Audio_Rules.asset (audio assets only)
 - Models_Rules.asset (models only)
 
-Apply each separately
+Apply each separately, or merge them with a CompositeLayoutRuleData when you do want
+one pass.
 ```
 
-**Use Batch Operations**:
-```csharp
-// Batch update in CLI
-Unity.exe -quit -batchmode \
+**Use the CLI**:
+```bash
+Unity.exe -quit -batchmode -projectPath . \
   -executeMethod AddressableManager.Editor.CLI.AddressableCLI.ApplyRules \
   -layoutRuleAssetPath "Assets/Rules/Main.asset"
 ```
 
+**Check auto-apply**: `AddressableAutoProcessor` runs after every asset import, but only
+for `LayoutRuleData` assets whose **Auto Apply On Import** is ticked (it is off by
+default). If imports feel slow, that flag is the first thing to check.
+
 ---
 
-### Issue: Editor Lag in Dashboard
+### Issue: Editor Lag in the Dashboard
 
 **Symptoms**:
 - Dashboard window stutters
 - High CPU usage
-- Editor becomes slow
 
 **Causes**:
 1. Too many tracked assets
-2. Auto-refresh enabled with short interval
-3. Memory graph updating too frequently
-
-**Solutions**:
+2. Auto-refresh with a short interval
 
 **Adjust Refresh Settings**:
 ```
-1. Open Dashboard
-2. Go to Settings tab
-3. Reduce refresh interval to 1000ms or more
-4. Or disable auto-refresh
+1. Open the Dashboard
+2. Settings tab
+3. Raise "Refresh Interval (ms)" — the slider runs 100-5000, default 500
+4. Or untick "Auto Refresh"
 ```
+
+These two are the only Settings-tab controls that affect the window itself.
 
 **Limit Tracked Assets**:
 ```
-Only track assets you need to monitor
-Release unused assets promptly
-Use scoped loading to auto-cleanup
+Release unused assets promptly, and use scope-owned loaders so cleanup is automatic.
+Window > Addressable Manager > Clear All Caches empties the Editor's tracking data
+(AssetTrackerService and PerformanceMetrics). It does NOT release any runtime asset.
 ```
 
 **Close Unused Windows**:
 ```
-Close Layout Viewer and Rule Editor when not in use
-They consume resources even when hidden
+The Layout Viewer's "Auto Refresh" toggle rescans on a timer. Turn it off or close the
+window when you are not using it.
 ```
 
 ---
@@ -489,72 +566,114 @@ They consume resources even when hidden
 
 **Symptoms**:
 - Memory usage keeps growing
-- Assets remain loaded after release
-- "Memory leak detected" warnings
+- Assets remain loaded after you thought you released them
 
 **Causes**:
 1. Handles not released
 2. Scopes not disposed
 3. References held in code
-4. Pooled objects not returned
-
-**Solutions**:
+4. Pooled objects destroyed instead of recycled
 
 **Always Release Handles**:
 ```csharp
-// BAD: Handle leaked
-var handle = await AddressableManager.LoadAsync<Texture2D>("texture");
-// Never released
+using AddressableManager.API;
 
-// GOOD: Manual release
-var handle = await AddressableManager.LoadAsync<Texture2D>("texture");
-// ... use it ...
+// BAD: handle leaked
+var handle = await Standard.LoadGlobal<Texture2D>("texture");
+// never released
+
+// GOOD: manual release
+var handle = await Standard.LoadGlobal<Texture2D>("texture");
+// ... use handle.Asset ...
 handle.Release();
 
-// BETTER: Using statement
-using var handle = await AddressableManager.LoadAsync<Texture2D>("texture");
-// Auto-released when scope exits
+// BETTER: using statement — Dispose() is identical to Release()
+using var handle = await Standard.LoadGlobal<Texture2D>("texture");
+```
+
+`Release()` decrements the reference count and drops the Addressables operation when it
+reaches zero. `Retain()` increments it and **throws `ObjectDisposedException`** if the
+handle already hit zero — use the `TryRetain()` extension where that is an expected
+outcome.
+
+**`Simple.Release<T>(asset)` releases nothing.** It is `[Obsolete]`, it is a genuine
+no-op, and it logs one warning per process. An asset instance cannot be mapped back to
+the cache entry holding it: the cache is keyed by `(address, Type)` with no reverse map.
+Use instead:
+
+```csharp
+Simple.ReleaseAddress("texture");   // evict every (address, Type) entry in Global
+Simple.ClearAll();                  // clear the whole Global cache
+Standard.LoadGlobal<T>("texture");  // ... or take a handle you dispose yourself
+```
+
+`ReleaseAddress` evicts unconditionally: any `IAssetHandle` still held for that address
+goes `IsValid == false`.
+
+**Clear the right cache**:
+```csharp
+Standard.ClearGlobalCache();          // Global only
+Standard.ClearSessionCache();         // the facade's "Session" scope
+Standard.ClearCache("PlayerSession"); // a ScopeManager scope, by id
+
+// Unknown id -> Debug.LogError listing the scopes that ARE registered.
+// This clears the cache; it does NOT dispose the loader, and pools are not reachable
+// this way (the pool manager has its own unregistered loader named "Pool").
 ```
 
 **Dispose Scopes**:
 ```csharp
-// BAD: Scope never disposed
-var scope = AddressableManager.CreateSessionScope();
-await scope.LoadAsync<T>("asset");
-// Scope leaked
+using AddressableManager.Scopes;
 
-// GOOD: Dispose when done
-var scope = AddressableManager.CreateSessionScope();
-try
-{
-    await scope.LoadAsync<T>("asset");
-}
-finally
-{
-    scope.Dispose();
-}
+// Scene / Hierarchy scopes are MonoBehaviours: they dispose when their GameObject
+// or scene goes away. Nothing extra to do.
+var scope = SceneAssetScope.GetOrCreate();
 
-// BETTER: Using statement
-using var scope = AddressableManager.CreateSessionScope();
-await scope.LoadAsync<T>("asset");
+// A ScopeManager scope is disposed by id:
+ScopeManager.Instance.ClearScope("PlayerSession");
+ScopeManager.Instance.ClearAllExceptGlobal();
 ```
 
 **Return Pooled Objects**:
 ```csharp
-// Get from pool
-var enemy = await AddressableManager.GetOrCreatePooledAsync<GameObject>("enemy_prefab");
+// Create the pool first — Simple.Pool returns NULL on the first call for an address,
+// because it starts pool creation in the background rather than blocking.
+await Standard.CreatePool("Enemies/Orc", preloadCount: 10);   // maxSize defaults to 50 here
 
-// When done, return to pool
-AddressableManager.ReturnToPool(enemy);
-// NOT Destroy(enemy) - that bypasses the pool!
+var enemy = Simple.Pool("Enemies/Orc");        // non-null now
+// ... when done ...
+Simple.Recycle("Enemies/Orc", enemy);          // NOT Object.Destroy — that bypasses the pool
+
+// The Standard-tier equivalents:
+Standard.Spawn("Enemies/Orc");
+Standard.Despawn("Enemies/Orc", enemy);
 ```
 
-**Use Memory Profiler**:
+`Simple.Destroy(instance)` routes through the loader's `ReleaseInstance` so
+Addressables' own instance refcount balances; plain `Object.Destroy` leaves a
+permanently retained bundle reference behind.
+
+Note the default pool size differs by entry point: `Standard.CreatePool` defaults
+`maxSize` to **50**, while `Assets.CreatePool` and `AddressablesFacade.CreatePoolAsync`
+default to **100** (`AddressablePoolManager.DefaultMaxPoolSize`).
+
+**Find suspects in the Dashboard**:
+```
+Window > Addressable Manager > Dashboard > Active Assets
+Sort through the list for anything alive far longer than expected, or whose refcount
+keeps climbing. AssetTrackerService.DetectPotentialLeaks(minutesThreshold) exposes the
+same query in code — there is no automatic "memory leak detected" warning anywhere in
+the package, so nothing will tell you unaided.
+```
+
+**Use the Memory Profiler**:
 ```
 1. Window > Analysis > Memory Profiler
-2. Take snapshot after loading
-3. Take snapshot after releasing
-4. Compare to find leaks
+2. Take a snapshot after loading
+3. Take a snapshot after releasing
+4. Compare
+
+The Dashboard's memory column is an ESTIMATE keyed by type name, not a measurement.
 ```
 
 ---
@@ -562,60 +681,79 @@ AddressableManager.ReturnToPool(enemy);
 ### Issue: Out of Memory Crashes
 
 **Symptoms**:
-- App crashes with OOM error
-- Unity freezes during loading
-- Memory graph shows spike
+- App crashes with an OOM error
+- Memory graph shows a spike
 
 **Causes**:
 1. Loading too many assets at once
 2. Not releasing unused assets
 3. Texture/mesh size too large
-4. No tiered caching strategy
+4. No cache size limit
 
-**Solutions**:
-
-**Use Batch Loading with Limits**:
+**Load in batches, and release as you go**:
 ```csharp
-// BAD: Load all at once
-var allAssets = await AddressableManager.LoadAssetsAsync<Texture2D>(
-    labels: new[] { "textures" }
-); // May load 1000+ textures!
+using AddressableManager.API;
 
-// GOOD: Load in batches
+// Loads every asset carrying the label, all at once:
+var handles = await Standard.LoadByLabel<Texture2D>("textures");
+
+// Loading a known set instead, in chunks you control.
+// LoadBatch takes `params string[]`, so pass an array.
 const int batchSize = 10;
 for (int i = 0; i < addresses.Length; i += batchSize)
 {
-    var batch = addresses.Skip(i).Take(batchSize);
-    await AddressableManager.LoadBatchAsync<Texture2D>(batch);
-
-    // Process batch
-    // Release if not needed long-term
+    string[] chunk = addresses.Skip(i).Take(batchSize).ToArray();
+    Dictionary<string, IAssetHandle<Texture2D>> batch =
+        await Standard.LoadBatch<Texture2D>(chunk);
+    // ... process ...
+    foreach (var handle in batch.Values) handle.Release();
 }
 ```
 
-**Implement Aggressive Cleanup**:
-```csharp
-// Release assets by label when changing scenes
-public void OnSceneChange()
-{
-    // Release all level-specific assets
-    AddressableManager.ReleaseByLabel("level_previous");
+`LoadBatch` loads sequentially and skips addresses that fail, so a missing entry does
+not abort the batch.
 
-    // Force garbage collection
-    System.GC.Collect();
-    Resources.UnloadUnusedAssets();
-}
+**Clean up between scenes**:
+```csharp
+// There is no ReleaseByLabel. Release the handles you were given, or clear the scope.
+Standard.ClearSessionCache();
+// or, for a named scope:
+ScopeManager.Instance.ClearScope("Level_Previous");
+
+Resources.UnloadUnusedAssets();
 ```
 
-**Use Tiered Caching**:
+**Put a cap on a scope's cache with tiered caching**:
 ```csharp
-// Configure cache tiers
-AddressableManager.ConfigureCache(new CacheConfig
-{
-    TierSizes = new[] { 100, 500, 2000 }, // L1, L2, L3 in MB
-    EvictionPolicy = CacheEvictionPolicy.LRU
-});
+using AddressableManager.API;
+using AddressableManager.Core;
+
+// Tiering is OFF unless you pass a config. The config argument has no default and
+// null throws ArgumentNullException; an invalid config throws ArgumentException.
+var config = TieredCacheConfig.Aggressive;   // 50 MB. Also: Default (100 MB),
+                                             // Lenient (200 MB), Disabled (unlimited)
+var loader = Advanced.CreateLoader("Level", config);
+
+// Or build one field by field:
+var custom = Advanced.CreateCacheConfig(
+    maxSizeBytes: 64L * 1024 * 1024,
+    promoteToHotThreshold: 15.0f,
+    evictionTriggerRatio: 0.9f,
+    enableAutoTiering: true,
+    enableAutoEviction: true);
+
+Advanced.EvaluateTiers(loader);   // re-score entries now
+Advanced.ForceEviction(loader);   // evict now
+var stats = Advanced.GetCombinedCacheStats(loader);
 ```
+
+`Advanced.GetTieredCacheStats<T>(loader)` returns an **all-zero struct** when tiering is
+off — check `loader.TieringEnabled` before believing a zero.
+
+**Thread-safety, if you go looking**: the standalone `TieredCache<T>` is documented as
+**not thread-safe** and is for single (main) thread use. `ThreadSafeCacheManager<T>` is
+the multi-thread equivalent, but even there `Set()` and `TryGet()` are main-thread only;
+`Remove`, `Clear`, `Pin`, `Unpin` and `GetStatistics` work from any thread.
 
 ---
 
@@ -623,134 +761,217 @@ AddressableManager.ConfigureCache(new CacheConfig
 
 ### Error: "Type or namespace 'AddressableManager' could not be found"
 
-**Cause**: Package not imported or namespace missing
+**Cause**: Missing assembly reference, or the wrong namespace.
 
 **Solution**:
 ```csharp
-// Add using statement
-using AddressableManager;
-using AddressableManager.Runtime;
+// The namespaces that actually exist:
+using AddressableManager.API;         // Simple, Standard, Advanced
+using AddressableManager.Facade;      // Assets, AddressablesFacade
+using AddressableManager.Core;        // IAssetHandle<T>, LoadResult<T>, LoadErrorCode,
+                                      // SmartAssetHandle<T>, TieredCacheConfig
+using AddressableManager.Loaders;     // AssetLoader, ThreadSafeAssetLoader
+using AddressableManager.Scopes;      // GlobalAssetScope, SceneAssetScope, ...
+using AddressableManager.Managers;    // ScopeManager
+using AddressableManager.Monitoring;  // AssetMonitorBridge, IAssetMonitor
+using AddressableManager.Cdn;         // CdnManager, CdnResult<T>, CdnErrorCode
+using AddressableManager.Configs;     // DebugSettings, AddressablePreloadConfig
+```
 
-// Verify package installed
-Window > Package Manager > Addressable Manager (should be listed)
+There is no `AddressableManager.Runtime` namespace.
 
-// Check Assembly Definition References
-If using asmdef files, reference:
-- AddressableManager.Runtime
-- AddressableManager.Editor (for editor scripts)
+**Assembly Definition References** — the assemblies are named:
+```
+AddressableManager           (Runtime)
+AddressableManager.Editor    (Editor)
+```
+Reference `AddressableManager` from runtime asmdefs and `AddressableManager.Editor`
+from editor asmdefs. Editor-side types — filters, providers, `LayoutRuleData`, the CLI
+— live in `AddressableManager.Editor.*` namespaces and are not reachable from runtime
+code.
+
+---
+
+### Error: "Cannot access internal member" on `AssetLoader.IsCached`
+
+**Cause**: `AssetLoader.IsCached` and `IsCached<T>` are `internal`. `InternalsVisibleTo`
+is granted only to `AddressableManager.Tests.Editor`.
+
+**Solution**: use the public route.
+```csharp
+bool any   = Simple.IsLoaded("texture");            // any type at this address
+bool typed = Simple.IsLoaded<Texture2D>("texture"); // exact (address, Type) key
 ```
 
 ---
 
 ### Error: "SmartAssetHandle does not contain a definition for 'IsValid'"
 
-**Cause**: API version mismatch
+**Cause**: `IsValid` is a **property**, not a method — on `SmartAssetHandle<T>` and on
+`IAssetHandle<T>` alike.
 
 **Solution**:
 ```csharp
-// Old API (v2.x)
-if (handle != null) { }
+if (handle.IsValid) { }     // correct
+if (handle.IsValid()) { }   // does not compile
 
-// New API (v3.x)
-if (handle.IsValid()) { }
-
-// Update code to use new API
-// See MIGRATION_GUIDE.md for full changes
+// SmartAssetHandle<T> also has an implicit bool conversion:
+if (handle) { }             // same as handle != null && handle.IsValid
 ```
+
+---
+
+### Warning: obsolete members
+
+These still compile in 4.x and are removed in 5.0.0:
+
+| Obsolete | Use instead |
+|---|---|
+| `Simple.Release<T>(asset)` | `Simple.ReleaseAddress(address)` / `Simple.ClearAll()` |
+| `Standard.LoadScene<T>` | `Standard.LoadIntoSceneScope<T>` — neither loads a Unity scene |
+| `Standard.DownloadDependencies` | `CdnManager.DownloadAsync` |
+| `Standard.GetDownloadSize` | `CdnManager.GetDownloadSizeAsync` |
+| `Assets.GetDownloadSize` / `Assets.Download` | the `CdnManager` equivalents |
+| `Advanced.CreateTieredLoader` | `Advanced.CreateLoader(scopeName, config)` |
+| `Advanced.GetGlobalScope()` / `GetSessionScope()` | `Advanced.GetHybridGlobalScope()` / `GetHybridSessionScope()` |
+| the six `TieredAssetLoader` overloads of `PinAsset` / `UnpinAsset` / `EvaluateTiers` / `ForceEviction` / `GetTieredCacheStats` / `GetCombinedCacheStats` | the `AssetLoader` overloads of the same names |
+
+---
+
+### Error: `Task<...>` cannot be converted to `UniTask<...>` (or vice versa)
+
+**Cause**: part of the API changes its return type depending on whether
+`com.cysharp.unitask` is installed (the `UNITASK_PRESENT` define).
+
+**Dual-return (UniTask when installed, Task otherwise)**: everything on `Assets`,
+`AddressablesFacade`, `AssetLoader`, `CdnManager`, `AddressablePoolManager`, plus
+`Standard.LoadIntoSceneScope` and `Advanced.LoadFromBackgroundThread`.
+
+**Always `Task`**: every member of `Simple`, and every other member of `Standard` and
+`Advanced`.
+
+**Solution**: `await` the call instead of assigning it to an explicitly typed variable,
+or use `var`.
 
 ---
 
 ## Versioning Issues
 
-### Issue: Git Version Provider Returns Empty
+### Issue: Git Version Provider Returns the Fallback
 
 **Symptoms**:
-- GitCommitVersionProvider generates empty versions
-- Warnings: "Git command failed"
+- `GitCommitVersionProvider` produces `0.0.0-unknown` (its `Fallback Version` default)
+- Console warnings about the git command
 
 **Causes**:
-1. Git not installed
-2. .git folder not accessible
+1. Git not installed or not on PATH
+2. `.git` folder not accessible
 3. Not a git repository
-4. Git command blocked
-
-**Solutions**:
+4. The requested mode has nothing to report (`LatestTag` with no tags)
 
 **Verify Git Installation**:
 ```bash
-# Test git command
 git --version
-
-# Should output: git version X.X.X
-# If not, install Git and add to PATH
 ```
 
 **Check Repository**:
 ```bash
-# Ensure you're in a git repo
 git status
-
-# If error, initialize repo:
-git init
-git add .
-git commit -m "Initial commit"
 ```
 
-**Fallback to Alternative Provider**:
+**Pick a mode that can succeed**. `GitVersionMode` values: `CommitHash`,
+`CommitHashFull`, `LatestTag`, `TagOrHash`, `Describe`. The default is `TagOrHash`,
+which falls back to a hash when there is no tag — `LatestTag` on a repository with no
+tags cannot produce anything.
+
+**Fallback to another provider**:
 ```
-If git unavailable, use:
-- BuildNumberVersionProvider
-- DateVersionProvider
-- ConstantVersionProvider
+BuildNumberVersionProvider
+DateVersionProvider
+ConstantVersionProvider     (default "1.0.0")
 ```
 
 ---
 
-### Issue: Build Number Version Always "0.0.0"
+### Issue: Build Number Version Is Not What You Expect
 
-**Cause**: PlayerSettings not configured
+**Cause**: `BuildNumberVersionProvider` reads `PlayerSettings`, and which field it reads
+depends on `Version Source`:
+
+| Version Source | Reads |
+|---|---|
+| `BundleVersion` (default) | `PlayerSettings.bundleVersion` |
+| `BuildNumber` | `PlayerSettings.Android.bundleVersionCode` or `PlayerSettings.iOS.buildNumber`, chosen by the provider's `Platform` field (default `RuntimePlatform.Android`) |
+| `Combined` | both, joined as `bundle.buildNumber` |
+| `Custom` | the provider's `Custom Version` field (default `"1.0.0"`) |
+
+If reading `PlayerSettings` throws, the provider logs a warning and falls back to
+`Custom Version` — so an unexpected `1.0.0` usually means the read failed, not that the
+version is `1.0.0`.
 
 **Solution**:
 ```
 1. Edit > Project Settings > Player
-2. Set "Version" (e.g., "1.2.3")
-3. Set iOS "Build" number
-4. Set Android "Bundle Version Code"
+2. Set "Version"
+3. Set the iOS "Build" number / Android "Bundle Version Code"
 
-Or set programmatically:
+Or programmatically:
 PlayerSettings.bundleVersion = "1.2.3";
 PlayerSettings.Android.bundleVersionCode = 456;
 ```
 
 ---
 
+### Issue: Version expression rejected
+
+`AddressableCLI.SetVersionExpression` exits 1 and prints the formats it accepts:
+```
+[1.0.0,2.0.0)   (1.0.0,2.0.0]   [1.0.0,2.0.0]   1.0.0
+>=1.0.0   >1.0.0   <=2.0.0   <2.0.0
+```
+
+---
+
 ## CI/CD Issues
 
-### Issue: CLI Commands Fail in Build Pipeline
+### Issue: CLI Commands Fail in the Build Pipeline
 
 **Symptoms**:
 - Unity exits with code 2
-- "LayoutRuleData not found" errors
+- `LayoutRuleData not found at path: ...`
 
 **Causes**:
 1. Incorrect asset path
-2. Unity not finding package
-3. Missing dependencies
+2. Missing required argument
+3. Scripts did not compile
 
-**Solutions**:
+**Every CLI method checks `EditorUtility.scriptCompilationFailed` first and exits 1.**
 
-**Use Absolute Paths**:
+**Use project-relative asset paths**:
 ```bash
-# BAD: Relative path may not work
+# BAD
 -layoutRuleAssetPath "Rules/Main.asset"
 
-# GOOD: Full project path
+# GOOD — the path AssetDatabase uses
 -layoutRuleAssetPath "Assets/Rules/Main.asset"
 ```
 
-**Verify Package in Build**:
+**Arguments, per method** (`AddressableManager.Editor.CLI.AddressableCLI`):
+
+| Method | Arguments |
+|---|---|
+| `ApplyRules` | `-layoutRuleAssetPath` (required), `-validateOnly`, `-warningAsError`, `-resultFilePath` |
+| `ValidateLayoutRules` | `-layoutRuleAssetPath` (required), `-errorLogFilePath` |
+| `SetVersionExpression` | `-layoutRuleAssetPath` (required), `-versionExpression`, `-excludeUnversioned` |
+| `DetectConflicts` | `-reportFilePath` (default `conflicts.json`) |
+| `ImportRules` | `-layoutRuleAssetPath` (required), `-importFilePath` (required), `-mergeMode` |
+
+A `-key` with no value, or followed by another `-flag`, is parsed as `"true"`. Booleans
+accept `true` (any case) or `1`.
+
+**Verify Package in the Project**:
 ```json
-// manifest.json
+// Packages/manifest.json
 {
   "dependencies": {
     "com.game.addressables": "file:../Packages/com.game.addressables"
@@ -761,19 +982,26 @@ PlayerSettings.Android.bundleVersionCode = 456;
 **Check Exit Codes**:
 ```bash
 #!/bin/bash
-unity-editor -batchmode -executeMethod AddressableManager.Editor.CLI.AddressableCLI.ApplyRules \
+unity-editor -batchmode -quit -projectPath . \
+  -executeMethod AddressableManager.Editor.CLI.AddressableCLI.ApplyRules \
   -layoutRuleAssetPath "Assets/Rules/Main.asset"
 
 EXIT_CODE=$?
-if [ $EXIT_CODE -eq 0 ]; then
-    echo "Success"
-elif [ $EXIT_CODE -eq 1 ]; then
-    echo "Validation errors"
-    exit 1
-elif [ $EXIT_CODE -eq 2 ]; then
-    echo "Fatal error"
-    exit 2
-fi
+case $EXIT_CODE in
+  0) echo "Success" ;;
+  1) echo "Validation or apply failure"; exit 1 ;;
+  2) echo "Missing argument, asset not found, or exception"; exit 2 ;;
+esac
+```
+
+**Never trust the exit code alone.** Unity exits 0 when `-executeMethod` targets an
+assembly that did not compile — the method simply never runs. Grep the log for
+`error CS` as well.
+
+**`ApplyRules -resultFilePath` writes JSON**:
+```json
+{"success":true,"totalAssetsProcessed":0,"addressesApplied":0,"labelsApplied":0,
+ "versionsApplied":0,"warnings":[],"errors":[],"timestamp":"..."}
 ```
 
 ---
@@ -786,15 +1014,24 @@ fi
 
 **Solution**:
 ```csharp
-// Use consistent casing
-"my_asset" not "My_Asset" or "MY_ASSET"
+// Use consistent casing — addresses are case-sensitive
+"my_asset"  // not "My_Asset" or "MY_ASSET"
 
-// Verify addresses in built player
-var locations = await Addressables.LoadResourceLocationsAsync("my_asset");
+// Verify addresses in the built player
+var handle = Addressables.LoadResourceLocationsAsync("my_asset");
+var locations = await handle.Task;
 Debug.Log($"Found {locations.Count} locations");
+Addressables.Release(handle);
 ```
 
----
+### Issue: `hostEnvironmentVariable` has no effect on device
+
+**Cause**: The CDN host override reads a process environment variable. Mobile and
+console have no process environment, so the override is skipped there — it works in the
+Editor and in standalone players only.
+
+**Solution**: use per-environment `baseUrl` values, or `CdnManager.SetEnvironment` at
+runtime.
 
 ### Issue: iOS Asset Loading Slow
 
@@ -802,9 +1039,9 @@ Debug.Log($"Found {locations.Count} locations");
 
 **Solution**:
 ```
-1. Window > Asset Management > Addressables > Settings
-2. Content Packing & Loading > Asset Bundle Provider
-3. Set appropriate compression (LZ4 for speed, LZMA for size)
+1. Window > Asset Management > Addressables > Groups
+2. Select the group > Content Packing & Loading > Advanced Options
+3. Set Asset Bundle Compression (LZ4 for speed, LZMA for size)
 4. Group small assets together
 ```
 
@@ -816,36 +1053,36 @@ Debug.Log($"Found {locations.Count} locations");
 
 **Symptoms**:
 - Groups missing after rule application
-- Settings file shows errors
-- Can't open Addressable Groups window
-
-**Solutions**:
+- Can't open the Addressable Groups window
 
 **Restore from Version Control**:
 ```bash
-# Revert addressable settings
 git checkout AddressableAssetsData/
-
-# Rebuild
-Window > Asset Management > Addressables > Groups
-Build > New Build > Default Build Script
 ```
+then rebuild: **Window > Asset Management > Addressables > Groups > Build > New Build >
+Default Build Script**.
 
 **Regenerate Settings**:
 ```
-1. Delete AddressableAssetsData folder
+1. Delete the AddressableAssetsData folder
 2. Window > Asset Management > Addressables > Groups
 3. Click "Create Addressables Settings"
 4. Reapply rules
 ```
 
+**Groups missing a schema** — a group created outside the normal path can end up
+without a `BundledAssetGroupSchema`, which breaks builds in confusing ways:
+```
+Tools > Addressable Manager > Repair Groups Missing Schemas
+```
+
 **Backup Before Applying**:
 ```
 Before major rule changes:
-1. Commit current state to version control
-2. Or copy AddressableAssetsData folder
+1. Commit the current state to version control
+2. Or copy the AddressableAssetsData folder
 3. Apply rules
-4. If issues, restore backup
+4. If there are problems, restore the backup
 ```
 
 ---
@@ -854,31 +1091,33 @@ Before major rule changes:
 
 If your issue isn't covered here:
 
-1. **Check Documentation**:
+1. **Check the other documentation**:
    - [ADDRESSABLE_AUTOMATION_GUIDE.md](ADDRESSABLE_AUTOMATION_GUIDE.md)
    - [RULE_SYSTEM_EXAMPLES.md](RULE_SYSTEM_EXAMPLES.md)
-   - [API_REFERENCE.md](API_REFERENCE.md)
+   - [CDN_USAGE_GUIDE.md](CDN_USAGE_GUIDE.md)
+   - `EDITOR_TOOLS_GUIDE.md` and `MONITORING_GUIDE.md` at the package root
 
 2. **Enable Verbose Logging**:
    ```
-   LayoutRuleData > Verbose Logging: ✓
-   Check Console for detailed errors
+   LayoutRuleData > Verbose Logging  — for rule application
+   DebugSettings  > Log Level = All  — the only DebugSettings field the runtime reads
+                                       (via DebugSettings.IsVerbose, which is always
+                                       false in a player build)
    ```
 
-3. **Use Built-in Diagnostics**:
+3. **Use the built-in diagnostics**:
    ```
    Window > Addressable Manager > Dashboard
-   Check Performance and Scopes tabs
-   Export performance report
+   Performance tab > Export Report (CSV)
+   Scopes tab for per-scope asset counts
    ```
 
-4. **Report Issues**:
-   - GitHub Issues: https://github.com/your-org/addressable-manager/issues
-   - Include: Unity version, package version, error logs, reproduction steps
+4. **Report Issues**: include Unity version, package version, error logs, and
+   reproduction steps.
 
 ---
 
-**Version**: 3.5.0 | **Last Updated**: January 2025
+**Package version**: 4.1.0
 
 ---
 
@@ -894,6 +1133,13 @@ CDN hooks only apply to content resolved after they are installed. A stray
 `LoadAssetAsync`, or an `AssetReference` on an object in your first scene, is enough to
 lose them. Initialisation fails loudly with this cause rather than half-applying.
 
+> **The catalog-update flow is unproven.** `CheckForUpdateAsync` and `ApplyUpdateAsync`
+> are built on `Addressables.CheckForCatalogUpdates`, which returned an empty list on
+> every call in the Addressables versions this package was written against — the whole
+> update path was dead code. The package now pins 2.9.1, where the call works, but the
+> flow has not been exercised end to end against a real CDN. Test it yourself before a
+> release depends on it.
+
 ### Quick triage
 
 | Symptom | Likely code | Start here |
@@ -901,6 +1147,7 @@ lose them. Initialisation fails loudly with this cause rather than half-applying
 | First launch hangs on a loading screen, no network | `NoContentAvailableOffline` | [below](#nocontentavailableoffline) |
 | Works on Wi-Fi, nothing happens on mobile data | `MeteredNetworkBlocked` | [below](#meterednetworkblocked) |
 | Boots fine for you, 404s for shipped players | `CatalogNotFound` | [below](#catalognotfound) |
+| "A catalog update is already being applied" | `Unknown` | [below](#unknown) |
 | Update applies but the changed asset is still old | not an error — see [Static content](#the-update-applied-but-my-change-is-missing) | |
 | Game size grows with every patch | not an error — see [Disk](#the-game-keeps-growing-after-every-update) | |
 
@@ -939,13 +1186,21 @@ before showing the screen.
 
 ### MeteredNetworkBlocked
 
-**Symptom.** Downloads work on Wi-Fi and silently do nothing on mobile data.
+**Symptom.** Downloads work on Wi-Fi and refuse to start on mobile data.
 
 **Cause.** `DownloadPolicy.RequireUnmeteredNetwork` is on and the device is on carrier data.
 The layer refused rather than spending the player's data without asking.
 
-**Fix.** Prompt, then retry with `DownloadRequest(..., allowMeteredOverride: true)`. Consent
-belongs on the request rather than in settings because it is per download, not permanent.
+**This is opt-in.** `requireUnmeteredNetwork` defaults to **`false`**, so out of the box
+downloads proceed on cellular and you will never see this code. If you wanted the guard and
+did not get it, tick the field on the `CdnSettings` asset.
+
+**Fix.** Prompt, then retry with the override on the request — consent belongs on the
+request rather than in settings because it is per download, not permanent:
+```csharp
+var request = DownloadRequest.For("chapter-2", allowMeteredOverride: true);
+var result  = await CdnManager.DownloadAsync(request);
+```
 
 **Caveat worth knowing.** Unity only reports "carrier data network", so a metered Wi-Fi
 hotspot reads as unmetered and a corporate APN reads as metered. This gate is a good default,
@@ -971,8 +1226,9 @@ not a guarantee.
 **Fix.** Not retryable. Republish for the version players actually have, or ship a player
 build whose version matches what is on the CDN.
 
-**Diagnose it before shipping** with `CdnBuildCLI.VerifyOutput`, which fails when the catalog
-is not named for the current app version.
+**Diagnose it before shipping** with `CdnBuildCLI.VerifyOutput`, which fails when the
+manifest's app version does not match `PlayerSettings.bundleVersion`, and again when the
+catalog file is not named for that version.
 
 ---
 
@@ -1009,10 +1265,13 @@ binary cannot read that catalog format.
 mistake: **bundles must be uploaded before the catalog.** Uploading the catalog first creates
 a window where clients read a catalog naming bundles that do not exist yet.
 
-**Fix.** Upload the missing bundles, then purge the catalog at the edge. `ci/upload-bundles.sh`
-runs before `ci/upload-catalog.sh` for this reason — if you deploy by hand, keep that order.
+**Fix.** Upload the missing bundles, then purge the catalog at the edge. The repository's
+`ci/upload-bundles.sh` runs before `ci/upload-catalog.sh` for this reason — if you deploy by
+hand, keep that order.
 
-**Verify** with `CdnBuildCLI.VerifyOutput`, which checks every bundle in the manifest exists.
+**Verify** with `CdnBuildCLI.VerifyOutput`, which checks that every bundle in the manifest
+exists in the output and matches its recorded hash, and with `CatalogInspectCLI.Inspect`,
+which checks the built catalog against the bundle folder.
 
 ---
 
@@ -1021,12 +1280,21 @@ runs before `ci/upload-catalog.sh` for this reason — if you deploy by hand, ke
 **Symptom.** A download completes and then fails verification, sometimes repeatedly on one
 device.
 
-**Cause.** The cached copy is corrupt — interrupted write, failing storage, or a truncated
-response cached by an intermediary.
+**Cause.** The bytes could not be turned into a bundle: an interrupted write, failing
+storage, a truncated response cached by an intermediary, or a corrupt object on the CDN.
 
-**Fix.** Handled automatically: `DownloadService` evicts the cached dependency and retries
-once. If it fails again, the bytes on the CDN are wrong rather than the local copy — compare
-the object's SHA256 against `build-manifest.json`.
+`CdnErrorMapper` maps `UnityWebRequest.Result.DataProcessingError` to this code
+**regardless of HTTP status**, checked before the status branch. That matters because a
+bundle that transfers cleanly and then fails CRC validation inside
+`DownloadHandlerAssetBundle` reports `DataProcessingError` with **status 200** — a complete
+HTTP response really did arrive. Testing it only under status 0 sent the single most
+important corruption case through to `Unknown`, which is classified as non-retryable and
+which no auto-repair path matches.
+
+**Fix.** Handled automatically on a download: `DownloadService` evicts the cached dependency
+and retries once, and `DownloadReport.RepairedCorruptBundle` records that it happened. If it
+fails again, the bytes on the CDN are wrong rather than the local copy — compare the object's
+SHA256 against `build-manifest.json`.
 
 ---
 
@@ -1034,11 +1302,14 @@ the object's SHA256 against `build-manifest.json`.
 
 **Symptom.** Intermittent failures, often several clients at once.
 
-**Cause.** 5xx from the origin or edge, or 429 (rate limited).
+**Cause.** 5xx from the origin or edge, or 408/429.
 
-**Fix.** Handled automatically by `RetryPolicy` with exponential backoff and jitter. If it
-persists past the retry budget, tell the player the servers are busy — not that something is
-wrong with their device. 429 specifically means retrying faster makes it worse.
+**Fix.** Handled automatically by `RetryPolicy` with exponential backoff and jitter — **on
+downloads only**. `InitializeAsync`, `CheckForUpdateAsync` and `ApplyUpdateAsync` go through
+`CatalogService`, which has no retry policy, so a transient 503 on a catalog request reaches
+you on the first attempt; retry it yourself, gated on `IsRetryable`. If a download persists
+past the retry budget, tell the player the servers are busy — not that something is wrong
+with their device. 429 specifically means retrying faster makes it worse.
 
 ---
 
@@ -1046,12 +1317,20 @@ wrong with their device. 429 specifically means retrying faster makes it worse.
 
 **Symptom.** Requests hang, then fail with HTTP status 0.
 
-**Cause.** No response arrived: DNS failure, connection refused, or the request exceeded
-`DownloadPolicy.TimeoutSeconds`. Status 0 means "never got a response", not "success".
+**Cause.** No response arrived: DNS failure, connection refused, or no route. Status 0 means
+"never got a response", not "success".
 
-**Fix.** Retried automatically. If it only happens on large bundles, raise
-`TimeoutSeconds` — the default 30s is per request, and a slow connection on a large bundle
-can legitimately exceed it.
+**`DownloadPolicy.TimeoutSeconds` (default 30) does not apply to bundle downloads.**
+`UnityWebRequest.timeout` is a wall-clock cap on the whole transfer, whereas Addressables'
+bundle timeout is an *idle* timer that resets on every byte received. Applying the wall-clock
+value to bundles aborted any bundle taking longer than 30 seconds — a large bundle on a slow
+phone — mid-download at full speed, and because Unity's cache commits only completed
+downloads, every retry restarted from zero. The hook therefore sets `request.timeout` only
+for non-bundle requests (catalog, hash and text files). Raising `TimeoutSeconds` will not
+help a slow bundle, because it was never the limit.
+
+**Fix.** Retried automatically on downloads. If it happens on catalog requests, that is where
+`TimeoutSeconds` does apply.
 
 ---
 
@@ -1085,21 +1364,33 @@ more than the player would by deleting photos.
 ### Cancelled
 
 Not a failure. The caller cancelled. `CdnResult.IsCancelled` distinguishes it so cancellation
-does not surface as an error dialog or a telemetry event. Partial downloads stay cached, so
-restarting resumes rather than starting over.
+does not surface as an error dialog or a telemetry event.
+
+Bundles that had already finished downloading stay in the cache, so restarting does not
+re-fetch them — but **the bundle that was mid-transfer restarts from zero**, because Unity's
+bundle cache commits only completed downloads. Do not clear the cache on cancel.
 
 ---
 
 ### Unknown
 
-**Symptom.** Anything not covered above.
+**Symptom.** Anything not covered above, plus a few deliberate refusals from this package:
+unusable `CdnSettings`, "not initialised", a cache operation Unity declined, and
+**"A catalog update is already being applied"**.
 
-**Cause.** No HTTP response was available to classify the failure. The exception is attached
-to `error.Exception`.
+That last one is a guard, not a bug: `ApplyUpdateAsync` refuses a second concurrent call
+rather than letting two applies race Addressables' shared locator state. Wait for the
+in-flight apply to finish, then call `CheckForUpdateAsync` again — the `CatalogUpdateInfo`
+you are holding describes the pre-update state and must not be applied on top of the result.
 
-**Fix.** Read the exception. If you find a case that should have its own code, it belongs in
-`CdnErrorMapper` — classification there is driven by `UnityWebRequestResult.ResponseCode`
-rather than by matching words in the message, so adding a case is a small change.
+**Cause (for the rest).** No HTTP response was available to classify the failure, or the
+status was a 4xx that is not 401/403/404/408/429. The exception is attached to
+`error.Exception`.
+
+**Fix.** Read `Message`, `Hint` and the exception. If you find a case that should have its own
+code, it belongs in `CdnErrorMapper` — classification there is driven by
+`UnityWebRequestResult.ResponseCode` rather than by matching words in the message, so adding
+a case is a small change.
 
 ---
 
@@ -1112,21 +1403,23 @@ a content update". Addressables does not fail on this — it logs a warning and 
 entry to its previous bundle, so the patch builds, uploads and simply does not contain your
 change.
 
-**Fix.** Open **Window → Addressable Manager → CDN Manager → Update Preview** and use
-**Prepare content update**. It moves the changed entries into a fresh non-static group so the
-next update rebuilds them. Commit the resulting group change.
+**Fix.** Open **Window → Addressable Manager → CDN Manager → Update Preview**, select the
+listed entries, and press **Prepare content update**. It moves them into a fresh non-static
+group so the next update rebuilds them. Commit the resulting group change.
 
 `CdnBuildCLI.BuildContentUpdate` refuses to build in this state rather than producing a patch
-with a hole in it. **A new player build is not required** — that advice appears in older
-revisions of the design document and is wrong.
+with a hole in it — and it also refuses when the restriction check cannot be evaluated at all,
+because unprovable is not the same as safe. **A new player build is not required.**
 
 ### The game keeps growing after every update
 
 **Cause.** Superseded bundles are not removed automatically by Addressables.
 
-**Fix.** `CdnManager.ApplyUpdateAsync` now calls `CleanObsoleteAsync` for you. If you apply
+**Fix.** `CdnManager.ApplyUpdateAsync` calls `CleanObsoleteAsync` for you after a successful
+apply (a failure there is logged as a warning and does not fail the update). If you apply
 catalogs through Addressables directly, call `CdnManager.Cache.CleanObsoleteAsync()`
-afterwards. Check with `CdnManager.GetCacheStats()`.
+afterwards. Check with `CdnManager.GetCacheStats()` — and note that `CacheStats.IsValid ==
+false` means the platform did not report, which is not the same as an empty cache.
 
 ### It works in the Editor and 404s in a build
 
@@ -1134,9 +1427,10 @@ afterwards. Check with `CdnManager.GetCacheStats()`.
 touch the network, so the CDN path is not exercised at all. The Editor was reading your
 project folder.
 
-**Fix.** Switch to **Use Existing Build** in the Addressables Groups window. This is also why
-the integration tests assert against the local server's request log rather than the client's
-return value — a green result under Fast Mode proves nothing.
+**Fix.** Switch to **Use Existing Build** in the Addressables Groups window, and serve the
+output from the CDN Manager window's **Server** tab. This is also why the integration tests
+assert against the local server's request log rather than the client's return value — a green
+result under Fast Mode proves nothing.
 
 ### Everything 404s and the URL contains the wrong platform folder
 
@@ -1147,4 +1441,68 @@ published under `StandaloneWindows64`.
 **Fix.** Use `HostRewriter.ResolvePlatformToken()`, which reproduces the `BuildTarget` name —
 or better, drop `{platform}` from the base URL entirely. Addressables bakes the platform
 segment into the catalog URL at build time, so environments that differ only by host need no
-token at all.
+token at all. Note that 64-bit is assumed: if you ship 32-bit Windows, do not use
+`{platform}`.
+
+### `InitializeAsync` fails before it reaches the network
+
+**Cause.** `CdnSettings.Validate()` found a problem and initialisation refused to continue on
+a half-valid configuration. The most common one is a **trailing `/` on `baseUrl`**, which is a
+validation error rather than something the package trims. Duplicate environment ids and a
+`defaultEnvironmentId` that is not in the list are the other two.
+
+**Fix.** The failure message lists every problem at once. Fix them all and re-run.
+
+---
+
+## Reentering the Update method
+
+**Symptom.** Every frame logs:
+
+```
+Exception: Reentering the Update method is not allowed.  This can happen when calling
+WaitForCompletion on an operation while inside of a callback.
+UnityEngine.ResourceManagement.ResourceManager.Update (ResourceManager.cs:1099)
+MonoBehaviourCallbackHooks.Update (MonoBehaviourCallbackHooks.cs:29)
+```
+
+The editor slows to a crawl and Addressables stops working until you leave play mode.
+
+**The message is wrong.** No `WaitForCompletion` is involved, and nothing is re-entering. Note the
+stack has only **two frames**: real re-entrancy would show your own code between them. This is the
+*outer*, once-per-frame call finding a flag that was already set.
+
+**What actually happened**, as two defects in Addressables 2.9.1 stacked on top of each other:
+
+1. A catalog check failed — usually because its URL is unreachable.
+2. `CheckCatalogsOperation.Destroy()` is `m_DepOp.Release()` with no `IsValid()` guard
+   (`CheckCatalogsOperation.cs:62-65`). The dependency handle is already invalid after a failure, so
+   `AsyncOperationHandle.get_InternalOp` throws **`Attempting to use an invalid operation handle`**.
+3. That throw escapes `ResourceManager.ExecuteDeferredCallbacks` (`ResourceManager.cs:1065`), called
+   from `ResourceManager.Update`, which sets `m_InsideUpdateMethod = true` at line 1100 and clears it
+   at 1121 **with no `try`/`finally`**. The flag stays set for the rest of the session.
+4. Every frame from then on throws the re-entrancy message.
+
+**Finding the real error.** Filter the Console to **Errors only** and scroll to the *first* one.
+Everything after it is noise. You are looking for `Attempting to use an invalid operation handle`,
+and above that, an `OperationException : CheckCatalogsOperation failed` naming the URL that could not
+be reached.
+
+Since `4.1.0-pre.12` this package logs the explanation itself, at the moment the check fails, so you
+do not have to reconstruct the chain:
+
+```
+[CatalogService] The catalog update check failed, and on Addressables 2.9.1 that failure is not contained.
+```
+
+**Fixing it.** The re-entrancy error is a symptom; fix the catalog URL.
+
+| Cause | Fix |
+| :-- | :-- |
+| Local profile points at `http://localhost:8080` and no server is running | Start it: **Window ▸ Addressable Manager ▸ CDN Manager ▸ Local Server ▸ Start**, or switch to a profile whose catalog URL is actually reachable |
+| Wrong profile active for this build target | Check `Remote.CatalogLoadPath` in the Addressables profile — a build for Android reading a desktop-only URL fails the same way |
+| Remote host down or DNS failing | The `RemoteProviderException` in the first error names the exact URL; try it in a browser |
+| Nothing has been published at that version yet | The URL embeds `[bundleVersion]`; a bumped player version points at a catalog that was never uploaded |
+
+Recovery within a session is not possible: exit play mode and re-enter. The stuck flag lives on the
+`ResourceManager` instance and nothing in this package, or in your project, can reset it.

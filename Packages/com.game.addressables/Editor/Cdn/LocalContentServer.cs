@@ -49,12 +49,16 @@ namespace AddressableManager.Editor.Cdn
         private void RegisterCleanupHooks()
         {
             // Clean up before domain reload (recompile)
-            AssemblyReloadEvents.beforeAssemblyReload -= Stop;
-            AssemblyReloadEvents.beforeAssemblyReload += Stop;
+            // Shutdown, NOT Stop: a domain reload is not the user deciding to stop the server, and
+            // Stop would clear the intent this reload is supposed to carry across.
+            AssemblyReloadEvents.beforeAssemblyReload -= Shutdown;
+            AssemblyReloadEvents.beforeAssemblyReload += Shutdown;
 
             // Clean up when editor quits
-            EditorApplication.quitting -= Stop;
-            EditorApplication.quitting += Stop;
+            // Also Shutdown: SessionState dies with the editor anyway, so clearing the flag here would
+            // be redundant, and using Stop would make the two teardown paths differ for no reason.
+            EditorApplication.quitting -= Shutdown;
+            EditorApplication.quitting += Shutdown;
         }
 
         public void Start(int port)
@@ -64,6 +68,11 @@ namespace AddressableManager.Editor.Cdn
                 Debug.LogWarning("LocalContentServer is already running");
                 return;
             }
+
+            // Record the intent BEFORE trying, so a domain reload during startup still restores it.
+            // See LocalContentServerMenu's static constructor for why this is needed at all.
+            SessionState.SetBool(WantsToRunKey, true);
+            SessionState.SetInt(PortKey, port);
 
             try
             {
@@ -110,7 +119,45 @@ namespace AddressableManager.Editor.Cdn
             }
         }
 
+        /// <summary>SessionState keys backing the restart-after-domain-reload behaviour.</summary>
+        /// <remarks>
+        /// SessionState is the right lifetime here and EditorPrefs is not: it survives a domain reload
+        /// but dies when the editor closes, which is exactly the lifetime of a running HttpListener.
+        /// An EditorPrefs flag would outlive the thing it describes and would try to start a server on
+        /// the next launch that nobody asked for.
+        /// </remarks>
+        internal const string WantsToRunKey = "AddressableManager.LocalContentServer.WantsToRun";
+        internal const string PortKey = "AddressableManager.LocalContentServer.Port";
+
+        /// <summary>
+        /// Stop the server because the user asked. The server stays stopped across domain reloads.
+        /// </summary>
         public void Stop()
+        {
+            // An explicit stop is an instruction, not an accident - do not resurrect it after the next
+            // domain reload.
+            SessionState.SetBool(WantsToRunKey, false);
+            Shutdown();
+        }
+
+        /// <summary>
+        /// Release the listener WITHOUT touching the run intent, for teardown the user did not ask for.
+        /// </summary>
+        /// <remarks>
+        /// This split is load-bearing, and its absence silently disabled the restart-after-reload
+        /// behaviour entirely in 4.1.0-pre.14.
+        ///
+        /// <c>AssemblyReloadEvents.beforeAssemblyReload</c> is wired to tear the listener down, because
+        /// an HttpListener cannot survive the domain going away. When that was wired to the PUBLIC
+        /// <see cref="Stop"/>, every domain reload cleared the "wants to run" flag microseconds before
+        /// the reload that was supposed to read it - so the flag was never true on the other side and
+        /// the server never came back. The feature added to fix "the local server dies on entering play
+        /// mode" could not fire even once.
+        ///
+        /// An automatic teardown is not a decision about whether the server should be running. Only
+        /// <see cref="Stop"/> is.
+        /// </remarks>
+        internal void Shutdown()
         {
             if (!_isRunning) return;
 
@@ -439,6 +486,31 @@ namespace AddressableManager.Editor.Cdn
         {
             // Initialize server (creates cleanup hooks) even if menu is never touched
             _ = Instance;
+
+            // ...and restart it if it was running before the domain reload that just happened.
+            //
+            // Entering play mode reloads the domain, which wipes the static holding the server and
+            // takes the HttpListener with it. The instance was recreated here, but STOPPED - so from
+            // the game's point of view the local CDN simply vanished at the exact moment it started
+            // being used, and the symptom is "ConnectionError : Cannot connect to destination host".
+            // That reads as a broken CDN, not as a server that quietly died, and on Addressables 2.9.1
+            // a failed catalog fetch then poisons ResourceManager.Update for the rest of the session
+            // (see CatalogService.WarnAboutCheckCatalogsDefect).
+            //
+            // delayCall rather than inline: this constructor runs during assembly load, where binding
+            // a listener is not safe.
+            if (SessionState.GetBool(LocalContentServer.WantsToRunKey, false))
+            {
+                int port = SessionState.GetInt(LocalContentServer.PortKey, DefaultPort);
+                EditorApplication.delayCall += () =>
+                {
+                    if (Instance.IsRunning) return;
+                    if (!SessionState.GetBool(LocalContentServer.WantsToRunKey, false)) return;
+
+                    Debug.Log($"[LocalContentServer] Restarting on port {port} after a domain reload.");
+                    Instance.Start(port);
+                };
+            }
         }
 
         [MenuItem("Tools/Addressable Manager/Start Local Content Server")]

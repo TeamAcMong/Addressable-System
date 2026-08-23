@@ -56,6 +56,25 @@ namespace AddressableManager.Cdn
         private static DownloadService _downloads;
         private static CacheService _cache;
 
+        /// <summary>
+        /// Set while a catalog update is being applied, so a second overlapping apply is refused
+        /// instead of running concurrently.
+        /// </summary>
+        /// <remarks>
+        /// There was no guard of any kind. ApplyUpdateAsync checked only that _catalog was non-null,
+        /// and CatalogService checked only that it was initialised, so two overlapping calls - a boot
+        /// flow plus a "check for updates" button is enough - both reached Addressables.UpdateCatalogs.
+        /// Addressables builds a fresh UpdateCatalogsOperation per call and mutates shared
+        /// ResourceLocatorInfo state with no interlock, and both applies then race this class's own
+        /// CleanObsoleteAsync. Refusing the second is right rather than queueing it: by the time the
+        /// first finishes, the second caller's CatalogUpdateInfo describes a catalog state that no
+        /// longer exists, so it should be re-checked rather than applied.
+        ///
+        /// int + Interlocked rather than a bool: this is the only cross-thread-safe way to make
+        /// test-and-set atomic, and callers may well be on different threads.
+        /// </remarks>
+        private static int _updateInFlight;
+
         /// <summary>Whether the CDN layer has initialised successfully.</summary>
         public static bool IsInitialized => _catalog != null && _catalog.IsInitialized;
 
@@ -72,6 +91,30 @@ namespace AddressableManager.Cdn
         /// Supplies a bearer token per request. Set before <see cref="InitializeAsync"/>.
         /// Called on every request, so a refreshed token is picked up without reinstalling.
         /// </summary>
+        /// <remarks>
+        /// <para><b>This runs inside Addressables' update loop, and must return immediately.</b>
+        /// Addressables invokes <c>WebRequestOverride</c> from within <c>ResourceManager.Update</c>,
+        /// so this delegate does too - on every bundle, catalog and hash request.</para>
+        ///
+        /// <para>It must therefore <b>return a token it already holds</b>. It must not call
+        /// <c>WaitForCompletion()</c>, must not block on a <c>Task</c> or coroutine, and must not
+        /// start or await an Addressables operation: each of those re-enters the update loop and
+        /// Unity throws <c>"Reentering the Update method is not allowed"</c> - from a stack that names
+        /// only Unity's own frames, never the delegate that caused it. Even a non-re-entrant blocking
+        /// call is a problem, because it stalls every download for as long as it runs.</para>
+        ///
+        /// <para>Fetch and refresh the token on your own schedule, cache it in a field, and let this
+        /// return that field. If it throws, the package logs which delegate threw and the request
+        /// continues without an Authorization header - which surfaces as an ordinary 401 rather than
+        /// an exception thrown through the middle of Addressables' update.</para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// // Refreshed elsewhere; the hook only reads it.
+        /// private static string _token;
+        /// CdnManager.AuthTokenProvider = () =&gt; _token;
+        /// </code>
+        /// </example>
         public static Func<string> AuthTokenProvider { get; set; }
 
 #if UNITASK_PRESENT
@@ -166,7 +209,17 @@ namespace AddressableManager.Cdn
             if (_catalog == null)
                 return FromResult(CdnResult<IReadOnlyList<string>>.Failure(NotInitialized()));
 
-            return ApplyUpdateAndCleanAsync(update, cancellationToken);
+            if (Interlocked.CompareExchange(ref _updateInFlight, 1, 0) != 0)
+            {
+                return FromResult(CdnResult<IReadOnlyList<string>>.Failure(new CdnError(
+                    CdnErrorCode.Unknown,
+                    "A catalog update is already being applied",
+                    hint: "Wait for the in-flight ApplyUpdateAsync to finish, then call CheckForUpdateAsync " +
+                          "again - the CatalogUpdateInfo you are holding describes the pre-update state and " +
+                          "must not be applied on top of the result.")));
+            }
+
+            return ApplyUpdateGuardedAsync(update, cancellationToken);
         }
 
         /// <summary>
@@ -282,15 +335,77 @@ namespace AddressableManager.Cdn
         public static void Reset()
         {
             CdnRequestDecorator.Uninstall();
+            ClearState();
+        }
+
+        /// <summary>
+        /// Drop every static this class holds, WITHOUT touching the Addressables hooks.
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="Reset"/> because the two callers want different things:
+        /// <see cref="Reset"/> is a deliberate teardown and should uninstall the hooks, while
+        /// <see cref="ResetStatics"/> below runs when Unity has already discarded them.
+        /// </remarks>
+        private static void ClearState()
+        {
             _settings = null;
             _network = null;
             _rewriter = null;
             _catalog = null;
             _downloads = null;
             _cache = null;
+            Interlocked.Exchange(ref _updateInFlight, 0);
+        }
+
+        /// <summary>
+        /// Drop the cached state when entering play mode, so a second Play session starts from the
+        /// same point as the first.
+        /// </summary>
+        /// <remarks>
+        /// This is the missing half of a pair, and its absence produced a state that reported itself
+        /// healthy while being unusable.
+        ///
+        /// With "Enter Play Mode without Domain Reload" - a very common iteration setting -
+        /// <see cref="CdnRequestDecorator"/> resets its statics on SubsystemRegistration and this
+        /// class did not. So on the second Play session <see cref="IsInitialized"/> was still true
+        /// from the first, <see cref="InitializeAsync"/> took its early-return, and
+        /// <c>CdnRequestDecorator.Install</c> was therefore never called again - while the decorator
+        /// had already dropped the rewriter it needed. <see cref="CurrentBaseUrl"/> and
+        /// <see cref="CurrentEnvironmentId"/> kept reporting the configured origin, because they read
+        /// the surviving statics, and the CDN Manager's Runtime Monitor showed green.
+        ///
+        /// <see cref="Reset"/> existed and said in its own doc comment that it was for domain reloads.
+        /// It carried no attribute and had no production call site, so nothing ever ran it.
+        ///
+        /// No hook teardown here: by the time this runs Addressables has rebuilt its instance and the
+        /// hooks are already gone, so uninstalling would restore delegates captured from a previous
+        /// session.
+        /// </remarks>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            ClearState();
         }
 
         // ========== internals ==========
+
+#if UNITASK_PRESENT
+        private static async UniTask<CdnResult<IReadOnlyList<string>>> ApplyUpdateGuardedAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#else
+        private static async Task<CdnResult<IReadOnlyList<string>>> ApplyUpdateGuardedAsync(
+            CatalogUpdateInfo update, CancellationToken cancellationToken)
+#endif
+        {
+            try
+            {
+                return await ApplyUpdateAndCleanAsync(update, cancellationToken);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _updateInFlight, 0);
+            }
+        }
 
         private static CdnError NotInitialized() => new CdnError(
             CdnErrorCode.Unknown,

@@ -60,6 +60,23 @@ namespace AddressableManager.Loaders
 
         // Loads registered before their first await, so concurrent callers for one (address, Type)
         // join a single operation instead of each building a wrapper nobody will ever release.
+        /// <summary>
+        /// Bumped every time this loader's cache is invalidated or cleared. A load captures it before
+        /// it starts and re-checks it before caching.
+        /// </summary>
+        /// <remarks>
+        /// A catalog update that lands WHILE a load is in flight was previously invisible to that load.
+        /// InvalidateAddress sweeps _assetCache, and an in-flight load has nothing there yet; the
+        /// follow-up DropCompletedInFlight deliberately leaves running loads alone; and AfterAwait
+        /// checks only thread and disposal. So the operation - whose locations were resolved eagerly
+        /// against the PREVIOUS catalog - completed after the sweep and inserted a pre-update handle
+        /// into a cache that had just been invalidated precisely to get rid of those. Every later
+        /// caller was then served the old bundle's asset, with no error and nothing stale-looking about
+        /// the handle. A counter is enough: the load only needs to know THAT an invalidation happened,
+        /// not which keys it touched.
+        /// </remarks>
+        private int _invalidationEpoch;
+
         private readonly Dictionary<AssetCacheKey, TaskCompletionSource<IOwnedHandle>> _inFlightLoads = new();
 
         // Best-effort progress source for a load currently in flight — see GetLoadProgress<T>.
@@ -512,8 +529,24 @@ namespace AddressableManager.Loaders
         /// caller keeps the reference the handle was born with; the cache holds a second one,
         /// dropped by ReleaseAsset(), ClearCache() or teardown.
         /// </summary>
-        private void CacheHandle<T>(AssetCacheKey key, AssetHandle<T> handle)
+        private void CacheHandle<T>(AssetCacheKey key, AssetHandle<T> handle, int loadEpoch)
         {
+            // The load started before an invalidation and finished after it, so this handle resolved
+            // against a catalog that is no longer installed. Hand it to the caller that asked for it -
+            // it is a perfectly valid handle onto the old bundle, and failing the call would be worse -
+            // but do NOT let it into the cache, or every subsequent caller gets the pre-update asset
+            // from a cache that was invalidated to prevent exactly that.
+            //
+            // No Retain(): the cache is not taking a reference, so the handle keeps only its birth
+            // reference and dies when the caller disposes it. TrackHandle still runs, so teardown can
+            // reach it either way.
+            if (loadEpoch != _invalidationEpoch)
+            {
+                LogVerbose($"[AssetLoader] '{key}' finished across a cache invalidation; returning it to the caller without caching so the next load re-resolves against the current catalog.");
+                TrackHandle(handle);
+                return;
+            }
+
             // An entry can only still sit here if it went stale between the miss and now. Drop the
             // cache's reference on it rather than leaking it behind the new one — and give its bytes
             // back, which is why this routes through RemoveCacheEntry rather than releasing inline.
@@ -788,6 +821,7 @@ namespace AddressableManager.Loaders
                 return joined;
             }
 
+            var loadEpoch = _invalidationEpoch;
             var inFlight = NewInFlight(cacheKey);
             IOwnedHandle loaded = null;
 
@@ -825,7 +859,7 @@ namespace AddressableManager.Loaders
 #endif
 
                     // Cache the handle
-                    CacheHandle(cacheKey, handle);
+                    CacheHandle(cacheKey, handle, loadEpoch);
                     loaded = handle;
 
                     LogVerbose($"[AssetLoader] Successfully loaded: {address}");
@@ -927,7 +961,7 @@ namespace AddressableManager.Loaders
             var startTime = Time.realtimeSinceStartup;
 #endif
 
-            var address = assetReference.AssetGUID;
+            var address = AssetReferenceCacheAddress(assetReference);
             var cacheKey = new AssetCacheKey(address, typeof(T));
 
             // Check cache
@@ -971,12 +1005,29 @@ namespace AddressableManager.Loaders
                 return joined;
             }
 
+            var loadEpoch = _invalidationEpoch;
             var inFlight = NewInFlight(cacheKey);
             IOwnedHandle loaded = null;
 
             try
             {
-                var operation = assetReference.LoadAssetAsync<T>();
+                // Addressables.LoadAssetAsync(RuntimeKey), NOT assetReference.LoadAssetAsync().
+                //
+                // AssetReference.LoadAssetAsync is single-use per AssetReference INSTANCE: it stores
+                // the handle in m_Operation and, on any later call while that handle is still valid,
+                // logs "Attempting to load AssetReference that has already been loaded" and returns
+                // default(AsyncOperationHandle<T>). The await below then hits AsyncOperationHandle.Task,
+                // whose InternalOp getter throws "Attempting to use an invalid operation handle" for a
+                // default handle - so the second load of the same AssetReference field surfaced to the
+                // caller as a plain null with an error in the console, even though the asset was fine
+                // and already cached under a different key path.
+                //
+                // Unity's own remark on that method points at this overload for repeated loads. It is
+                // what AssetReference.LoadAssetAsync calls internally (AssetReference.cs: result =
+                // Addressables.LoadAssetAsync<TObject>(RuntimeKey)), so the first load is unchanged;
+                // this package tracks handles itself and never reads AssetReference.OperationHandle or
+                // calls AssetReference.ReleaseAsset, so nothing depended on that stored handle.
+                var operation = Addressables.LoadAssetAsync<T>(assetReference.RuntimeKey);
                 await operation.Task;
 
                 var guard = AfterAwait(operation);
@@ -995,7 +1046,7 @@ namespace AddressableManager.Loaders
                     var handle = new AssetHandle<T>(operation);
 #endif
 
-                    CacheHandle(cacheKey, handle);
+                    CacheHandle(cacheKey, handle, loadEpoch);
                     loaded = handle;
 
 #if UNITY_EDITOR
@@ -1241,6 +1292,7 @@ namespace AddressableManager.Loaders
                 return LoadResult<IAssetHandle<T>>.Success(joined);
             }
 
+            var loadEpoch = _invalidationEpoch;
             var inFlight = NewInFlight(cacheKey);
             IOwnedHandle loaded = null;
 
@@ -1267,7 +1319,7 @@ namespace AddressableManager.Loaders
 #endif
 
                     // Cache the handle
-                    CacheHandle(cacheKey, handle);
+                    CacheHandle(cacheKey, handle, loadEpoch);
                     loaded = handle;
 
                     LogVerbose($"[AssetLoader] Successfully loaded: {address}");
@@ -1374,7 +1426,7 @@ namespace AddressableManager.Loaders
             var startTime = Time.realtimeSinceStartup;
 #endif
 
-            var address = assetReference.AssetGUID;
+            var address = AssetReferenceCacheAddress(assetReference);
             var cacheKey = new AssetCacheKey(address, typeof(T));
 
             // Check cache
@@ -1417,13 +1469,30 @@ namespace AddressableManager.Loaders
                 return LoadResult<IAssetHandle<T>>.Success(joined);
             }
 
+            var loadEpoch = _invalidationEpoch;
             var inFlight = NewInFlight(cacheKey);
             IOwnedHandle loaded = null;
 
             // Perform actual load
             try
             {
-                var operation = assetReference.LoadAssetAsync<T>();
+                // Addressables.LoadAssetAsync(RuntimeKey), NOT assetReference.LoadAssetAsync().
+                //
+                // AssetReference.LoadAssetAsync is single-use per AssetReference INSTANCE: it stores
+                // the handle in m_Operation and, on any later call while that handle is still valid,
+                // logs "Attempting to load AssetReference that has already been loaded" and returns
+                // default(AsyncOperationHandle<T>). The await below then hits AsyncOperationHandle.Task,
+                // whose InternalOp getter throws "Attempting to use an invalid operation handle" for a
+                // default handle - so the second load of the same AssetReference field surfaced to the
+                // caller as a plain null with an error in the console, even though the asset was fine
+                // and already cached under a different key path.
+                //
+                // Unity's own remark on that method points at this overload for repeated loads. It is
+                // what AssetReference.LoadAssetAsync calls internally (AssetReference.cs: result =
+                // Addressables.LoadAssetAsync<TObject>(RuntimeKey)), so the first load is unchanged;
+                // this package tracks handles itself and never reads AssetReference.OperationHandle or
+                // calls AssetReference.ReleaseAsset, so nothing depended on that stored handle.
+                var operation = Addressables.LoadAssetAsync<T>(assetReference.RuntimeKey);
                 await operation.Task;
 
                 var guard = AfterAwait(operation);
@@ -1441,7 +1510,7 @@ namespace AddressableManager.Loaders
                     var handle = new AssetHandle<T>(operation);
 #endif
 
-                    CacheHandle(cacheKey, handle);
+                    CacheHandle(cacheKey, handle, loadEpoch);
                     loaded = handle;
 
 #if UNITY_EDITOR
@@ -1967,6 +2036,10 @@ namespace AddressableManager.Loaders
         {
             AssertMainThread();
 
+            // Same reasoning as InvalidateAddresses: a load in flight right now resolved against the
+            // state the caller just asked to discard, so it must not land in the emptied cache.
+            _invalidationEpoch++;
+
             LogVerbose($"[AssetLoader] Clearing cache ({_assetCache.Count} cached, {_activeHandles.Count} tracked)");
 
             // Snapshot, then release. ForceRelease reaches Addressables.Release, which can destroy
@@ -2033,6 +2106,85 @@ namespace AddressableManager.Loaders
         }
 
         /// <summary>
+        /// The cache address for an <see cref="AssetReference"/>: its <c>RuntimeKey</c>, not its
+        /// <c>AssetGUID</c>.
+        /// </summary>
+        /// <remarks>
+        /// <c>AssetGUID</c> identifies the containing ASSET; <c>RuntimeKey</c> identifies what will
+        /// actually be loaded. For a sub-object reference — an <c>AssetReferenceSprite</c> pointing at
+        /// one sprite inside a multi-sprite texture or atlas — every reference into the same texture
+        /// shares one guid but carries a distinct <c>RuntimeKey</c> of the form
+        /// <c>"{guid}[{subObjectName}]"</c> (UnityEngine.AddressableAssets.AssetReference.RuntimeKey).
+        ///
+        /// Keying the cache by guid therefore collapses every sub-object of one asset onto a single
+        /// entry, and the second caller to ask for a different sprite silently receives the first
+        /// one — same type, valid handle, no error anywhere. Keying by RuntimeKey keeps them apart.
+        ///
+        /// Callers that invalidate or release by bare guid/address still reach these entries via
+        /// <see cref="AssetCacheKey.MatchesAddress"/>.
+        /// </remarks>
+        /// <summary>
+        /// A read-only inventory of what this loader is currently holding alive.
+        /// </summary>
+        /// <remarks>
+        /// Public, and public on purpose. Unity's own profiler can tell you how many bytes a bundle
+        /// costs; it cannot tell you WHICH SCOPE is still holding it, because scopes are this
+        /// package's idea and the reference counts live in here. That question - "the scene unloaded,
+        /// so why is this still resident" - is the one that costs an afternoon, and a QA build that
+        /// wants to log it at runtime should not have to fork the package to do so.
+        ///
+        /// A snapshot, not a live view. It is copied out rather than exposing the dictionary, so a
+        /// caller iterating it cannot trip the "collection modified" fault that an eviction sweep or
+        /// a scope disposing itself mid-walk would otherwise cause. It is stale the instant it is
+        /// returned, which is the correct trade for a diagnostics read.
+        ///
+        /// Main thread only, like the rest of this class - AssetLoader takes no locks and
+        /// ThreadSafeAssetLoader is the wrapper that makes cross-thread use safe. Calling this from a
+        /// worker thread has the same hazards as calling anything else here from one.
+        ///
+        /// <see cref="LoadedAssetInfo.EstimatedBytes"/> is zero unless the loader is tiered - the
+        /// byte accounting only exists to drive tier eviction. Zero here means "not measured", not
+        /// "costs nothing", and any UI showing it has to say so.
+        /// </remarks>
+        /// <summary>How many assets this loader is holding, without building a list to count them.</summary>
+        /// <remarks>
+        /// Exists because the Editor's Asset Lifetime screen needs a number once a second and
+        /// <see cref="SnapshotLoadedAssets"/> allocates a row per entry. On a scene holding a few
+        /// thousand assets that is a few thousand structs a second, forever, for a figure that fits
+        /// in an int.
+        /// </remarks>
+        public int CachedAssetCount => _assetCache.Count;
+
+        public List<LoadedAssetInfo> SnapshotLoadedAssets()
+        {
+            var result = new List<LoadedAssetInfo>();
+
+            foreach (var pair in _assetCache)
+            {
+                var entry = pair.Value;
+                if (entry == null) continue;
+
+                result.Add(new LoadedAssetInfo(
+                    pair.Key.Address,
+                    pair.Key.Type != null ? pair.Key.Type.Name : "(unknown)",
+                    entry.Handle != null && entry.Handle.IsAlive,
+                    entry.EstimatedBytes));
+            }
+
+            return result;
+        }
+
+        internal static string AssetReferenceCacheAddress(AssetReference assetReference)
+        {
+            if (assetReference == null) return null;
+
+            // RuntimeKey is object-typed and is the bare guid string when no sub-object is set, so
+            // this stays byte-identical to the old key for every non-sub-object reference.
+            var runtimeKey = assetReference.RuntimeKey?.ToString();
+            return string.IsNullOrEmpty(runtimeKey) ? assetReference.AssetGUID : runtimeKey;
+        }
+
+        /// <summary>
         /// Drop the cache's entries for a set of addresses — not whatever their reference count is,
         /// only the cache's own — and drop any finished registration for them so the next load goes
         /// back to Addressables.
@@ -2050,6 +2202,10 @@ namespace AddressableManager.Loaders
         /// </remarks>
         internal void InvalidateAddresses(IEnumerable<string> addresses)
         {
+            // Bumped before the sweep, not after: a load that completes between the bump and the last
+            // key being removed must also be treated as stale.
+            _invalidationEpoch++;
+
             AssertMainThread();
 
             if (addresses == null) return;
@@ -2086,8 +2242,9 @@ namespace AddressableManager.Loaders
 
             foreach (var kvp in _assetCache)
             {
-                // Exact address match — a prefix test also hits "Enemy_Boss" for "Enemy_".
-                if (!string.Equals(kvp.Key.Address, address, StringComparison.Ordinal)) continue;
+                // Exact address match, plus sub-objects of it — a bare prefix test would also hit
+                // "Enemy_Boss" for "Enemy_", so AssetCacheKey.MatchesAddress requires the bracket.
+                if (!kvp.Key.MatchesAddress(address)) continue;
 
                 keysToRemove ??= new List<AssetCacheKey>();
                 keysToRemove.Add(kvp.Key);
@@ -2133,8 +2290,9 @@ namespace AddressableManager.Loaders
 
             foreach (var kvp in _assetCache)
             {
-                // Exact address match — a prefix test also hits "Enemy_Boss" for "Enemy_".
-                if (!string.Equals(kvp.Key.Address, address, StringComparison.Ordinal)) continue;
+                // Exact address match, plus sub-objects of it — a bare prefix test would also hit
+                // "Enemy_Boss" for "Enemy_", so AssetCacheKey.MatchesAddress requires the bracket.
+                if (!kvp.Key.MatchesAddress(address)) continue;
 
                 keysToRemove ??= new List<AssetCacheKey>();
                 keysToRemove.Add(kvp.Key);
@@ -2246,8 +2404,11 @@ namespace AddressableManager.Loaders
 
             foreach (var kvp in _assetCache)
             {
+                // Same match as the eviction paths, deliberately. ReleaseAsset(address) evicts
+                // sub-object entries of that address, so a probe that answered false for them would
+                // make the ordinary "if (IsCached(a)) ReleaseAsset(a)" shape skip real cleanup.
                 if (kvp.Value?.Handle != null && kvp.Value.Handle.IsAlive &&
-                    string.Equals(kvp.Key.Address, address, StringComparison.Ordinal))
+                    kvp.Key.MatchesAddress(address))
                 {
                     return true;
                 }
@@ -3059,6 +3220,34 @@ namespace AddressableManager.Loaders
         {
             Address = address;
             Type = type;
+        }
+
+        /// <summary>
+        /// True when this key belongs to <paramref name="address"/> — either because it IS that
+        /// address, or because it is a sub-object of it.
+        /// </summary>
+        /// <remarks>
+        /// An <c>AssetReference</c> load keys by <c>RuntimeKey</c>, which for a sub-object reference
+        /// is <c>"{guid}[{subObjectName}]"</c> rather than the bare guid (see
+        /// <see cref="AssetLoader.AssetReferenceCacheAddress"/>). Catalog invalidation and
+        /// <c>ReleaseAsset</c> both arrive holding the bare guid/address, so an exact-equality test
+        /// alone would walk straight past every sub-object entry and leave it serving content from
+        /// the pre-update catalog.
+        ///
+        /// The bracket is required rather than treated as a plain prefix: a prefix test would also
+        /// match "Enemy_Boss" for "Enemy_", which is the very thing the exact-match comment on the
+        /// eviction loops exists to prevent.
+        /// </remarks>
+        public bool MatchesAddress(string address)
+        {
+            if (Address == null || string.IsNullOrEmpty(address)) return false;
+            if (string.Equals(Address, address, StringComparison.Ordinal)) return true;
+
+            // "{address}[...]" — sub-object of this asset.
+            return Address.Length > address.Length + 1
+                && Address[address.Length] == '['
+                && Address[Address.Length - 1] == ']'
+                && string.CompareOrdinal(Address, 0, address, 0, address.Length) == 0;
         }
 
         public bool Equals(AssetCacheKey other)

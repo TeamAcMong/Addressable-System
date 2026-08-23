@@ -219,6 +219,28 @@ namespace AddressableManager.Editor.Cdn
                 return;
             }
 
+            // A verification whose loop body never runs cannot fail, and "cannot fail" is not the same
+            // as "passed". An empty bundle list is the exact shape a build takes when every group is
+            // still bound to a Local build path while a remote catalog is being produced: the catalog
+            // is written, the remote bundle folder exists and is empty, the manifest faithfully records
+            // zero bundles, and every check downstream agrees the output is consistent. CI then
+            // publishes a catalog whose bundles nobody uploaded.
+            if (manifest.bundles == null)
+            {
+                result.Problems.Add("Manifest has no bundle list at all (null), so nothing could be verified.");
+                return;
+            }
+
+            if (manifest.bundles.Count == 0)
+            {
+                // Deliberately NOT an early return: the orphan sweep below is at its most useful in
+                // exactly this case, because "manifest empty, folder full" is the signature of a build
+                // whose groups wrote somewhere other than where the manifest was told to look.
+                result.Problems.Add(
+                    "Manifest lists no bundles. A content build that publishes nothing is not a verified " +
+                    "build - check that the groups meant to be remote actually have remote build/load paths.");
+            }
+
             foreach (var bundle in manifest.bundles)
             {
                 if (bundle == null || string.IsNullOrEmpty(bundle.fileName))

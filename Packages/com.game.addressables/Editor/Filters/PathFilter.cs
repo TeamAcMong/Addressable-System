@@ -165,12 +165,47 @@ namespace AddressableManager.Editor.Filters
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Whether this filter has already complained about a wildcard pattern in a literal mode.
+        /// </summary>
+        [NonSerialized] private bool _warnedAboutGlobPattern;
+
+        /// <summary>
+        /// Says something when the pattern looks like a glob but the mode will not treat it as one.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="PathMatchMode.Contains"/> is the default, and in that mode a pattern like
+        /// "Assets/UI/**/*.png" is compared as a LITERAL substring - so it matches nothing, ever, and
+        /// the rule silently applies to zero assets while the run reports success. The package's own
+        /// Quick Start walked users straight into this: it told them to type exactly that pattern and
+        /// never mentioned Match Mode.
+        ///
+        /// The mode is not switched automatically. A serialized asset's saved mode is the user's
+        /// decision and a filter that quietly redefined its own matching would be a worse bug than the
+        /// one it fixes. Warning once per filter instance is enough to turn a silent no-match into
+        /// something findable, without spamming a project-wide scan of thousands of assets.
+        /// </remarks>
+        private void WarnIfGlobPatternInLiteralMode()
+        {
+            if (_warnedAboutGlobPattern) return;
+            if (_matchMode == PathMatchMode.Glob || _matchMode == PathMatchMode.Regex) return;
+            if (_pattern.IndexOf('*') < 0 && _pattern.IndexOf('?') < 0) return;
+
+            _warnedAboutGlobPattern = true;
+            Debug.LogWarning(
+                $"[PathFilter] Pattern \"{_pattern}\" contains wildcards but Match Mode is {_matchMode}, " +
+                "which compares the pattern literally - so this filter will match nothing. Set Match Mode " +
+                "to Glob for * / ** / ? patterns.");
+        }
+
         protected override bool IsMatchInternal(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath) || string.IsNullOrEmpty(_pattern))
                 return false;
 
             var comparison = _caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+            WarnIfGlobPatternInLiteralMode();
 
             switch (_matchMode)
             {

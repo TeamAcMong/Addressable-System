@@ -10,69 +10,91 @@ Companion to the [README](README.md) and [MONITORING_GUIDE](MONITORING_GUIDE.md)
 | Drop scope objects into a scene | **Tools → Addressable Manager → Quick Setup → Create All Scope Objects** |
 | Create a config asset | **Assets → Create → Addressable Manager → …** |
 
-Asset loading is auto-monitored — there are no `Monitored` variants. Anything that goes through `AssetLoader.LoadAssetAsync` (directly or via `Assets.Load`, scope loaders, `ScopeManager`, etc.) shows up in the Dashboard while you Play.
+Asset loading is auto-monitored. Anything that goes through `AssetLoader.LoadAssetAsync` (directly or via `Assets.Load`, scope loaders, `ScopeManager`, etc.) shows up in the Dashboard while you Play. `MonitoredAssetLoader` still exists but is a thin forwarder kept for source compatibility — `AssetLoader` reports to the monitor itself, so wrapping it adds nothing.
+
+> **Monitoring is Editor-only.** `EditorAssetMonitor` lives in the Editor assembly, and the tracker is cleared on `ExitingPlayMode`. There is no dashboard, and no tracking, in a player build.
 
 ## Dashboard window
 
-Shortcut: `Ctrl+Alt+A`.
+Shortcut: `Ctrl+Alt+A` (`Cmd+Alt+A` on macOS). Window title "Addressable Manager", minimum size 800×600.
+
+A one-line **CDN status strip** sits above the tabs: environment id, app version, cache size and network state while playing (`not in play mode` / `not initialised` otherwise), plus a **CDN Manager** button that opens that window. It polls once per second while the Dashboard is open.
 
 ### Tab 1 — Active Assets
-Live row per currently-alive asset handle. Search by name, filter by scope. Visible columns:
+Live row per currently-alive tracked handle, newest load first. A search field (matches address or type name) and a scope dropdown whose choices are rebuilt from the live scope ids as they appear.
 
-- Address
-- Type
-- Scope (label from the loader that created the handle)
-- Reference count
-- Estimated memory
-- Time since loaded
+Each row is two lines, not a column grid:
+
+- **Address** (bold)
+- `Type • <scope> Scope • Loaded <n> ago`
+- right-hand side: `Refs: <count>` and an estimated size in KB
 
 Use it to hunt leaks: anything alive longer than expected, or with a refcount that only grows, is a candidate.
 
+> **The memory numbers are per-type constants, not measurements.** `AssetTrackerService.EstimateMemorySize` returns a fixed value per type name (Texture2D 1 MB, AudioClip 512 KB, GameObject 256 KB, Material 64 KB, Mesh 128 KB, ScriptableObject 32 KB, everything else 100 KB). Treat every MB figure in this window — rows, scope totals, the graph — as a proxy for asset *count* weighted by type, never as real memory. The Unity Profiler is still the tool for actual bytes.
+
+Rows are not clickable; there is no ping-in-project from this tab.
+
 ### Tab 2 — Performance
-Aggregated counters and a slowest-10 list:
+Four stat cards plus a graph and a slowest-loads list:
 
-- Total handles
-- Cache-hit ratio (`hits / (hits + misses)`)
-- Estimated total memory
-- Average load time
-- Slowest-10 loads
+- Total Assets
+- Cache Hit Ratio (`hits / (hits + misses)`)
+- Total Memory (estimated — see the caveat above)
+- Avg Load Time
 
-`Export Report (CSV)` writes the current metrics next to the project, useful for diffing across optimisation passes.
+**Memory graph.** A code-built chart under the stat cards, with a text summary line above it (latest total / cached / active, plus `Peak` and `Avg` once there is data). It keeps the last 300 samples and plots the **total** series only — cached and active appear in the summary text, not as lines. Grid lines mark a warning threshold at 50 MB and a critical threshold at 100 MB; the vertical scale auto-fits to the tallest sample (minimum 10 MB, plus 20 % headroom). One sample is added per Editor update tick while in Play Mode, so the time window it covers depends on the Editor's frame rate — and neither the thresholds nor the sample count are exposed as controls anywhere in the UI.
+
+**Slowest Loading Assets.** Address, type and average load time in ms.
+
+**Export Report (CSV)** opens a save-file panel and writes one row per recorded snapshot: `Timestamp, Total Memory (MB), Active Assets, Avg Load Time (s), Cache Hit Ratio`. Useful for diffing across optimisation passes.
 
 ### Tab 3 — Scopes
-One foldout per known scope (Global / Session / Scene / Hierarchy / any custom name registered via `ScopeManager` or `new AssetLoader("…")`). Each foldout exposes per-scope asset count, estimated memory, and a manual cleanup button.
+One foldout per **live** scope id reported to the tracker, created the first time that id is seen — Global, the `ScopeManager` "Session" entry, each `Scene-…` / `Hierarchy-…` scope, each `Hybrid:…` scope, and any custom name you registered via `ScopeManager` or `new AssetLoader("…")`. The header reads `DisplayName (Category Scope)`, or just `Category Scope` when no distinct display name was reported. Each foldout shows `Assets: N | Memory: X MB` (plus `inactive` when the scope is deactivated), the asset list, and a **Cleanup** button. A **Cleanup All Scopes** button sits in the tab toolbar.
+
+> **What Cleanup does depends on Play Mode.** In Play Mode it calls `ScopeManager.ClearScope`, releasing real handles, then clears the Dashboard rows. Outside Play Mode there is no live loader, so it only clears the Dashboard's own rows — the confirmation dialog says which of the two you are about to get.
 
 ### Tab 4 — Settings
-Controls the live `DebugSettings` instance: log level, dashboard refresh interval, simulated slow loading / failure rate / network type. Useful for stress-testing without touching real assets.
+Widgets, in order: **Log Level** dropdown (`None` / `Errors Only` / `Warnings and Errors` / `All`), **Auto Refresh Dashboard** toggle, **Refresh Interval (ms)** slider (100–5000, default 500), **Simulate Slow Loading** toggle, **Delay (ms)** slider (100–5000), **Failure Rate (%)** slider (0–50), and the buttons **Reset All Settings** / **Reset Statistics**.
+
+Auto-refresh and the refresh interval drive this window. The other four write straight through to `DebugSettings.Instance` and mark the asset dirty.
+
+> **Only the log level has any effect.** `DebugSettings.IsVerbose` (`logLevel == All`) gates verbose logging in `AssetLoader` and `CdnTelemetry`. Nothing in this package reads `simulateSlowLoading`, `simulatedDelayMs` or `simulateFailureRate` — `DebugSettings.ShouldSimulateFailure()` and `GetNetworkDelay()` have no callers anywhere. The three simulation widgets persist a value and change no behaviour.
+
+**Reset All Settings** resets the widgets' displayed values (and re-reads the current log level from the asset); it does not write defaults back to `DebugSettings`. **Reset Statistics** clears the tracker and the performance metrics after a confirmation dialog.
 
 ## Custom inspectors
 
 ### Scope components
-Selecting any `GlobalAssetScope` / `SessionAssetScope` / `SceneAssetScope` / `HierarchyAssetScope` in the Hierarchy shows the same rich inspector layout:
+Selecting a `GlobalAssetScope`, `SceneAssetScope` or `HierarchyAssetScope` in the Hierarchy shows the same inspector layout (`SessionAssetScope` was removed in 4.0.0 — sessions are a `ScopeManager` entry now):
 
-- Coloured banner (Global = green, Session = blue, Scene = yellow, Hierarchy = red) with ACTIVE / INACTIVE badge
-- Live counters (assets loaded, estimated memory)
-- Coloured memory bar (< 50 % green, 50–80 % yellow, > 80 % red)
-- Expandable list of assets the scope currently owns
-- Buttons: Activate, Deactivate, Cleanup, Open Dashboard
+- Coloured banner (Global = green, Scene = yellow, Hierarchy = red) with an ACTIVE / INACTIVE badge, titled `DisplayName (Category Scope)`
+- Status block: assets loaded, total estimated memory
+- Memory bar against a **hard-coded 100 MB** ceiling (< 50 % green, 50–80 % yellow, > 80 % red) — the ceiling is not configurable
+- `Loaded Assets (N)` foldout, collapsed by default, listing address / type / time since load / refs / estimated KB
+- Buttons: **Activate Scope**, **Deactivate Scope**, **Cleanup Scope**, **Open Dashboard**
 
-The same inspector also drives the `MonitoringHelper` component (with an "Open Dashboard" jump button).
+The first three buttons are **disabled outside Play Mode** — there is no live scope to act on in Edit mode. Cleanup is also disabled while the scope holds no assets. Only **Open Dashboard** works at any time.
+
+`MonitoringHelper` has its own, much simpler inspector: an explanatory HelpBox, the default fields (`Enable Monitoring`, `Verbose Logging`), and an **Open Dashboard** button that appears only while playing with monitoring enabled.
 
 ### Config inspectors
 
-**AddressablePreloadConfig.** Adds a `Validate All Addresses` button, a `Sort by Priority` button, and a stats panel summarising total / startup / invalid counts.
+**AddressablePreloadConfig.** Adds an Actions block with **Validate All Addresses**, **Sort by Priority** (ascending, undoable) and **Test Load in Editor**, plus a Statistics block summarising total / startup / valid / invalid entry counts. **Test Load in Editor** does not load anything — outside Play Mode it tells you to enter Play Mode, and inside it shows a dialog listing the first ten assets it *would* load.
 
-**PoolConfiguration.** Validates `preloadCount <= maxSize`, flags duplicate addresses, and logs warnings on `OnValidate`.
+**PoolConfiguration.** No custom inspector. Its `OnValidate` logs a warning every time you edit the asset, because nothing consumes it — see the section below.
 
-**DebugSettings.** Just the default inspector, but pairs with the Dashboard's Settings tab — both edit the same asset.
+**DebugSettings.** Default inspector. The Dashboard's Settings tab writes to the same asset (log level and the three simulation fields only).
 
-### AddressableProgressBar inspector (Play Mode)
-While playing, the inspector exposes interactive testing controls:
+### AddressableProgressBar inspector
+Outside Play Mode the inspector shows the default fields plus a short **Setup Guide** — there are no testing controls in Edit mode.
 
-- Progress slider (0–100 %)
-- Show / Hide / Reset buttons
-- Animate (auto 0 → 100 % over the configured fill speed)
-- Status text input
+Enter Play Mode and a **Testing Controls (Play Mode)** block appears:
+
+- **Test Progress** slider (0–1)
+- **Show** / **Hide** / **Reset** buttons
+- **Animate 0% → 100%** button (about 5 seconds; click again to stop)
+- **Test Status** text field, pushed straight to `SetStatus`
 
 Lets you sanity-check your loading screen UX without writing test code.
 
@@ -87,105 +109,120 @@ Preload Entry
 ├── Address           (manual address as alternative)
 ├── Scope             Global | Session | Scene | Hierarchy
 ├── Load On Startup   bool
-├── Priority          lower = earlier
+├── Priority          0–100, lower = earlier
 └── Label             optional debug label
 
-Global Settings
-├── Validate On Build
-├── Fail Build On Error
-├── Load In Parallel
-└── Max Concurrent Loads (1–20)
+Preload Settings
+├── Validate On Build      (read by PreloadConfigBuildValidator)
+├── Fail Build On Error    (read by PreloadConfigBuildValidator)
+├── Load In Parallel       (no readers)
+└── Max Concurrent Loads   1–20 (no readers)
 ```
 
-Code usage:
+> **Nothing in this package loads these assets.** There is no startup path: `loadOnStartup`, `priority` and `scope` only describe intent, and `GetEntriesForScope` has no callers. `validateOnBuild` / `failBuildOnError` are real — `PreloadConfigBuildValidator` reads them as a build step — and `GetStartupAssets()` is real, but the loading loop is yours to write. `loadInParallel` and `maxConcurrentLoads` are read by nothing at all, so the loop below is sequential regardless of what they say.
+
+Code usage — one way to write that loop:
 
 ```csharp
+using AddressableManager.Configs;
+using AddressableManager.Managers;
+using AddressableManager.Scopes;
+
 var config = Resources.Load<AddressablePreloadConfig>("MyPreloadConfig");
 
-foreach (var entry in config.GetStartupAssets())
+foreach (var entry in config.GetStartupAssets())   // already sorted, lowest priority first
 {
-    var address = entry.GetAddress();
-    var loader = ResolveLoaderForScope(entry.scope);
-    await loader.LoadAssetAsync<UnityEngine.Object>(address);
+    // "Global" is reserved in ScopeManager — reach that cache through GlobalAssetScope.
+    var loader = entry.scope == AssetScopeType.Global
+        ? GlobalAssetScope.Instance.Loader
+        : ScopeManager.Instance.GetOrCreateScope(entry.scope.ToString());
+
+    await loader.LoadAssetAsync<UnityEngine.Object>(entry.GetAddress());
 }
 ```
 
+`GetAddress()` returns `assetReference.AssetGUID` when an `AssetReference` is set, and the manual `address` string otherwise — so an entry authored by dragging a reference is keyed by GUID, not by the address you would type in your own `Load` calls.
+
 ### PoolConfiguration
 **Create:** Assets → Create → Addressable Manager → Pool Configuration.
+
+> **This asset is inert. No runtime code reads any field or calls any method on it.** The only things in the package that touch `PoolConfiguration` are the two menu items that *create* the asset. `GetAutoCreatePools()` and `GetPoolByAddress()` have no callers, `createAllOnStartup` has no startup path to hook, and `cleanupOnSceneUnload` is never consulted. Editing values here changes nothing, and `OnValidate` says so in the console every time you edit it. The status is deliberate and recorded under "Pooling: decisions still open" in `Documentation/LIFETIME_DESIGN.md`.
+>
+> Create pools with `Assets.CreatePool`, `Standard.CreatePool` / `Standard.CreateDynamicPool`, or `AddressablePoolManager.CreatePoolAsync` instead. Note the differing defaults: `Standard.CreatePool` defaults `maxSize` to 50, while `Assets.CreatePool` and `AddressablePoolManager` default to 100 (`AddressablePoolManager.DefaultMaxPoolSize`).
+
+The fields it serialises, for reference if you ever wire it up yourself:
 
 ```
 Pool Settings
 ├── Prefab Reference  (AssetReference)
 ├── Address           (manual fallback)
 ├── Preload Count     0–100
-├── Max Size          0 = unlimited
-├── Auto Create       create on startup
+├── Max Size          0–1000  (documented here as 0 = unlimited)
+├── Auto Create
 ├── Pool Root         parent transform
 └── Label             optional debug label
+
+Global Pool Settings
+├── Default Max Size        (50 here; the real default is 100)
+├── Default Preload Count   (5 here; pools are actually created empty)
+├── Create All On Startup
+└── Cleanup On Scene Unload
 ```
 
-> `destroyOnFull` is obsolete as of 2.2.0 and hidden from the inspector. `UnityEngine.Pool.ObjectPool` always destroys instances released above `maxSize`; toggling the flag had no effect.
-
-Code usage:
-
-```csharp
-var poolConfig = Resources.Load<PoolConfiguration>("MyPoolConfig");
-
-foreach (var pool in poolConfig.GetAutoCreatePools())
-{
-    await Assets.CreatePool(
-        pool.GetAddress(),
-        pool.preloadCount,
-        pool.maxSize
-    );
-}
-```
+> Two traps for whoever wires it up. `PoolSettings.GetAddress()` returns `prefabReference.AssetGUID` when a reference is set, so a pool built from it would be keyed by GUID while your code calls `Spawn("Enemies/Orc")`. And `maxSize == 0` means *unlimited* to `IPoolFactory.CreatePool` but is rejected outright as a hard cap of zero by `DynamicPoolConfig` — whichever creation path you pick decides which convention applies.
+>
+> `destroyOnFull` is obsolete and hidden from the inspector. `UnityEngine.Pool.ObjectPool` always destroys instances released above `maxSize`; toggling the flag had no effect.
 
 ### DebugSettings
 **Create:** Assets → Create → Addressable Manager → Debug Settings.
 
-The `Instance` accessor looks up `Resources/AddressableManager/DebugSettings` inside `#if UNITY_EDITOR`. In builds the lookup is skipped and a transient default is returned, so the `Resources/` dependency is purely an Editor convenience — your shipping build does not need the asset.
+The `Instance` accessor looks up `Resources/AddressableManager/DebugSettings` inside `#if UNITY_EDITOR`. In builds the lookup is skipped and a transient default is returned, so the `Resources/` dependency is purely an Editor convenience — your shipping build does not need the asset. **Window → Addressable Manager → Settings** pings that asset, and offers to create one if it is missing.
 
-Notable fields:
+Fields, and what actually reads them:
 
-- **Logging:** level, log-to-file, log-file path
-- **Profiling:** enable / overlay / record metrics
-- **Simulation (Editor only):** slow-loading toggle + delay ms, failure rate %, network type (`WiFi` / `4G` / `3G` / `Slow`)
-- **Validation:** validate references, leak detection threshold (minutes)
-- **Warnings:** high-refcount + high-memory thresholds
+| Group | Fields | Read by |
+|---|---|---|
+| Logging | `logLevel` | `DebugSettings.IsVerbose` → `AssetLoader`, `CdnTelemetry` |
+| Logging | `logToFile`, `logFilePath` | nothing |
+| Profiling | `enableProfiling`, `showProfilerOverlay`, `recordMetrics` | nothing |
+| Simulation | `simulateSlowLoading`, `simulatedDelayMs`, `simulateFailureRate`, `simulateNetworkConditions`, `networkSimulation` | nothing |
+| Validation | `validateReferences`, `detectMemoryLeaks`, `leakDetectionMinutes` | nothing |
+| Warnings | `warnOnHighRefCount`, `highRefCountThreshold`, `warnOnHighMemory`, `highMemoryThresholdMB` | nothing |
+
+`ShouldLog(LogType)`, `ShouldSimulateFailure()` and `GetNetworkDelay()` are public and callable, but this package never calls them. If you want simulated latency or failures, run them from your own loading code:
 
 ```csharp
 var settings = DebugSettings.Instance;
-if (settings.ShouldLog(LogType.Warning))
-    Debug.LogWarning("…");
 
 if (settings.simulateSlowLoading)
     await Task.Delay((int)settings.simulatedDelayMs);
 
 if (settings.ShouldSimulateFailure())
-    /* simulate failure */;
+    /* your own failure path */;
 ```
 
-`DebugSettings.IsVerbose` is a fast Editor-only shortcut used inside `AssetLoader` to gate informational logs in the hot path.
+`DebugSettings.IsVerbose` is the one hot-path shortcut the package itself uses; it compiles to a constant `false` outside the Editor.
 
 ## Runtime UI: AddressableProgressBar
 
-**Add Component → Addressable Manager → Progress Bar.**
+**Add Component → Addressable Manager → Progress Bar.** The component `[RequireComponent]`s a `CanvasGroup`.
 
 TextMeshPro is **optional**: the asmdef defines `TMP_PRESENT` only when `com.unity.textmeshpro 3.0.0+` is installed, so the text fields fall back to plain `UnityEngine.UI.Text` otherwise.
 
 Inspector wiring:
 
-1. Fill Image — an Image set to `Filled` type
+1. Fill Image — an Image set to `Filled` type (logs an error on `Awake` if unassigned)
 2. Percent Text — optional, percentage label
 3. Status Text — optional, current operation label
 4. Download Text — optional, formatted bytes / speed / ETA
 
 Behaviour settings:
 
-- Auto Find Tracker, Smooth Fill, Fill Speed (1–20)
+- Smooth Fill, Fill Speed (1–20)
 - Hide When Complete, Hide Delay (0–5 s)
-- Gradient Colors (red → yellow → green by default)
+- Gradient Colors, with Start / Mid / End colours (red → yellow → green by default)
+
+Binding is always explicit, through `BindToTracker`; the component does not look for a tracker on its own.
 
 Code:
 
@@ -200,25 +237,42 @@ progressBar.Hide();
 progressBar.Reset();
 ```
 
+`SetDownloadProgress(AddressableManager.Cdn.DownloadProgress)` and the static `AddressableProgressBar.FormatBytes(long)` are also public.
+
 ## Menus and shortcuts
 
-**GameObject → Addressable Manager →** Add Global / Session / Scene / Hierarchy Scope · View in Dashboard
-**Assets → Create → Addressable Manager →** Preload Configuration · Pool Configuration · Debug Settings
-**Window → Addressable Manager →** Dashboard (`Ctrl+Alt+A`) · Documentation · Settings · Clear All Caches
+Every menu path below is registered by this package; nothing else is.
+
+**GameObject → Addressable Manager →** Add Global Scope · Add Scene Scope · Add Hierarchy Scope · View in Dashboard
+**Assets → Addressable Manager →** Create Preload Config · Create Pool Config · Create Debug Settings
+**Assets → Addressables →** Apply Layout Rules *(enabled when something is selected)*
+**Assets → Create → Addressable Manager →** Layout Rule Data · Composite Layout Rule Data · Preload Configuration · Pool Configuration · Debug Settings · CDN Settings · Filters → … · Providers → …
+**Window → Addressable Manager →** Dashboard (`Ctrl+Alt+A`) · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches
+**Tools → Addressable Manager →** Force Process All Assets · Batch Address Updater · Repair Groups Missing Schemas · Start Local Content Server · Stop Local Content Server
 **Tools → Addressable Manager → Quick Setup →** Create All Scope Objects · Create Sample Configs
+
+`Ctrl+Alt+A` on the Dashboard is the **only** keyboard shortcut in the package.
+
+Three of these do less than their names suggest:
+
+- **Window → … → Documentation** looks for `Assets/com.game.addressables/README.md`. Installed under `Packages/`, that path does not exist and you get a "not found" dialog. Open `Packages/com.game.addressables/README.md` directly.
+- **Window → … → Clear All Caches** clears **Editor tracking data only** (`AssetTrackerService` and `PerformanceMetrics`). No runtime asset is released.
+- **Tools → … → Batch Address Updater** is not a window. It shows a dialog listing the `BatchAddressUpdater` static methods you can call from code: `FindAndReplace`, `AddPrefix`, `RemovePrefix`, `ConvertToLowercase`.
+
+**Start Local Content Server** serves on port 8080; **Stop Local Content Server** is greyed out while nothing is running.
 
 ## Workflow recipes
 
 ### Set up a new scene with scopes
-1. **Tools → Addressable Manager → Quick Setup → Create All Scope Objects**.
-2. Select each scope GameObject — its inspector tells you whether it's active.
-3. Press Play, open the Dashboard, verify all four scopes light up.
+1. **Tools → Addressable Manager → Quick Setup → Create All Scope Objects** — creates `[GlobalAssetScope]`, `[SceneAssetScope]` and `[HierarchyAssetScope]`. There is no Session GameObject; use `ScopeManager.Instance.GetOrCreateScope("Session")` or `Assets.StartSession()` in code.
+2. Select each scope GameObject — the banner reads INACTIVE in Edit mode, because activation happens in the component's `Awake`.
+3. Press Play, open the Dashboard → Scopes, and verify a foldout appears for each scope.
 
 ### Configure asset preloading
 1. **Assets → Create → Addressable Manager → Preload Configuration** → name it `GlobalPreloadConfig`.
 2. Add entries, drag assets onto `Asset Reference`, pick a Scope, set Priority.
 3. Click **Validate All Addresses** — fix anything reported invalid.
-4. From your bootstrap, `Resources.Load<AddressablePreloadConfig>("GlobalPreloadConfig")` and iterate `GetStartupAssets()`.
+4. From your bootstrap, `Resources.Load<AddressablePreloadConfig>("GlobalPreloadConfig")` and iterate `GetStartupAssets()` yourself (see the sample above). Nothing preloads on its own.
 
 ### Build a loading screen
 1. Drop a Canvas with a CanvasGroup, add **Progress Bar** to it.
@@ -233,23 +287,26 @@ progressBar.Reset();
    ```
 3. Bind a tracker and load:
    ```csharp
+   using AddressableManager.Progress;   // ProgressTracker, LoadAssetWithProgressAsync
+
    var tracker = new ProgressTracker();
    progressBar.BindToTracker(tracker);
    await loader.LoadAssetWithProgressAsync<Texture2D>(
        "Textures/Big",
        info => tracker.UpdateProgress(info));
    ```
-4. Use the Inspector sliders / Animate button to test visuals without entering Play.
+4. Enter Play Mode and use the inspector's Testing Controls (slider / Animate) to check the visuals. Those controls do not exist in Edit mode.
 
 ### Debug a memory issue
 1. Play, open Dashboard → Active Assets, filter to the suspect scope.
-2. Sort by **Time Since Loaded** descending — anything older than expected is suspicious.
-3. Check the Refcount column. A handle whose count never returns to 0 was retained without a matching `Release()`.
-4. Cross-reference Performance → Slowest Assets if the slowdown shows up at load time.
+2. The list is ordered newest-load-first and there are no sortable columns — read the `Loaded … ago` line on each row; anything older than expected is suspicious.
+3. Check `Refs:` on the row. A handle whose count never returns to 0 was retained without a matching release.
+4. Cross-reference Performance → Slowest Loading Assets if the slowdown shows up at load time.
+5. Remember the KB/MB figures are per-type constants, not measurements — use them to spot *which* assets are alive, then confirm real bytes in the Unity Profiler.
 
 ### Validate the preload config before shipping
 1. Select the config asset → click **Validate All Addresses**.
-2. Enable `Validate On Build` and `Fail Build On Error` on the asset so the validation re-runs as a build step.
+2. Enable `Validate On Build` and `Fail Build On Error` on the asset so `PreloadConfigBuildValidator` re-runs the validation as a build step and blocks the build on failure.
 
 ## `ScopeManager` for multi-instance scopes
 
@@ -267,6 +324,8 @@ Use the built-in singletons when one global + one session + per-scene is enough.
 > than aliasing or silently losing to whichever side registered first. Reach the real Global cache
 > via `GlobalAssetScope.Instance.Loader`; pick your own id (e.g. `"AppGlobal"`, used below) for a
 > `ScopeManager`-owned scope that happens to also be app-wide.
+
+`AssetLoader.LoadAssetAsync<T>` returns an `IAssetHandle<T>`, not the asset itself — reach the asset through the handle. The samples below use `var` and keep the handles alive for the lifetime of the scope.
 
 ### Multi-session sketch
 
@@ -424,11 +483,15 @@ public void ClearAllLevels()
 
 | Symptom | Likely cause / fix |
 |---|---|
-| Dashboard tabs don't refresh | Settings tab → ensure `Auto Refresh` is on; bump refresh interval down. |
-| Scope inspector shows no assets | Scope hasn't activated yet — `BaseAssetScope.Activate()` runs in the constructor, but if you're inspecting in Edit mode it stays inert until Play. |
-| `ScopeManager.GetScopeMemoryUsage` returns 0 | Marked `[Obsolete]` since 2.2.0 — runtime memory tracking isn't implemented. Use the Editor Dashboard's Active Assets tab for live numbers. |
+| Dashboard tabs don't refresh | Settings tab → ensure `Auto Refresh Dashboard` is on; bump the refresh interval down. |
+| Scope inspector shows no assets, buttons greyed out | You're in Edit mode. A scope activates in its component's `Awake`, so it stays INACTIVE — and Activate / Deactivate / Cleanup stay disabled — until you press Play. |
+| Dashboard memory numbers look wrong | They are estimates. `AssetTrackerService` derives size from the type name alone; use the Unity Profiler for real bytes. |
+| Simulation sliders change nothing | They don't. Nothing in the package reads `simulateSlowLoading` / `simulatedDelayMs` / `simulateFailureRate` — call `DebugSettings.ShouldSimulateFailure()` from your own load path if you want the behaviour. |
+| `ScopeManager.GetScopeMemoryUsage` returns 0 | Marked `[Obsolete]` — runtime memory tracking isn't implemented. Use the Editor Dashboard's Active Assets tab, with the caveat above. |
+| `GetOrCreateScope("Global")` returns null and logs an error | `"Global"` is reserved for `GlobalAssetScope`. Use `GlobalAssetScope.Instance.Loader`, or pick another id. |
 | Progress bar text fields red in inspector | TMP isn't installed and you assigned a `TextMeshProUGUI` reference. Either install TMP (asmdef will define `TMP_PRESENT`) or assign a `UnityEngine.UI.Text` instead. |
 | Config validation fails on build | Re-run the inspector's **Validate All Addresses**, fix invalid `AssetReference` rows, then enable `Fail Build On Error`. |
+| Editing PoolConfig logs a warning every time | Working as intended — the asset is not wired into anything. Create pools in code instead. |
 | Can't find the Dashboard | `Window → Addressable Manager → Dashboard` or `Ctrl+Alt+A`. |
 
 ## See also

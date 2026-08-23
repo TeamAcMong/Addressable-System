@@ -137,17 +137,11 @@ namespace AddressableManager.Editor.Cdn
                 return result;
             }
 
-            // Check if there is any static content configuration at all
+            // See EvaluateStaticContentConfiguration for why "no static groups" is not one answer.
             var staticGroups = GetStaticGroups(settings);
             if (staticGroups.Count == 0)
             {
-                result.CanEvaluate = false;
-                result.Passed = false;
-                result.Message =
-                    "No groups with static content (Cannot Change Post Release) detected. " +
-                    "This is a configuration failure — the check is meant to guard against accidental " +
-                    "modifications to content that cannot be updated. If no content is static, " +
-                    "ensure that at least one group has the ContentUpdateGroupSchema with StaticContent enabled.";
+                EvaluateStaticContentConfiguration(settings, result);
                 return result;
             }
 
@@ -265,6 +259,98 @@ namespace AddressableManager.Editor.Cdn
             message.AppendLine("  3. If this is a new build baseline, update the content_state.bin file.");
 
             return message.ToString();
+        }
+
+        /// <summary>
+        /// Decides what "no group is marked Cannot Change Post Release" means for this project, and
+        /// fills <paramref name="result"/> accordingly.
+        /// </summary>
+        /// <remarks>
+        /// It is two different situations that need opposite answers, and this used to report both as
+        /// "configuration failure, check could not run":
+        ///
+        /// <list type="bullet">
+        /// <item><b>Something ships inside the player and was not declared.</b> A group whose BuildPath
+        /// resolves to a Local path is baked into the build and can never be replaced by a content
+        /// update, so it must be marked Cannot Change Post Release. Leaving it unmarked is the real
+        /// misconfiguration this whole check exists to catch, and the check genuinely cannot run.</item>
+        /// <item><b>Nothing is immutable.</b> Every group builds remote, so there is no content a
+        /// content update could break. The restriction check has nothing to guard and passes for that
+        /// reason - a true answer, not a failure to produce one. Blocking here stopped a perfectly
+        /// ordinary all-remote CDN layout, and the advice it gave ("if no content is static, mark a
+        /// group static") contradicted itself.</item>
+        /// </list>
+        ///
+        /// Internal rather than private so the two branches can be tested without constructing a
+        /// content state file - the decision depends only on the group configuration.
+        /// </remarks>
+        internal static void EvaluateStaticContentConfiguration(
+            AddressableAssetSettings settings, ContentUpdateCheckResult result)
+        {
+            var localGroups = GetLocalBuildGroups(settings);
+
+            if (localGroups.Count > 0)
+            {
+                result.CanEvaluate = false;
+                result.Passed = false;
+                result.Message =
+                    "No group is marked Cannot Change Post Release, but these groups build to a " +
+                    $"Local path and therefore ship inside the player: {string.Join(", ", localGroups)}.\n\n" +
+                    "Content inside the player cannot be replaced by a content update, so changing one " +
+                    "of those groups produces bundles that existing players can never receive - exactly " +
+                    "what this check exists to catch, and it cannot run while the groups that need " +
+                    "guarding are not declared.\n\n" +
+                    "Fix: on each of those groups, enable ContentUpdateGroupSchema > Cannot Change Post " +
+                    "Release. If a group was meant to be downloadable, point its BuildPath and LoadPath " +
+                    "at Remote.* instead.";
+                return;
+            }
+
+            result.CanEvaluate = true;
+            result.Passed = true;
+            result.Message =
+                "No group is marked Cannot Change Post Release, and no group builds to a Local path - " +
+                "every group is remote and replaceable. There is no immutable content for a content " +
+                "update to break, so this check passes for that reason, not because content was " +
+                "compared.\n\n" +
+                "If you expected some content to ship inside the player, that is the thing to check: a " +
+                "group intended to be local but pointing at Remote.* is a different bug, and the " +
+                "Validator tab's group:<name>:RemotePathsConsistent rule reports it.";
+        }
+
+        /// <summary>
+        /// Names of the groups whose BuildPath resolves to a Local path, i.e. that ship inside the
+        /// player build and therefore cannot be replaced by a content update.
+        /// </summary>
+        /// <remarks>
+        /// This is what separates "nothing is static because nothing needs to be" from "something
+        /// needed marking and was not marked". The profile variable name is the honest signal: a group
+        /// bound to Local.BuildPath is baked into the player no matter what its other schemas say.
+        /// </remarks>
+        private static List<string> GetLocalBuildGroups(AddressableAssetSettings settings)
+        {
+            var localGroups = new List<string>();
+            if (settings?.groups == null)
+                return localGroups;
+
+            foreach (var group in settings.groups)
+            {
+                if (group == null)
+                    continue;
+
+                var bundleSchema = group.GetSchema<BundledAssetGroupSchema>();
+                if (bundleSchema == null)
+                    continue;
+
+                string buildPathName = bundleSchema.BuildPath?.GetName(settings);
+                if (string.IsNullOrEmpty(buildPathName))
+                    continue;
+
+                if (buildPathName.StartsWith("Local.", System.StringComparison.Ordinal))
+                    localGroups.Add(group.Name);
+            }
+
+            return localGroups;
         }
 
         /// <summary>

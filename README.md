@@ -1,6 +1,6 @@
 # Addressable Manager
 
-[![Version](https://img.shields.io/badge/version-4.1.0--pre.8-blue.svg)](Packages/com.game.addressables/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.1.0--pre.9-blue.svg)](Packages/com.game.addressables/CHANGELOG.md)
 [![Unity](https://img.shields.io/badge/Unity-2023.1%2B-black.svg)](#requirements)
 [![Addressables](https://img.shields.io/badge/com.unity.addressables-2.9.1-black.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -44,7 +44,7 @@ this page was rewritten to prevent — fix it rather than picking one.
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.8
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0
 ```
 
 Always pin to a tag. Tracking a branch means a `git pull` can change your API surface. The
@@ -92,8 +92,9 @@ If you are not sure which tier you want,
 
 ## 🚦 Status
 
-`4.1.0-pre.8` is a **pre-release**, and the label is doing real work: this line is far more correct
-than 4.0.x, and far less proven.
+`4.1.0` is the stable release of this line. Dropping the `-pre` label makes exactly one claim:
+the API surface has stopped moving. It does not claim the whole of it has been proven in the field,
+and the bullets below keep those two apart — the last of them is a list of what nobody has run yet.
 
 - **A correctness pass produced `pre.6` through `pre.8`.** An external review verified **66
   defects** across the caches, loaders, API surface, scopes and pooling; `4.1.0-pre.6` ships the
@@ -105,11 +106,25 @@ than 4.0.x, and far less proven.
 - **`pre.8` is documentation only.** No `.cs` file changed: the release commit touches
   `CHANGELOG.md`, this file, and the `version` field of `package.json`. It exists because the two
   previous entries both claimed the Unity floor would drop to 2022.3, which was never possible.
+- **`pre.9` answers a second external review (Qodo, on PR #3).** Two URL string comparisons were
+  wrong — `HostRewriter.ResolveTokens` detected `{Platform}` case-insensitively and then substituted
+  case-sensitively, and `CdnEnvironment.IsValid` rejected `HTTPS://` and compared its punctuation
+  under the current culture. Both are ordinal now, covered by `CdnUrlCasingTests`. Separately, the
+  batchmode compile gate that `pre.6` gave `AddressableCLI` was extended to `CdnSetupCLI` and both
+  `CdnBuildCLI` build entry points, and a new `ci/unity-run.sh` reads the Unity log from outside the
+  assembly, because an in-assembly gate cannot fire when the assembly is the thing that is broken.
+- **`4.1.0` closes the line with a full-system review.** Seventy-two findings, twenty-six
+  surviving an adversarial second pass, eleven defects fixed — and almost every one had the same
+  shape: a change applied where it was written and never propagated to its counterpart, so reading
+  the side that changed always looked correct. It also replaces four windows, ten tabs and
+  twenty-one menu items with one `Window > Addressable Manager > Open`, whose left rail is the
+  delivery pipeline rather than a menu: each stage carries its own real health, and the connector is
+  drawn dead below the first stage that is blocked.
 - **The CDN layer has never been validated in the field.** No device matrix, no staging soak, no
   measurement against a real CDN, and the changelog records that the content workflows in
-  `.github/workflows/` have never run. Its automated evidence is ten PlayMode tests against a local
-  `HttpListener` plus 30 EditMode tests, all of it local. If you are the first to point it at a real
-  CDN, expect to find something — see
+  `.github/workflows/` have never run — nor has `ci/unity-run.sh`. Its automated evidence is ten
+  PlayMode tests against a local `HttpListener` plus 53 EditMode cases, all of it local. If you are
+  the first to point it at a real CDN, expect to find something — see
   [Not yet validated](Packages/com.game.addressables/README.md#not-yet-validated).
 - **Several surfaces are knowingly inert or deprecated.** Two `ScriptableObject` assets
   (`PoolConfiguration`, `AddressablePreloadConfig`) are read by no runtime code, and
@@ -140,7 +155,7 @@ for — already exists in the reference and is linked above rather than copied.
 | **Progress reporting** | Per-load and per-download progress, plus a drop-in progress bar | [Progress reporting](Packages/com.game.addressables/README.md#-progress-reporting) |
 | **Typed errors** | `LoadResult<T>` and `CdnResult<T>` instead of exceptions, with retryability | [LoadResult](Packages/com.game.addressables/README.md#loadresult) |
 | **Threading** | Main thread by default, and honest about which paths are not | [Threading](Packages/com.game.addressables/README.md#-threading) |
-| **Monitoring** | The `IAssetMonitor` pipeline that feeds the Dashboard, free in a build | [MONITORING_GUIDE.md](Packages/com.game.addressables/MONITORING_GUIDE.md) |
+| **Monitoring** | The `IAssetMonitor` pipeline that feeds the Dashboard. Editor-only — the monitor lives in the Editor assembly, so a player build carries none of it | [MONITORING_GUIDE.md](Packages/com.game.addressables/MONITORING_GUIDE.md) |
 | **Dashboard** | Four tabs — Active Assets, Performance, Scopes, Settings — and no setup code | [Dashboard](Packages/com.game.addressables/README.md#dashboard) |
 | **Rule automation** | Addresses, groups, labels and versions from rules at import time | [Rule automation](Packages/com.game.addressables/README.md#rule-automation) |
 | **CDN Manager window** | Six tabs: Validator, Server, Update Preview, Build, Catalog, Runtime Monitor | [The CDN Manager window](Packages/com.game.addressables/README.md#the-cdn-manager-window) |
@@ -163,7 +178,7 @@ These ship inside the package, so they are available offline to anyone who insta
 | [Package README](Packages/com.game.addressables/README.md) | **The reference.** Every public API with its verified signature, the ownership rules, the CDN chapter, the deprecations, the migration guide. Read this after this page |
 | [CHANGELOG.md](Packages/com.game.addressables/CHANGELOG.md) | Every release with its reasoning, including what was wrong before. The most reliable account of what actually changed and why |
 | [CDN_USAGE_GUIDE.md](Packages/com.game.addressables/Documentation/CDN_USAGE_GUIDE.md) | The CDN road for the person building a game: whether you need remote content, setup, boot, download, patching, and what to do when each step fails |
-| [TROUBLESHOOTING.md](Packages/com.game.addressables/Documentation/TROUBLESHOOTING.md) | Symptom-first fixes. Runtime error messages point at it by name |
+| [TROUBLESHOOTING.md](Packages/com.game.addressables/Documentation/TROUBLESHOOTING.md) | Symptom-first fixes. Referenced by the package README, `Editor/Templates/README.md` and `Samples~/CdnBoot/README.md`; no runtime error message names it |
 | [EDITOR_TOOLS_GUIDE.md](Packages/com.game.addressables/EDITOR_TOOLS_GUIDE.md) | Dashboard tabs column by column, the custom inspectors, the config assets, and the real menu paths |
 | [MONITORING_GUIDE.md](Packages/com.game.addressables/MONITORING_GUIDE.md) | The monitoring pipeline behind the Dashboard, and why it costs a shipping build nothing |
 
@@ -184,17 +199,17 @@ works *on* the package rather than *with* it.
 | [RULE_SYSTEM_EXAMPLES.md](Documentation/RULE_SYSTEM_EXAMPLES.md) | Worked rule setups for common cases — UI atlases, audio libraries, per-level content |
 | [DEPLOY_UPM_SUBTREE.md](DEPLOY_UPM_SUBTREE.md) | The reasoning behind the subtree release, and recovery steps when a tag goes wrong |
 
-> **Three cautions about the older documents.** The two rule documents above predate the correctness
-> pass and neither mentions that `**` in a path pattern does nothing unless that filter's
-> `MatchMode` is `Glob` — the default is `Contains`, which treats `**` as literal text. There is
-> also a second, stale copy of the editor tools guide at `Documentation/EDITOR_TOOLS_GUIDE.md`
-> which invents keyboard shortcuts and a window that does not exist; the package copy linked above
-> is the corrected one. And `DEPLOY_UPM_SUBTREE.md` still shows the old `Assets/com.game.addressables`
-> path in its examples — `deploy.sh` holds the real prefix. In each case the package README wins.
+> **Two cautions about these documents.** `Documentation/EDITOR_TOOLS_GUIDE.md` is a second, longer
+> copy of the editor tools guide; the copy that ships in the package is the one kept in step with the
+> code, so prefer it. And `DEPLOY_UPM_SUBTREE.md` still shows the old `Assets/com.game.addressables`
+> path in its examples — `deploy.sh` sets `PREFIX="Packages/com.game.addressables"`, and that is the
+> real one. Where any repository-only document disagrees with the package README, the package README
+> wins: it is the one whose every API claim was checked against source.
 
-`Documentation/` also holds handoff and task-tracking notes (`HANDOFF_TO_SESSION_B.md`,
-`REFACTOR_TASKS.md`, `PARALLEL_SESSIONS.md`, `CDN_HANDOFF.html`). They are a live work log, not
-documentation, and they are partly in Vietnamese.
+`Documentation/` also holds handoff, review and task-tracking notes (`HANDOFF_TO_SESSION_B.md`,
+`REFACTOR_TASKS.md`, `PARALLEL_SESSIONS.md`, `CDN_HANDOFF.html`, `REVIEW_4.1.0-pre.9.html`). They are
+a live work log, not documentation, and they are partly in Vietnamese. `TROUBLESHOOTING.md` in that
+folder is a six-line pointer at the package copy, not a second guide.
 
 ---
 
@@ -209,7 +224,7 @@ This repository is a Unity project that *hosts* the package. Only one directory 
 | `Packages/com.game.addressables/` | **The package.** `Runtime/`, `Editor/`, `Tests/`, `Samples~/`, its own docs, and the `package.json` that is authoritative for version and dependencies. This directory is what the install URL resolves to |
 | `Assets/`, `ProjectSettings/` | The host project — test scenes, example content, Addressables settings. Never shipped. It currently opens in Unity 6 with UniTask installed, which is a development choice and not the supported floor; see [Requirements](#requirements) |
 | `Documentation/` | Design and process documents, repository-only. The package carries its own separate `Documentation/` folder |
-| `ci/` | The shell steps the content workflows call: upload bundles, upload catalog, verify URLs, purge, archive content state, fetch content state |
+| `ci/` | The shell steps the content workflows call: `unity-run.sh` (runs one batchmode step and reads the log for compiler errors, the CDN CLIs' `FAILURE:` prefix, and the artifact the step should have produced), upload bundles, upload catalog, verify URLs, purge, archive content state, fetch content state |
 | `.github/workflows/` | `content-full.yml` and `content-update.yml` — a full content build and a delta patch for an already-shipped player version. Neither has run yet |
 | `Tools/` | `CompileGate/run.sh` compiles the Runtime and Editor assemblies outside Unity; `check-min-unity-api.sh` compiles against an older editor as a canary for APIs newer than the floor allows |
 | `deploy.sh` | Cuts a release — see below |
@@ -223,7 +238,7 @@ assemblies before anything is committed; and the release path is `deploy.sh`.
 ### How releases are cut
 
 ```bash
-./deploy.sh --semver "4.1.0-pre.8"
+./deploy.sh --semver "4.1.0"
 ```
 
 The script `git subtree split`s `Packages/com.game.addressables` onto a temporary `upm` branch,

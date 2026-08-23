@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
@@ -43,22 +44,114 @@ namespace AddressableManager.Editor.Cdn
         /// Default values for catalog paths per profile. The <c>[UnityEditor.PlayerSettings.bundleVersion]</c> token
         /// is evaluated by <see cref="AddressablesRuntimeProperties.EvaluateString"/> using reflection to access the property.
         /// </summary>
+        /// <summary>
+        /// The rule that makes a build switchable between environments at runtime.
+        /// </summary>
+        /// <remarks>
+        /// A remote path is <c>origin + suffix</c>, and the split is not cosmetic:
+        /// <c>HostRewriter.Rewrite</c> matches a URL against the origins declared in
+        /// <c>CdnSettings.environments[].baseUrl</c> and swaps ONLY that prefix -
+        /// <c>activeBaseUrl + url.Substring(origin.Length)</c>. Everything after the origin survives
+        /// verbatim.
+        ///
+        /// So two things must hold, and neither used to:
+        ///
+        /// <para><b>1. The suffix is identical across every profile.</b> The templates previously gave
+        /// Local <c>/[BuildTarget]/bundles</c> and Dev/Staging/Prod
+        /// <c>/game/[BuildTarget]/bundles</c>. Content built with Local and then rewritten to Prod
+        /// landed at a different path than content built with Prod directly - two routes, two CDN
+        /// layouts, and whichever one you did not test was broken. The suffix now comes from a single
+        /// constant per path kind, so the two cannot drift.</para>
+        ///
+        /// <para><b>2. The origin is declared in CdnSettings.</b> If the origin baked into the catalog
+        /// is not one of the configured base URLs, Rewrite leaves the URL alone and switching
+        /// environment silently does nothing. The <c>settings.RemoteOriginIsKnown</c> contract rule
+        /// checks this before you build.</para>
+        ///
+        /// A "path prefix" belongs to the ORIGIN, not the suffix: a CDN serving several games from
+        /// <c>https://cdn.example.com/game-a</c> declares that whole string as the environment's
+        /// baseUrl, and its profile path is that string plus the shared suffix. That is why the
+        /// placeholder is named <c>&lt;cdnBase&gt;</c> rather than <c>&lt;domain&gt;</c> - what goes
+        /// there is an origin, optionally including a path prefix, never just a hostname.
+        /// </remarks>
+        internal static class PathConvention
+        {
+            /// <summary>The placeholder a generated profile carries until a real origin replaces it.</summary>
+            public const string OriginPlaceholder = "<cdnBase>";
+
+            /// <summary>
+            /// The placeholder generated profiles carried before 4.1.0-pre.14, still accepted so a
+            /// project that upgraded rather than reinstalled keeps working.
+            /// </summary>
+            /// <remarks>
+            /// Renaming the token in the templates without renaming it in the injector is what broke
+            /// CI host injection between pre.14 and pre.16: the writer emitted
+            /// <see cref="OriginPlaceholder"/> while the reader still looked for this one, so
+            /// <c>InjectRemoteHostFromEnvironment</c> matched nothing, replaced nothing and returned
+            /// the untouched values - and the build then failed with a message telling the operator
+            /// to run the injector that had just done nothing.
+            ///
+            /// Both spellings are honoured from here on, and every test and substitution goes through
+            /// <see cref="ContainsOriginPlaceholder"/> / <see cref="ReplaceOriginPlaceholder"/> so a
+            /// future rename cannot split the writer from the reader again.
+            /// </remarks>
+            public const string LegacyOriginPlaceholder = "<domain>";
+
+            /// <summary>Both accepted spellings, for messages that have to name them.</summary>
+            public const string AcceptedPlaceholders =
+                OriginPlaceholder + " (or the pre-4.1.0-pre.14 spelling " + LegacyOriginPlaceholder + ")";
+
+            /// <summary>True when <paramref name="path"/> still carries an unresolved origin.</summary>
+            public static bool ContainsOriginPlaceholder(string path) =>
+                !string.IsNullOrEmpty(path) &&
+                (path.Contains(OriginPlaceholder) || path.Contains(LegacyOriginPlaceholder));
+
+            /// <summary>Substitute a real origin for whichever placeholder spelling the path carries.</summary>
+            public static string ReplaceOriginPlaceholder(string path, string origin)
+            {
+                if (string.IsNullOrEmpty(path)) return path;
+                return path
+                    .Replace(OriginPlaceholder, origin)
+                    .Replace(LegacyOriginPlaceholder, origin);
+            }
+
+            /// <summary>The shared bundle suffix every profile must end with.</summary>
+            /// <remarks>
+            /// Exposed because a convention nobody can check is a convention that drifts. These two
+            /// were private, so the only thing enforcing "the suffix is identical across profiles"
+            /// was that the templates happened to be written that way - and before 4.1.0-pre.14 they
+            /// were not: Local used <c>/[BuildTarget]/bundles</c> while Dev, Staging and Prod used
+            /// <c>/game/[BuildTarget]/bundles</c>, so content built with one profile and rewritten to
+            /// another landed somewhere the CDN had nothing.
+            /// </remarks>
+            public const string BundleSuffix = BundlePathDefaults.Suffix;
+
+            /// <summary>The shared catalog suffix every profile must end with.</summary>
+            public const string CatalogSuffix = CatalogPathDefaults.Suffix;
+        }
+
         private static class CatalogPathDefaults
         {
             /// <summary>All catalogs build to a per-app-version folder. This is stable across all profiles.</summary>
             public const string BuildPathValue = "ServerData/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
 
             /// <summary>Local profile: localhost on a dev machine.</summary>
-            public const string LocalLoadPathValue = "http://localhost:8080/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            public const string LocalLoadPathValue = "http://localhost:8080" + Suffix;
 
-            /// <summary>Dev profile: development CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string DevLoadPathValue = "https://cdn-dev.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>
+            /// The part every profile shares, after its origin. Runtime environment switching depends
+            /// on this being IDENTICAL across profiles - see <see cref="PathConvention"/>.
+            /// </summary>
+            public const string Suffix = "/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
 
-            /// <summary>Staging profile: staging CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string StagingLoadPathValue = "https://cdn-stg.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>Dev profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string DevLoadPathValue = "https://cdn-dev.<cdnBase>" + Suffix;
 
-            /// <summary>Production profile: production CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string ProdLoadPathValue = "https://cdn.<domain>/game/[BuildTarget]/catalog/[UnityEditor.PlayerSettings.bundleVersion]";
+            /// <summary>Staging profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string StagingLoadPathValue = "https://cdn-stg.<cdnBase>" + Suffix;
+
+            /// <summary>Production profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string ProdLoadPathValue = "https://cdn.<cdnBase>" + Suffix;
         }
 
         /// <summary>
@@ -71,16 +164,21 @@ namespace AddressableManager.Editor.Cdn
             public const string BuildPathValue = "ServerData/[BuildTarget]/bundles";
 
             /// <summary>Local profile: localhost on a dev machine.</summary>
-            public const string LocalLoadPathValue = "http://localhost:8080/[BuildTarget]/bundles";
+            public const string LocalLoadPathValue = "http://localhost:8080" + Suffix;
 
-            /// <summary>Dev profile: development CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string DevLoadPathValue = "https://cdn-dev.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>
+            /// The part every profile shares, after its origin. Identical across profiles on purpose.
+            /// </summary>
+            public const string Suffix = "/[BuildTarget]/bundles";
 
-            /// <summary>Staging profile: staging CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string StagingLoadPathValue = "https://cdn-stg.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>Dev profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string DevLoadPathValue = "https://cdn-dev.<cdnBase>" + Suffix;
 
-            /// <summary>Production profile: production CDN. Requires env var injection at runtime; this is the fallback.</summary>
-            public const string ProdLoadPathValue = "https://cdn.<domain>/game/[BuildTarget]/bundles";
+            /// <summary>Staging profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string StagingLoadPathValue = "https://cdn-stg.<cdnBase>" + Suffix;
+
+            /// <summary>Production profile. Replace &lt;cdnBase&gt; with the real origin before building.</summary>
+            public const string ProdLoadPathValue = "https://cdn.<cdnBase>" + Suffix;
         }
 
         /// <summary>
@@ -208,9 +306,10 @@ namespace AddressableManager.Editor.Cdn
         /// This is a utility for reading the env var and normalizing it. The actual host injection
         /// into profiles is performed by <see cref="InjectRemoteHostFromEnvironment"/>.
         ///
-        /// The domain is used to replace <domain> placeholders in profile paths.
-        /// Example: if the variable contains "example.com", it will replace <domain> in
-        /// "https://cdn-dev.<domain>/game/..." to produce "https://cdn-dev.example.com/game/...".
+        /// The origin is used to replace &lt;cdnBase&gt; placeholders in profile paths
+        /// (the pre-4.1.0-pre.14 spelling &lt;domain&gt; is still accepted).
+        /// Example: if the variable contains "example.com", it will replace the placeholder in
+        /// "https://cdn-dev.&lt;cdnBase&gt;/..." to produce "https://cdn-dev.example.com/...".
         /// </remarks>
         public static string GetRemoteHostFromEnvironment(string envVarName)
         {
@@ -225,13 +324,13 @@ namespace AddressableManager.Editor.Cdn
         }
 
         /// <summary>
-        /// Temporarily inject the CDN domain from an environment variable, replacing <domain>
+        /// Temporarily inject the CDN origin from an environment variable, replacing the origin
         /// placeholders in the active profile's Remote.LoadPath and Remote.CatalogLoadPath.
         /// This is scoped to the current build: the old values are returned so the caller
         /// can revert them after BuildPlayerContent completes.
         /// </summary>
         /// <param name="envVarName">Environment variable name to read (default "CDN_HOST")</param>
-        /// <param name="validatePlaceholders">If true, throw when env var is unset and <domain> placeholders remain</param>
+        /// <param name="validatePlaceholders">If true, throw when the env var is unset and an origin placeholder remains</param>
         /// <returns>Dictionary of old values (keys: RemoteCatalogLoadPathVariable, kRemoteLoadPath)
         /// for reverting via <see cref="RevertRemoteHostInjection"/></returns>
         /// <remarks>
@@ -275,15 +374,16 @@ namespace AddressableManager.Editor.Cdn
                     string existingBundlePath = settings.profileSettings.GetValueByName(
                         activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty;
 
-                    bool hasCatalogPlaceholder = existingCatalogPath.Contains("<domain>");
-                    bool hasBundlePlaceholder = existingBundlePath.Contains("<domain>");
+                    bool hasCatalogPlaceholder = PathConvention.ContainsOriginPlaceholder(existingCatalogPath);
+                    bool hasBundlePlaceholder = PathConvention.ContainsOriginPlaceholder(existingBundlePath);
 
                     if (hasCatalogPlaceholder || hasBundlePlaceholder)
                     {
                         throw new InvalidOperationException(
                             $"CdnProfileManager.InjectRemoteHostFromEnvironment: environment variable '{envVarName}' is not set, " +
-                            $"but the active profile's load paths contain <domain> placeholders. " +
-                            $"Set {envVarName} to the domain you want to inject (e.g., {envVarName}=example.com) and retry.");
+                            $"but the active profile's load paths still contain an origin placeholder " +
+                            $"{PathConvention.AcceptedPlaceholders}. " +
+                            $"Set {envVarName} to the origin you want to inject (e.g., {envVarName}=cdn.example.com) and retry.");
                     }
                 }
 
@@ -298,20 +398,38 @@ namespace AddressableManager.Editor.Cdn
                 { AddressableAssetSettings.kRemoteLoadPath, settings.profileSettings.GetValueByName(activeProfileId, AddressableAssetSettings.kRemoteLoadPath) ?? string.Empty }
             };
 
-            // Replace <domain> in catalog load path
+            // Substitute the origin into the catalog load path.
+            int replaced = 0;
             string catalogPath = oldValues[RemoteCatalogLoadPathVariable];
-            if (!string.IsNullOrEmpty(catalogPath) && catalogPath.Contains("<domain>"))
+            if (PathConvention.ContainsOriginPlaceholder(catalogPath))
             {
-                string newCatalogPath = catalogPath.Replace("<domain>", domain);
-                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable, newCatalogPath);
+                settings.profileSettings.SetValue(activeProfileId, RemoteCatalogLoadPathVariable,
+                    PathConvention.ReplaceOriginPlaceholder(catalogPath, domain));
+                replaced++;
             }
 
-            // Replace <domain> in bundle load path
+            // ...and into the bundle load path.
             string bundlePath = oldValues[AddressableAssetSettings.kRemoteLoadPath];
-            if (!string.IsNullOrEmpty(bundlePath) && bundlePath.Contains("<domain>"))
+            if (PathConvention.ContainsOriginPlaceholder(bundlePath))
             {
-                string newBundlePath = bundlePath.Replace("<domain>", domain);
-                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath, newBundlePath);
+                settings.profileSettings.SetValue(activeProfileId, AddressableAssetSettings.kRemoteLoadPath,
+                    PathConvention.ReplaceOriginPlaceholder(bundlePath, domain));
+                replaced++;
+            }
+
+            // Say so when the variable was set and nothing matched. Silence here is what let the
+            // pre.14 token rename go unnoticed: CI set CDN_HOST, the injector replaced nothing, and
+            // the only signal was a later build failure that named the injector as the fix.
+            if (replaced == 0)
+            {
+                Debug.LogWarning(
+                    $"[CdnProfileManager] {envVarName}='{domain}' was set, but neither load path on profile " +
+                    $"'{settings.profileSettings.GetProfileName(activeProfileId)}' contains an origin placeholder " +
+                    $"{PathConvention.AcceptedPlaceholders}, so nothing was injected.\n" +
+                    $"  Remote.CatalogLoadPath = {(string.IsNullOrEmpty(catalogPath) ? "(empty)" : catalogPath)}\n" +
+                    $"  Remote.LoadPath        = {(string.IsNullOrEmpty(bundlePath) ? "(empty)" : bundlePath)}\n" +
+                    $"If those paths already hold the real origin this is harmless; if you expected them to be " +
+                    $"templated, regenerate the profile with CdnProfileManager.EnsureProfilesExist().");
             }
 
             return oldValues;
@@ -379,7 +497,7 @@ namespace AddressableManager.Editor.Cdn
             // If profile already exists, just validate its variables exist; don't overwrite values.
             if (!string.IsNullOrEmpty(profileId))
             {
-                EnsureProfileVariablesExist(settings, profileId);
+                EnsureProfileVariablesExist(settings, profileId, profileName);
                 return;
             }
 
@@ -420,21 +538,58 @@ namespace AddressableManager.Editor.Cdn
             settings.profileSettings.SetValue(profileId, AddressableAssetSettings.kRemoteBuildPath, BundlePathDefaults.BuildPathValue);
         }
 
-        private static void EnsureProfileVariablesExist(AddressableAssetSettings settings, string profileId)
+        /// <summary>The catalog load path a given profile is supposed to use.</summary>
+        private static string CatalogLoadPathFor(string profileName)
         {
-            // This method checks that a profile has both catalog variables. If they're missing (e.g., because
-            // an old profile was created before catalog variables existed), we add them. We do NOT overwrite
-            // existing values — manual edits are preserved.
+            switch (profileName)
+            {
+                case ProfileNames.Local:   return CatalogPathDefaults.LocalLoadPathValue;
+                case ProfileNames.Dev:     return CatalogPathDefaults.DevLoadPathValue;
+                case ProfileNames.Staging: return CatalogPathDefaults.StagingLoadPathValue;
+                case ProfileNames.Prod:    return CatalogPathDefaults.ProdLoadPathValue;
+                default:                   return null;
+            }
+        }
 
+        private static void EnsureProfileVariablesExist(
+            AddressableAssetSettings settings, string profileId, string profileName)
+        {
+            // Fill in variables a pre-existing profile is missing. Deliberate edits are preserved - but
+            // "non-empty" is NOT the same as "deliberate", and treating it that way was a real trap.
+            //
+            // AddressableAssetProfileSettings.CreateValue pushes its default into EVERY existing
+            // profile. EnsureCatalogVariablesExist runs first and creates Remote.CatalogLoadPath with
+            // the LOCAL (http://localhost:8080/...) value, so on a project that already had Dev/
+            // Staging/Prod profiles, all of them silently acquired a localhost catalog path. This
+            // method then saw a non-empty string and left it alone - and a Prod build baked
+            // http://localhost:8080 as its remote catalog URL, which fails only once it is on a device.
             if (string.IsNullOrEmpty(settings.profileSettings.GetValueByName(profileId, RemoteCatalogBuildPathVariable)))
             {
                 settings.profileSettings.SetValue(profileId, RemoteCatalogBuildPathVariable, CatalogPathDefaults.BuildPathValue);
             }
 
-            if (string.IsNullOrEmpty(settings.profileSettings.GetValueByName(profileId, RemoteCatalogLoadPathVariable)))
+            string expected = CatalogLoadPathFor(profileName);
+            string current = settings.profileSettings.GetValueByName(profileId, RemoteCatalogLoadPathVariable);
+
+            if (string.IsNullOrEmpty(current))
             {
-                // This should not happen in normal usage (EnsureCatalogVariablesExist ran first), but handle it gracefully.
-                settings.profileSettings.SetValue(profileId, RemoteCatalogLoadPathVariable, CatalogPathDefaults.LocalLoadPathValue);
+                settings.profileSettings.SetValue(
+                    profileId, RemoteCatalogLoadPathVariable, expected ?? CatalogPathDefaults.LocalLoadPathValue);
+                return;
+            }
+
+            // Only correct the one value that cannot have been chosen on purpose for this profile: the
+            // seeded localhost default sitting on a non-Local profile. Anything else is left untouched.
+            if (expected != null
+                && profileName != ProfileNames.Local
+                && current == CatalogPathDefaults.LocalLoadPathValue)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[CdnProfileManager] Profile '{profileName}' had the localhost catalog load path, which is " +
+                    "what creating the variable seeds into every profile - not a deliberate setting. Corrected to " +
+                    $"'{expected}'. If you really wanted localhost here, set it again after this run.");
+
+                settings.profileSettings.SetValue(profileId, RemoteCatalogLoadPathVariable, expected);
             }
         }
     }

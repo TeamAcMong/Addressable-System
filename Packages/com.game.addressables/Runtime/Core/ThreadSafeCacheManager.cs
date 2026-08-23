@@ -268,7 +268,19 @@ namespace AddressableManager.Core
             if (handle == null)
                 throw new ArgumentNullException(nameof(handle));
 
-            IAssetHandle<T> rejected = null;
+            // Two DIFFERENT outcomes that must not share one variable.
+            //
+            // `retainedButNotStored` is a handle this cache successfully TryRetain'd and then failed to
+            // store - the reference being given back is OUR OWN, so releasing it is correct.
+            //
+            // `duplicateIgnored` is a handle we never retained, because the key was already cached.
+            // Releasing THAT spends the CALLER's reference, which is not ours to spend: the caller was
+            // told (and TieredCache's fresh path behaves the same way) that it keeps its own reference
+            // and releases when done. Doing both meant one over-release, which is a silent no-op for a
+            // singly-owned handle and an unload-under-the-loader for the normal case where
+            // AssetLoader's cache holds a second reference.
+            IAssetHandle<T> retainedButNotStored = null;
+            IAssetHandle<T> duplicateIgnored = null;
             List<IAssetHandle<T>> victims = null;
             bool oversized = false;
             long evictionTarget = 0;
@@ -290,7 +302,7 @@ namespace AddressableManager.Core
                     existingEntry.RecordAccess();
                     if (!ReferenceEquals(existingEntry.Handle, handle))
                     {
-                        rejected = handle;
+                        duplicateIgnored = handle;   // never retained here - do NOT release it
                     }
                 }
                 else
@@ -349,8 +361,9 @@ namespace AddressableManager.Core
                         else
                         {
                             // Lost the race to another writer for this key (should not happen while
-                            // we hold the write lock, but stay defensive) — give the reference back.
-                            rejected = handle;
+                            // we hold the write lock, but stay defensive) — give OUR OWN reference
+                            // back; TryRetain above took it.
+                            retainedButNotStored = handle;
                         }
                     }
                     // else: handle was already dead: refused, nothing was retained, nothing to
@@ -378,13 +391,16 @@ namespace AddressableManager.Core
             }
 
             // Release outside the lock — never release a handle while holding the write lock.
-            if (rejected != null)
+            if (retainedButNotStored != null)
             {
-                if (_config.LogTierOperations)
-                {
-                    Debug.LogWarning($"[ThreadSafeCacheManager] Set() rejected a duplicate handle for already-cached key '{key}'; the caller's handle was released and is no longer valid.");
-                }
-                rejected.Release();
+                retainedButNotStored.Release();
+            }
+
+            if (duplicateIgnored != null && _config.LogTierOperations)
+            {
+                Debug.LogWarning(
+                    $"[ThreadSafeCacheManager] Set() ignored a duplicate handle for already-cached key '{key}'. " +
+                    "The cached handle was kept; your handle is untouched and is still yours to release.");
             }
 
             if (victims != null)

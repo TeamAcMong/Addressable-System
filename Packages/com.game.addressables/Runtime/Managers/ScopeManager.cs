@@ -70,11 +70,29 @@ namespace AddressableManager.Managers
             /// </summary>
             public readonly string OwnerTypeName;
 
-            public Registration(AssetLoader loader, bool managerOwned, string ownerTypeName = null)
+            /// <summary>
+            /// A WEAK handle on the foreign owner, so "is it still alive" can be asked. Null for
+            /// manager-owned entries.
+            /// </summary>
+            /// <remarks>
+            /// Weak by requirement, not by preference. This directory must never be the reason an
+            /// owner stays alive: a strong reference here would keep every scope object that ever
+            /// registered resident for the life of the process, and the leak-detection feature would
+            /// have created a larger leak than the one it reports.
+            ///
+            /// It exists so an editor can answer the question Unity's own tooling cannot - the scene
+            /// unloaded, so which scope is still holding these bundles - which requires knowing that
+            /// the owner is gone while its loader is not.
+            /// </remarks>
+            public readonly WeakReference Owner;
+
+            public Registration(AssetLoader loader, bool managerOwned, string ownerTypeName = null,
+                object owner = null)
             {
                 Loader = loader;
                 ManagerOwned = managerOwned;
                 OwnerTypeName = ownerTypeName;
+                Owner = owner != null ? new WeakReference(owner) : null;
             }
         }
 
@@ -84,6 +102,60 @@ namespace AddressableManager.Managers
         /// Get all active scope IDs — manager-owned and foreign alike.
         /// </summary>
         public IEnumerable<string> ActiveScopes => _loaders.Keys;
+
+        /// <summary>
+        /// A read-only snapshot of every registered scope, including whether its owner still exists.
+        /// </summary>
+        /// <remarks>
+        /// Public because the question it answers is one a shipping game may legitimately want to log
+        /// in a QA build, not only one an editor window asks. It allocates a list per call and is
+        /// meant for diagnostics, not for a per-frame path.
+        ///
+        /// Detached from the dictionary before returning, so a caller iterating it cannot fault when
+        /// a scope disposes itself mid-walk.
+        /// </remarks>
+        public List<ScopeInfo> SnapshotScopes()
+        {
+            var result = new List<ScopeInfo>(_loaders.Count);
+
+            foreach (var pair in _loaders)
+            {
+                var reg = pair.Value;
+
+                result.Add(new ScopeInfo(
+                    pair.Key,
+                    reg.ManagerOwned,
+                    reg.OwnerTypeName,
+                    OwnerState(reg),
+                    reg.Loader != null ? reg.Loader.CachedAssetCount : 0));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Whether a foreign owner is still there, still alive, or gone.
+        /// </summary>
+        /// <remarks>
+        /// A destroyed <see cref="UnityEngine.Object"/> is NOT null as far as the CLR is concerned -
+        /// the managed wrapper outlives the native object, and only Unity's overloaded == knows the
+        /// difference. Testing the weak reference alone would report a destroyed MonoBehaviour as
+        /// alive for as long as the GC had not collected the wrapper, which is exactly the window in
+        /// which a leak is worth reporting. So the wrapper is unwrapped and asked Unity's question.
+        /// </remarks>
+        private static ScopeOwnerState OwnerState(Registration reg)
+        {
+            if (reg.ManagerOwned) return ScopeOwnerState.ManagerOwned;
+            if (reg.Owner == null) return ScopeOwnerState.Unknown;
+
+            object target = reg.Owner.Target;
+            if (target == null) return ScopeOwnerState.Collected;
+
+            if (target is UnityEngine.Object unityObject)
+                return unityObject == null ? ScopeOwnerState.Destroyed : ScopeOwnerState.Alive;
+
+            return ScopeOwnerState.Alive;
+        }
 
         /// <summary>
         /// Get or create a manager-owned scope with the given ID. The manager built this loader,
@@ -192,7 +264,8 @@ namespace AddressableManager.Managers
                 // GlobalAssetScope's recovery getter) — refresh the entry below, not a collision.
             }
 
-            _loaders[scopeId] = new Registration(loader, managerOwned: false, owner?.GetType().Name);
+            _loaders[scopeId] = new Registration(
+                loader, managerOwned: false, ownerTypeName: owner?.GetType().Name, owner: owner);
         }
 
         /// <summary>

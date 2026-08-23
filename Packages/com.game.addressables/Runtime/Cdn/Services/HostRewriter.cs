@@ -67,6 +67,13 @@ namespace AddressableManager.Cdn
         /// <summary>Origins recognised as rewritable, longest first so the most specific wins.</summary>
         private readonly List<string> _knownOrigins = new List<string>();
 
+        /// <summary>
+        /// Origins already reported as unknown, so the warning is once per origin rather than once
+        /// per request.
+        /// </summary>
+        private readonly HashSet<string> _warnedUnknownOrigins =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         /// <inheritdoc />
         public string ActiveEnvironmentId => _environment?.Id ?? string.Empty;
 
@@ -85,9 +92,20 @@ namespace AddressableManager.Cdn
             {
                 if (environment == null) continue;
 
+                // Both forms. The configured string still holds {platform}/{appVersion}, and only the
+                // ACTIVE environment ever gets resolved (Apply -> ResolveTokens). Seeding the raw form
+                // alone meant an origin belonging to a non-active environment could never StartsWith-
+                // match a baked catalog URL, so Rewrite() fell through to "origin not configured" and
+                // returned the URL untouched: a build baked against environment A kept fetching from A
+                // while the facade cheerfully reported B as current.
                 AddKnownOrigin(environment.BaseUrl);
+                AddKnownOrigin(ResolveTokens(environment.BaseUrl));
+
                 foreach (string failover in environment.FailoverUrls)
+                {
                     AddKnownOrigin(failover);
+                    AddKnownOrigin(ResolveTokens(failover));
+                }
             }
 
             _knownOrigins.Sort((a, b) => b.Length.CompareTo(a.Length));
@@ -174,10 +192,55 @@ namespace AddressableManager.Cdn
             // An http URL from an origin we do not know about. Left alone deliberately: silently
             // redirecting a URL the game fetches for some other reason would be worse than not
             // rewriting content we were never told about.
-            if (_logRewrites)
-                Debug.Log($"[CdnHostRewriter] left alone (origin not configured): {url}");
+            //
+            // But "left alone" is also exactly what a misconfigured build looks like, and it used to
+            // be visible only behind LogUrlRewrites, which defaults to false. A catalog baked against
+            // an origin that is not in CdnSettings then produced a player where every content request
+            // went to a host nobody intended, with no log line anywhere - the failure reads as "the
+            // CDN is down", not as "this build was pointed somewhere else".
+            //
+            // Warn once per unknown origin, regardless of the flag. Once per origin rather than per
+            // request, because this fires on every bundle and a per-request warning would bury the
+            // console it is trying to inform. LogUrlRewrites still controls the per-request detail.
+            WarnOnceAboutUnknownOrigin(url);
 
             return url;
+        }
+
+        /// <summary>
+        /// Reports, once per origin, that content is being fetched from somewhere this rewriter was
+        /// never told about — so it cannot redirect it, and the environment switch does not apply.
+        /// </summary>
+        private void WarnOnceAboutUnknownOrigin(string url)
+        {
+            string origin = ExtractOrigin(url);
+            if (string.IsNullOrEmpty(origin)) return;
+            if (!_warnedUnknownOrigins.Add(origin)) return;
+
+            Debug.LogWarning(
+                $"[CdnHostRewriter] Content is being requested from '{origin}', which is not any " +
+                "environment's base URL in CdnSettings, so it was left alone - the active environment " +
+                $"('{ActiveEnvironmentId}' -> {_activeBaseUrl}) does not apply to it.\n\n" +
+                "That origin is baked into the catalog at build time by the Addressables profile's " +
+                "Remote.LoadPath / Remote.CatalogLoadPath. If it does not match a CdnEnvironment.BaseUrl, " +
+                "switching environment at runtime silently does nothing and every request goes wherever " +
+                "the build was pointed - which reads as \"the CDN is down\" rather than as a " +
+                "misconfigured build.\n\n" +
+                "Either add this origin as a CdnEnvironment, or rebuild content with a profile whose " +
+                "Remote paths start with one you already have. The Validator tab's " +
+                "settings.RemoteOriginIsKnown rule checks this before you build.");
+        }
+
+        /// <summary>scheme://host[:port] of an absolute http(s) URL, or null.</summary>
+        private static string ExtractOrigin(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+
+            int schemeEnd = url.IndexOf("://", StringComparison.Ordinal);
+            if (schemeEnd < 0) return null;
+
+            int hostEnd = url.IndexOf('/', schemeEnd + 3);
+            return hostEnd < 0 ? url : url.Substring(0, hostEnd);
         }
 
         private void Apply(CdnEnvironment environment, string baseUrl)

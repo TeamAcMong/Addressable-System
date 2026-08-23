@@ -54,6 +54,16 @@ namespace AddressableManager.Editor.Filters
         {
             base.Setup();
 
+            // Per-run, not per-session. These memo tables answer questions about state the rule run
+            // ITSELF rewrites - an entry's address, its group, its dependencies - so a table that
+            // survives the run is answering from a snapshot taken before it. Setup() refreshed the
+            // settings reference and the parsed pattern but not the memo, so after the first Apply in
+            // an editor session the filter kept giving pre-run answers until a domain reload. The
+            // sharpest case: Match Mode = NoAddress, the natural way to say "only address assets
+            // nobody has addressed by hand", kept matching already-addressed assets on every later
+            // run, so a hand-set address was overwritten by the rule meant to leave it alone.
+            _assetTypeCache.Clear();
+
             // Cache the type on main thread
             if (!string.IsNullOrEmpty(_typeName))
             {

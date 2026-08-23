@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thiết kế UI Editor — com.game.addressables</title>
+<style>
+:root{
+  --bg:#fbfaf8; --panel:#ffffff; --ink:#1a1917; --muted:#6b6862; --line:#e3dfd8;
+  --accent:#8a4b2a; --accent-soft:#f5ece6;
+  --ok:#2f6b4f; --warn:#8a6d1f; --err:#b3261e; --idle:#8a8a8a;
+  --ok-bg:#eef4ef; --warn-bg:#faf6e2; --err-bg:#fdecea; --idle-bg:#f2f1ef;
+  --code-bg:#f4f1ec;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16151a; --panel:#1d1c22; --ink:#e8e6e1; --muted:#9d9a94; --line:#302e37;
+    --accent:#d99a6c; --accent-soft:#2a2129;
+    --ok:#7dbb9a; --warn:#d4c778; --err:#f2857c; --idle:#8a8a8a;
+    --ok-bg:#1e2a24; --warn-bg:#302d1c; --err-bg:#33201e; --idle-bg:#232228;
+    --code-bg:#26242c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16151a; --panel:#1d1c22; --ink:#e8e6e1; --muted:#9d9a94; --line:#302e37;
+  --accent:#d99a6c; --accent-soft:#2a2129;
+  --ok:#7dbb9a; --warn:#d4c778; --err:#f2857c; --idle:#8a8a8a;
+  --ok-bg:#1e2a24; --warn-bg:#302d1c; --err-bg:#33201e; --idle-bg:#232228;
+  --code-bg:#26242c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:48px 24px 120px}
+header.doc{border-bottom:3px solid var(--accent);padding-bottom:22px;margin-bottom:34px}
+h1{font-size:1.95rem;line-height:1.2;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:.95rem;margin:0}
+h2{font-size:1.32rem;margin:50px 0 14px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:1.04rem;margin:28px 0 8px}
+p{margin:0 0 14px}
+code{background:var(--code-bg);padding:.12em .38em;border-radius:3px;
+  font:.87em/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-word}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:14px 16px;
+  overflow-x:auto;margin:0 0 16px}
+pre code{background:none;padding:0;font-size:.83rem;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:0 0 20px;font-size:.89rem}
+.scroll{overflow-x:auto;margin-bottom:20px}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);font-weight:600}
+blockquote{margin:0 0 18px;padding:12px 18px;border-left:3px solid var(--accent);
+  background:var(--panel);color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-left-width:4px;
+  border-radius:6px;padding:15px 18px;margin:0 0 18px}
+.c-ok{border-left-color:var(--ok)} .c-warn{border-left-color:var(--warn)}
+.c-err{border-left-color:var(--err)} .c-idle{border-left-color:var(--idle)}
+.card h3{margin-top:0}
+.pill{display:inline-block;padding:.1em .55em;border-radius:3px;font-size:.72rem;
+  font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-err{background:var(--err-bg);color:var(--err)} .p-idle{background:var(--idle-bg);color:var(--idle)}
+ul,ol{margin:0 0 16px;padding-left:24px} li{margin-bottom:6px}
+.lede{font-size:1.05rem;color:var(--muted)}
+hr{border:0;border-top:1px solid var(--line);margin:32px 0}
+.dot{display:inline-block;width:11px;height:11px;border-radius:6px;vertical-align:-1px;margin-right:6px}
+.d-ok{background:var(--ok)} .d-warn{background:var(--warn)} .d-err{background:var(--err)}
+.d-idle{background:transparent;border:2px solid var(--idle)}
+@media print{
+  body{background:#fff;color:#000;font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  h2{page-break-after:avoid} .card{page-break-inside:avoid}
+  pre{white-space:pre-wrap}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+<h1>Thiết kế UI Editor — <code>com.game.addressables</code></h1>
+<p class="sub">Bản đặc tả cục bộ · 23/08/2026 · nguồn artboard ở
+<code>Documentation/design/*.dc.html</code></p>
+</header>
+
+<p class="lede">Trước: 4 cửa sổ, 10 tab, 21 menu item rải trên 4 menu gốc — 4 trong số đó đăng ký
+trùng cùng một đường dẫn. Sau: một cửa sổ, và thanh bên không phải là menu.</p>
+
+<blockquote>
+<strong>Vì sao có file này.</strong> Bản thiết kế gốc là một canvas tương tác trên claude.ai. Cái
+đó biến mất khỏi tầm tay khi không còn ai nhớ link, nên thứ cần sống trong repo là <em>lý do</em>,
+không phải pixel. Artboard nguồn nằm ở <code>Documentation/design/</code>; file này là phần đọc
+được mà không cần gì ngoài trình duyệt.
+</blockquote>
+
+<h2 id="ia">Quyết định lớn nhất: rail là pipeline, không phải menu</h2>
+
+<p>Cách sắp xếp cũ nhóm theo <em>module nào sở hữu tính năng</em>. Nó bắt người dùng biết trước câu
+trả lời mới tìm được thứ mình cần, và mọi việc thật đều băng qua hai ba cửa sổ.</p>
+
+<pre><code>●─ CONFIGURE   3 to fix     ← rail xanh: content đi qua được
+●─ AUTHOR      1 conflict
+●─ BUILD       blocked      ← từ đây rail chuyển xám
+○─ PUBLISH     —
+○─ RUN         —</code></pre>
+
+<p>Màu của rail là <strong>chỗ content thực sự dừng lại trong project này, ngay lúc này</strong>.
+Chưa bấm gì đã trả lời được "đang hỏng ở đâu". Đường nối chết hẳn từ stage bị chặn trở xuống —
+đúng thứ xảy ra với content.</p>
+
+<p>Thứ tự stage là ràng buộc, không phải nhãn: một stage chỉ tới được khi những stage trước nó
+lành. Vì vậy <code>PipelineStages.All</code> là thứ tự duy nhất được phép dùng để tìm "stage bị chặn
+đầu tiên" — lấy theo thứ tự đăng ký section thì chỉ cần một lần đổi chỗ là lỗi ở Publish bị báo
+thành thứ chặn content vốn chưa qua nổi Configure.</p>
+
+<h2 id="states">Bốn trạng thái, và cái thứ tư mới là điểm chính</h2>
+
+<div class="scroll">
+<table>
+<tr><th>Trạng thái</th><th>Nghĩa</th><th>Vẽ thế nào</th></tr>
+<tr><td><span class="dot d-ok"></span><span class="pill p-ok">Ok</span></td>
+    <td>Đã đo, và ổn</td><td>chấm đặc, mờ</td></tr>
+<tr><td><span class="dot d-warn"></span><span class="pill p-warn">Warning</span></td>
+    <td>Đã đo, chạy được hôm nay, sẽ trả giá sau</td><td>chấm đặc, vàng</td></tr>
+<tr><td><span class="dot d-err"></span><span class="pill p-err">Blocked</span></td>
+    <td>Đã đo, và pipeline dừng ở đây</td><td>chấm đặc, đỏ</td></tr>
+<tr><td><span class="dot d-idle"></span><span class="pill p-idle">NotMeasured</span></td>
+    <td><strong>Chưa đo</strong></td><td><strong>chấm rỗng ruột</strong></td></tr>
+</table>
+</div>
+
+<div class="card c-err">
+<h3>Luật</h3>
+<p><strong>Một phép kiểm chưa chạy không bao giờ được vẽ giống một phép kiểm đã đạt.</strong></p>
+<p>Sự vắng mặt của trạng thái thứ tư là mẫu lỗi đắt nhất trong lịch sử package này. "Đã kiểm và
+không thấy gì" với "chưa kiểm" từng được vẽ y hệt nhau — ở Validator, ở build manifest, ở
+content-update restriction check, ở Runtime Monitor. Một CDN chưa máy nào chạm tới được đọc là
+khoẻ mạnh, và một team mất cả buổi chiều chẩn đoán nhầm thứ vì tin vào đó.</p>
+<p>Ràng buộc ở mức kiểu: <code>SectionHealth.NotMeasured(reason)</code> <strong>không có
+overload nào bỏ tham số</strong>. Một "không rõ" không kèm lý do chỉ nhỉnh hơn một màu xanh giả
+đúng một chút.</p>
+<p>Và khi gộp section lên thành stage, <code>NotMeasured</code> <strong>xếp trên</strong>
+<code>Ok</code>: một stage có một section chưa đo không phải stage khoẻ, nó là stage không ai bảo
+chứng được.</p>
+</div>
+
+<h2 id="vocab">Bộ từ vựng dùng chung</h2>
+
+<div class="scroll">
+<table>
+<tr><th>Thành phần</th><th>Luật</th></tr>
+<tr><td>State row</td><td>Bốn trạng thái, không phải ba. Gạch xám nghĩa là phép đo không chạy.</td></tr>
+<tr><td>Finding</td><td>Triệu chứng → nguyên nhân → <em>hành động</em>. Không nói được phải làm gì thì chưa sẵn sàng để hiện.</td></tr>
+<tr><td>Long action</td><td>Progress + số đếm + huỷ. Không có gì được khoá Editor mà không có thanh và lối ra.</td></tr>
+<tr><td>Outcome</td><td>Đếm <em>tác dụng</em>, không đếm ý định. Câu đầu tiên không bao giờ là "successfully" trừ khi nó đúng thế.</td></tr>
+<tr><td>Empty state</td><td>Lối thoát nằm <em>trong</em> chính trạng thái rỗng, và view đọc lại sau đó.</td></tr>
+<tr><td>Hover</td><td><strong>Là một lời hứa.</strong> Chỉ đặt trên dòng bấm được thật.</td></tr>
+<tr><td>Container rỗng</td><td>Phải biến mất. Một hộp có thể rỗng mà vẫn vẽ là UI chết.</td></tr>
+</table>
+</div>
+
+<p>Token lấy từ USS sẵn có của package: padding 8/6/4px, radius 3, border 1px, key column 150px,
+body 11px, header 14px. Mọi màu qua <code>--unity-colors-*</code> nên cửa sổ theo skin Editor —
+USS không có grid, <code>::before</code>, box-shadow, rem hay media query, và không chỗ nào ở đây
+cần chúng.</p>
+
+<h2 id="menu">Gộp menu</h2>
+
+<div class="scroll">
+<table>
+<tr><th></th><th>Trước</th><th>Sau</th></tr>
+<tr><td>Menu gốc</td><td>4</td><td>1 + 3 context menu</td></tr>
+<tr><td>Menu item</td><td>21</td><td>5</td></tr>
+<tr><td>Đăng ký trùng</td><td><strong>4</strong></td><td>0</td></tr>
+</table>
+</div>
+
+<p>Ba đường dẫn từng được đăng ký hai lần — <code>Layout Rule Editor</code>,
+<code>Layout Viewer</code>, <code>Dashboard</code>. Unity nhận cả hai và <strong>không định nghĩa
+handler nào chạy</strong>; riêng Layout Rule Editor hai handler còn không mở cùng một cửa sổ. Giờ
+mỗi đường dẫn đăng ký <em>một lần</em>, ở class sở hữu thứ nó mở.</p>
+
+<p>Nguyên tắc: <strong>mọi thứ tới được bằng hai đường</strong> — một menu item và một chỗ trong
+cửa sổ. Menu là lối tắt, cửa sổ là nhà. Không gì chỉ sống trong menu. Và hành động phá hoại
+(<code>Clear All Caches</code>, <code>Force Process All Assets</code>) rời khỏi menu vào trong cửa
+sổ, nằm sau trạng thái mà nó ảnh hưởng cùng một confirm ghi rõ mất gì.</p>
+
+<h2 id="decisions">Ba quyết định, kèm cái giá</h2>
+
+<div class="card c-warn">
+<h3>01 · Diagnostics — cắt hai, đổi mục tiêu một</h3>
+<p><strong>Chọn:</strong> bỏ Assets và Performance; Scopes thành <code>Run › Asset Lifetime</code>.</p>
+<p><strong>Vì:</strong> Unity đã có Addressables profiler, Memory Profiler, Groups window. Bản sao
+tệ hơn của thứ người ta đã có thì tệ hơn là không có. Nhưng có một câu hỏi Unity không trả lời
+được vì nó thuộc abstraction của chính package: <em>scope nào đang giữ asset này sống?</em>
+Package sở hữu refcount, nên chỉ nó trả lời được.</p>
+<p><strong>Mất:</strong> không có đồ thị memory trong cửa sổ này. Ai đuổi theo byte thì sang
+Profiler của Unity — vốn là chỗ đúng.</p>
+<p><strong>Đổi ý khi:</strong> Addressables profiler của Unity phơi ra được scope ownership.</p>
+</div>
+
+<div class="card c-ok">
+<h3>02 · Profiles — không làm editor thứ hai</h3>
+<p><strong>Chọn:</strong> màn đối chiếu. 4 profile × 3 kiểm, sửa được đúng một trường: origin.</p>
+<p><strong>Vì:</strong> cả đợt review này là về <em>hai nơi giữ cùng một sự thật rồi lệch nhau</em>.
+Chính vụ đổi <code>&lt;domain&gt;</code> → <code>&lt;cdnBase&gt;</code> làm chết đường bơm host từ
+CI là như vậy. Viết editor thứ hai là tự chế thêm một ca bệnh giống hệt. Addressables giữ nguyên
+vai chủ sở hữu; thứ cửa sổ của nó không làm được là <em>phán xét</em>.</p>
+<p><strong>Mất:</strong> hai chỗ phải nhìn khi sửa thứ khác ngoài origin. Chấp nhận có chủ ý —
+lựa chọn còn lại là hai chỗ có thể mâu thuẫn nhau.</p>
+</div>
+
+<div class="card c-idle">
+<h3>03 · Ctrl+K — có, nhưng làm cuối</h3>
+<p><strong>Vì:</strong> rẻ và không rủi ro, nhưng là thứ duy nhất trong ba cái không cứu ai lúc 2
+giờ sáng. Palette đặt trên điều hướng tồi là son phấn; trên điều hướng tốt thì thật sự nhanh hơn —
+đó là lý do làm nó <em>sau</em>, không phải lý do bỏ.</p>
+<p><strong>Phạm vi:</strong> chỉ điều hướng. Một palette có thể bắn "Clear cache" từ ba chữ khớp mờ
+là một cách làm điều phá hoại do nhầm lẫn.</p>
+</div>
+
+<h2 id="built">Đã dựng gì, và còn khác thiết kế ở đâu</h2>
+
+<p>Phần này là thứ dễ mất nhất theo thời gian, nên nó nằm ở đây chứ không nằm trong đầu ai.</p>
+
+<div class="scroll">
+<table>
+<tr><th>Màn</th><th>Trạng thái</th><th>Ghi chú</th></tr>
+<tr><td>Overview</td><td><span class="pill p-ok">đủ</span></td>
+    <td>pipeline ngang, thẻ số, việc-cần-làm có cột <em>chặn cái gì</em>, Recent, first-run 3 bước</td></tr>
+<tr><td>Validator</td><td><span class="pill p-warn">khác</span></td>
+    <td>dải tóm tắt thay segmented filter — <strong>đổi có chủ ý</strong>: dải hiện cả 4 trạng thái cùng lúc, filter thì ẩn mất số đếm</td></tr>
+<tr><td>Profiles</td><td><span class="pill p-ok">đủ</span></td>
+    <td>chọn ≠ active; đổi active là nút riêng có confirm ghi hậu quả</td></tr>
+<tr><td>Layout Rules</td><td><span class="pill p-warn">khác</span></td>
+    <td>xếp dọc thay hai cột; dry run đầy đủ</td></tr>
+<tr><td>Build</td><td><span class="pill p-ok">đủ</span></td>
+    <td>thẻ chặn, bảng sẽ-sinh-ra, thanh tỷ lệ what-ships-where</td></tr>
+<tr><td>Update Preview</td><td><span class="pill p-ok">đủ</span></td>
+    <td>4 thẻ số + diff <code>+ ~ −</code> kèm lý do</td></tr>
+<tr><td>Asset Lifetime</td><td><span class="pill p-warn">khác</span></td>
+    <td>dải tóm tắt thay 4 thẻ số; leak ở mức <em>scope</em>, không ở mức handle</td></tr>
+<tr><td>Runtime Monitor</td><td><span class="pill p-warn">tab cũ</span></td>
+    <td>đã vá lỗi thật của nó thay vì viết lại — xem dưới</td></tr>
+<tr><td>Catalog · Local Server</td><td><span class="pill p-warn">tab cũ</span></td>
+    <td>có health probe nên rail nói thật về chúng</td></tr>
+<tr><td>Ctrl+K</td><td><span class="pill p-ok">đủ</span></td>
+    <td>subsequence, title &gt; stage &gt; subtitle</td></tr>
+<tr><td>Màu · font · chrome nút</td><td><span class="pill p-idle">cố ý khác</span></td>
+    <td><code>--unity-colors-*</code> và font Unity — invariant §5</td></tr>
+</table>
+</div>
+
+<p><strong>Vì sao Runtime Monitor không được viết lại.</strong> Nó vừa được sửa ở pre.15 và trong
+đợt này. Viết lại được bố cục theo thiết kế nhưng đánh cược thứ vừa sửa. Thay vào đó lỗi thật của
+nó được vá: kết quả của cả ba nút bị <code>Refresh()</code> ghi đè <em>đồng bộ, trước khi frame
+được vẽ</em>, nên thông điệp chưa từng tồn tại với người dùng và cả ba nút trông như hỏng.</p>
+
+<p><strong>Vì sao leak chỉ ở mức scope.</strong> Chỉ ra <em>handle nào</em> quên release cần refcount
+trên <code>IOwnedHandle</code>, mà nó chỉ có <code>IsAlive</code>. Nửa đó chưa đo, và màn hình ghi
+rõ chứ không đoán.</p>
+
+<h2 id="pitfalls">Ba cái bẫy đã trả giá để biết</h2>
+
+<div class="card c-err">
+<h3>Hover là lời hứa</h3>
+<p><code>.hub-prow:hover</code> và <code>.hub-rule:hover</code> từng áp lên mọi dòng ở cả 5 section,
+mà gần như không dòng nào bấm được. Người dùng phát hiện: "sao không chọn được profile?" Dòng sáng
+lên rồi bỏ qua cú bấm là cùng một lỗi với nút có handler rỗng. Giờ hover chỉ nằm trên
+<code>--clickable</code>.</p>
+</div>
+
+<div class="card c-err">
+<h3>Container rỗng vẫn được vẽ</h3>
+<p><code>_sectionActions</code> được khai báo, query theo tên, <code>Clear()</code> mỗi lần chuyển
+màn — và <strong>không bao giờ được Add</strong>. Một hộp rỗng vẽ suốt vòng đời cửa sổ, trong chính
+cửa sổ được dựng lên để dẹp loại lỗi đó. Giờ có <code>IHubSectionActions</code> để opt-in, và shell
+<em>ẩn</em> container khi rỗng.</p>
+</div>
+
+<div class="card c-err">
+<h3>Test xanh mà không chạy</h3>
+<p>Lần chạy đầu sau khi thêm dry run: <strong>181 xanh, 0 đỏ, 3 skip</strong> — và 3 test bị skip
+chính là tấm lưới an toàn cho thay đổi rủi ro nhất. Chúng đọc một <code>LayoutRuleData</code> asset
+trong project và <code>Assert.Ignore</code> khi không thấy.</p>
+<p>Sửa: rule set là <em>đầu vào của test</em>, không phải môi trường, nên test tự dựng nó trong bộ
+nhớ. Thêm một case thứ tư khẳng định preview <em>có</em> lên kế hoạch gì đó — không có nó thì ba
+case kia có thể xanh một cách rỗng.</p>
+</div>
+
+<h2 id="files">File ở đâu</h2>
+
+<div class="scroll">
+<table>
+<tr><th>Đường dẫn</th><th>Là gì</th></tr>
+<tr><td><code>Documentation/UI_DESIGN.html</code></td><td>file này — đặc tả, mở bằng trình duyệt</td></tr>
+<tr><td><code>Documentation/DESIGN_PREVIEW.html</code></td><td><strong>bản xem bấm được</strong> — mở bằng double-click, không cần mạng</td></tr>
+<tr><td><code>Documentation/design/*.dc.html</code></td><td>artboard nguồn — nơi duy nhất thiết kế được viết</td></tr>
+<tr><td><code>Documentation/design/build-local-preview.mjs</code></td><td>sinh bản xem từ nguồn: <code>node Documentation/design/build-local-preview.mjs</code></td></tr>
+<tr><td><code>Documentation/design/canvas.json</code></td><td>bố cục canvas</td></tr>
+<tr><td><code>Documentation/REVIEW_4.1.0-pre.15.html</code></td><td>đợt review 72 phát hiện dẫn tới thiết kế này</td></tr>
+<tr><td><code>Packages/…/Editor/Windows/Hub/</code></td><td>bản dựng</td></tr>
+</table>
+</div>
+
+<p>Payload canvas đã seed (~2.4 MB editor code nhúng) bị gitignore — tái tạo được từ nguồn, và
+không đáng nằm trong lịch sử git. <code>DESIGN_PREVIEW.html</code> là thứ thay thế nó: 124 KB, sinh
+từ chính nguồn <code>.dc.html</code>, mở được mà không cần link nào.</p>
+
+<blockquote>
+<strong>Một nguồn.</strong> Thiết kế chỉ được viết ở <code>.dc.html</code>. Bản xem là thứ sinh ra,
+và generator nằm trong repo để việc sinh lại tái tạo được — thay vì một bản export ai đó làm một lần
+rồi sửa tay. Sửa bản xem là sửa nhầm file; sửa nguồn rồi chạy lại script.
+</blockquote>
+
+<hr>
+<p class="sub">Cập nhật khi thiết kế đổi. Một đặc tả mô tả phần mềm không còn tồn tại thì tệ hơn là
+không có đặc tả.</p>
+
+</div>
+</body>
+</html>

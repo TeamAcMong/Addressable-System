@@ -97,3 +97,7 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Design canvas: generated payload (~2.4 MB of embedded editor code).
+# Regenerate from the .dc.html sources + canvas.json with the design skill.
+Documentation/design/addressable-manager-ui.html

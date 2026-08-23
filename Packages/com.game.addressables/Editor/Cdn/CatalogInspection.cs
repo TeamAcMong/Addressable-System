@@ -140,8 +140,25 @@ namespace AddressableManager.Editor.Cdn
         /// </summary>
         public int UncheckedBundles { get; }
 
-        /// <summary>True when nothing would 404 and nothing came from a different build.</summary>
-        public bool IsPublishable => Missing.Count == 0 && SizeMismatches.Count == 0;
+        /// <summary>
+        /// True when nothing would 404, nothing came from a different build, AND the check actually
+        /// covered something.
+        /// </summary>
+        /// <remarks>
+        /// The coverage terms are not decoration. Without them this property cannot return false for a
+        /// run that compared nothing: every bundle classified <c>Unknown</c> is skipped, and a verdict
+        /// computed only from <see cref="Missing"/> and <see cref="SizeMismatches"/> is then vacuously
+        /// true. That is reachable from an ordinary configuration - a RemoteLoadPath built from a custom
+        /// profile token, or any scheme other than http(s), classifies EVERY remote bundle as Unknown -
+        /// and the CLI gate that reads this property would exit 0 having verified nothing.
+        ///
+        /// <see cref="Summary"/> already carried this caveat as prose. Prose does not set an exit code.
+        /// </remarks>
+        public bool IsPublishable =>
+            Missing.Count == 0
+            && SizeMismatches.Count == 0
+            && UncheckedBundles == 0
+            && BundlesMatched > 0;
 
         public long OrphanBytes
         {

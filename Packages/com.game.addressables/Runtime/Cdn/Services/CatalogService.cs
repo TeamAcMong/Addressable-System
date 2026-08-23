@@ -207,6 +207,18 @@ namespace AddressableManager.Cdn
             if (!_network.IsReachable)
                 return CdnResult<CatalogUpdateInfo>.Success(CatalogUpdateInfo.Offline);
 
+            // IsReachable reports the network INTERFACE, not whether anything answers on it. A captive
+            // portal or one bar of signal passes that guard and the operation below then never returns,
+            // so the caller's first screen waits forever. Bound the whole operation, not one request -
+            // DownloadPolicy.TimeoutSeconds already covers the request.
+            // Kept separately: the parameter is about to be replaced by the linked token, and the
+            // catch below has to tell "the caller cancelled" from "the deadline expired".
+            var callerToken = cancellationToken;
+
+            using (var deadline = CreateDeadline(callerToken))
+            {
+                cancellationToken = deadline?.Token ?? callerToken;
+
             // autoReleaseHandle: false — the handle carries the result list, and releasing it
             // automatically would free the list before it can be read.
             AsyncOperationHandle<List<string>> handle;
@@ -231,6 +243,24 @@ namespace AddressableManager.Cdn
             catch (OperationCanceledException)
             {
                 SafeRelease(handle);
+
+                // The caller cancelling and the deadline expiring are different answers. A deadline
+                // means "the host is reachable but not responding", which is the offline answer as far
+                // as the game is concerned - keep playing on what shipped, ask again later.
+                if (!callerToken.IsCancellationRequested)
+                {
+                    int seconds = _settings?.DownloadPolicy?.CatalogOperationTimeoutSeconds ?? 0;
+                    Debug.LogWarning(
+                        $"[CatalogService] The catalog check did not answer within {seconds}s and was " +
+                        "abandoned. The network reports as reachable, so this is most often a captive " +
+                        "portal, a very weak connection, or a host that accepts the connection and then " +
+                        "stalls. Treating it as offline; raise " +
+                        "CdnSettings > DownloadPolicy > CatalogOperationTimeoutSeconds if the CDN is " +
+                        "legitimately this slow.");
+
+                    return CdnResult<CatalogUpdateInfo>.Success(CatalogUpdateInfo.Offline);
+                }
+
                 return CdnResult<CatalogUpdateInfo>.Cancelled("Cancelled while checking for catalog updates");
             }
             catch (Exception ex)
@@ -248,6 +278,8 @@ namespace AddressableManager.Cdn
 
             if (!succeeded)
             {
+                WarnAboutCheckCatalogsDefect(failure);
+
                 // The connection dropped between the reachability check and the request. Treated as
                 // the offline answer rather than an error, for the same reason as above.
                 if (!_network.IsReachable)
@@ -257,7 +289,78 @@ namespace AddressableManager.Cdn
             }
 
             return CdnResult<CatalogUpdateInfo>.Success(new CatalogUpdateInfo(catalogs));
+            }
         }
+
+        /// <summary>
+        /// A CancellationTokenSource that fires after
+        /// <see cref="DownloadPolicy.CatalogOperationTimeoutSeconds"/>, linked to the caller's token.
+        /// Null when the deadline is disabled, so the caller's token is used unchanged.
+        /// </summary>
+        /// <remarks>
+        /// Linked rather than standalone: cancelling from the caller must still work, and a deadline
+        /// that ignored the caller's token would be a second, competing lifetime.
+        /// </remarks>
+        private CancellationTokenSource CreateDeadline(CancellationToken callerToken)
+        {
+            int seconds = _settings?.DownloadPolicy?.CatalogOperationTimeoutSeconds ?? 0;
+            if (seconds <= 0) return null;
+
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(seconds));
+            return cts;
+        }
+
+        /// <summary>
+        /// Explains, once, that a failed catalog check is about to break Addressables' update loop for
+        /// the rest of the session — because Unity's own error will not say so.
+        /// </summary>
+        /// <remarks>
+        /// Two defects in Addressables 2.9.1 combine into a session-ending failure that names the wrong
+        /// cause:
+        ///
+        /// <para>1. <c>CheckCatalogsOperation.Destroy()</c> is <c>m_DepOp.Release()</c> with no
+        /// <c>IsValid()</c> check (CheckCatalogsOperation.cs:62-65). When the check failed, that
+        /// dependency handle is already invalid, so <c>AsyncOperationHandle.get_InternalOp</c> throws
+        /// <c>"Attempting to use an invalid operation handle"</c>.</para>
+        ///
+        /// <para>2. That throw lands in <c>ResourceManager.ExecuteDeferredCallbacks</c>
+        /// (ResourceManager.cs:1065), called from <c>ResourceManager.Update</c> — which sets
+        /// <c>m_InsideUpdateMethod = true</c> at line 1100 and clears it at 1121 with <b>no
+        /// try/finally</b>. The flag is therefore stuck true forever, and every subsequent frame throws
+        /// <c>"Reentering the Update method is not allowed. This can happen when calling
+        /// WaitForCompletion on an operation while inside of a callback."</c></para>
+        ///
+        /// That second message is what a developer actually sees — thousands of times, blaming a
+        /// <c>WaitForCompletion</c> that was never called, from a two-frame stack containing only
+        /// Unity's own code. The real cause is this failed catalog check, already scrolled far out of
+        /// view. Nothing downstream can catch the throw: it happens on Unity's stack inside Update.
+        ///
+        /// So the only useful thing to do is say it here, at the moment it becomes inevitable.
+        /// </remarks>
+        private void WarnAboutCheckCatalogsDefect(Exception failure)
+        {
+            if (_warnedAboutCheckCatalogsDefect) return;
+            _warnedAboutCheckCatalogsDefect = true;
+
+            Debug.LogWarning(
+                "[CatalogService] The catalog update check failed, and on Addressables 2.9.1 that failure " +
+                "is not contained.\n" +
+                $"  Reason: {failure?.Message ?? "(no exception recorded)"}\n\n" +
+                "Addressables will now throw \"Attempting to use an invalid operation handle\" from " +
+                "CheckCatalogsOperation.Destroy(), and because ResourceManager.Update has no try/finally " +
+                "around its re-entrancy flag, that flag stays set for the rest of the session. From this " +
+                "point every frame logs \"Reentering the Update method is not allowed ... WaitForCompletion " +
+                "... inside of a callback\".\n\n" +
+                "That message is misleading: no WaitForCompletion is involved, and Addressables is now " +
+                "unusable until you exit play mode and re-enter. Fix the catalog URL above rather than " +
+                "hunting for a re-entrancy bug — most often the host is simply not running (the Local " +
+                "profile points at http://localhost:8080, which needs the CDN Manager's Local Server tab " +
+                "started), or the profile is pointing somewhere it should not be.");
+        }
+
+        /// <summary>Set once the defect above has been explained, so it is not repeated every check.</summary>
+        private bool _warnedAboutCheckCatalogsDefect;
 
         // ================= 2.7 apply update =================
 

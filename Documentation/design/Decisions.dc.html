@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    a { color: #6E9FD4; } a:hover { color: #8FB8E4; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 940px; background-color: #383838; color: #D2D2D2; font-size: 12px; padding: 22px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+
+  <div>
+    <div style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Decisions, and what they cost</div>
+    <div style="font-size: 11px; color: #9A9A9A; margin-top: 4px; text-wrap: pretty; max-width: 880px;">Three open questions, closed. Written down because in six months the reasoning is the part that gets lost, and someone will otherwise re-add the thing that was deliberately cut.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 13px; flex-grow: 1; min-height: 0; overflow-y: auto;">
+
+    <sc-for list="{{decisions}}" as="d" hint-placeholder-count="3">
+      <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6E6E6E;">{{d.n}}</span>
+          <span style="font-size: 12.5px; font-weight: 600; color: #E4E4E4;">{{d.q}}</span>
+          <div style="flex-grow: 1;"></div>
+          <span style="{{d.verdictStyle}}">{{d.verdict}}</span>
+        </div>
+
+        <div style="display: flex;">
+          <div style="flex: 1.5; min-width: 0; padding: 13px 14px; border-right: 1px solid #2B2B2B;">
+            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #7E7E7E;">REASONING</div>
+            <div style="font-size: 11px; color: #C4C4C4; margin-top: 6px; text-wrap: pretty;">{{d.why}}</div>
+            <div style="font-size: 11px; color: #969696; margin-top: 8px; text-wrap: pretty;">{{d.why2}}</div>
+          </div>
+
+          <div style="flex: 1; min-width: 0; padding: 13px 14px; background-color: #363636;">
+            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #7E7E7E;">WHAT WE GIVE UP</div>
+            <div style="font-size: 11px; color: #969696; margin-top: 6px; text-wrap: pretty;">{{d.cost}}</div>
+
+            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #7E7E7E; margin-top: 12px;">WOULD CHANGE OUR MIND</div>
+            <div style="font-size: 11px; color: #969696; margin-top: 6px; text-wrap: pretty;">{{d.revisit}}</div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+
+    <!-- build order -->
+    <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+      <div style="padding: 9px 14px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+        <span style="font-size: 12.5px; font-weight: 600; color: #E4E4E4;">Build order</span>
+        <span style="font-size: 10.5px; color: #8A8A8A; margin-left: 8px;">by what breaks if it is missing, not by what is fun</span>
+      </div>
+      <div style="padding: 6px 0;">
+        <sc-for list="{{order}}" as="o" hint-placeholder-count="6">
+          <div style="display: flex; align-items: flex-start; gap: 11px; padding: 7px 14px;">
+            <span style="width: 18px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6E6E6E; text-align: right;">{{o.n}}</span>
+            <div style="width: 3px; align-self: stretch; background-color: {{o.tone}}; border-radius: 2px; flex-shrink: 0;"></div>
+            <div style="flex-grow: 1; min-width: 0;">
+              <span style="font-size: 11.5px; font-weight: 600; color: #DCDCDC;">{{o.what}}</span>
+              <span style="font-size: 10.5px; color: #8A8A8A; margin-left: 8px;">{{o.why}}</span>
+            </div>
+            <span style="width: 96px; flex-shrink: 0; text-align: right; font-size: 10.5px; color: #7E7E7E;">{{o.size}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const chip = (tone, bg) => 'padding: 2px 9px; border-radius: 10px; font-size: 10px; font-weight: 600; color: '
+      + tone + '; background-color: ' + bg + ';';
+
+    return {
+      decisions: [
+        {
+          n: '01',
+          q: 'Diagnostics — keep the Assets, Performance and Scopes tabs?',
+          verdict: 'Cut two, re-aim one',
+          verdictStyle: chip('#E8C87C', '#3A3330'),
+          why: 'Unity already ships an Addressables profiler module, a memory profiler and a Groups window. A worse copy of a tool people already have is worse than no tool: it splits attention and it will be wrong in ways the real one is not.',
+          why2: 'But there is one question Unity cannot answer, because it belongs to this package’s own abstraction: which scope is holding this asset alive, and who took the reference. The package owns the refcounts, so only it can say. Scopes becomes Run › Asset Lifetime, aimed squarely at leak-hunting.',
+          cost: 'No memory graph inside this window. Anyone chasing bytes goes to Unity’s Profiler, which is the right place anyway. We also lose the "everything in one window" pitch, slightly.',
+          revisit: 'If Unity’s Addressables profiler ever exposes scope ownership, Asset Lifetime becomes a thin wrapper and should be reconsidered.',
+        },
+        {
+          n: '02',
+          q: 'Profiles — build a real editor, or link out to Addressables?',
+          verdict: 'Neither: a conformance view',
+          verdictStyle: chip('#9BC5EA', '#2E3B47'),
+          why: 'This entire review has been about one failure mode: two places holding the same truth, drifting apart. The placeholder rename that killed CI host injection was exactly that. Writing a second profile editor manufactures another instance of the bug we just spent five releases fixing.',
+          why2: 'Addressables stays the single owner. What its window cannot do is judge: it shows a text field, it does not know the origin is missing from CdnSettings or that one profile’s suffix drifted from the other three. So we add the judgement, not the storage — four profiles, three checks per row, and exactly one editable field: the origin, because that is the one CI must set.',
+          cost: 'Two places to look when editing anything other than the origin. Accepted deliberately: the alternative is two places that can disagree.',
+          revisit: 'If Unity ever makes profile variables extensible enough to carry our convention, the check could move into their window and this screen could go.',
+        },
+        {
+          n: '03',
+          q: 'Ctrl+K command palette — v1 or later?',
+          verdict: 'Yes, but last',
+          verdictStyle: chip('#8FBF93', '#2F3A31'),
+          why: 'It is cheap — roughly 150 lines over the section list and the MenuItem methods that already exist — and it risks nothing. Fourteen sections is past the point where scanning beats typing.',
+          why2: 'It is also the only one of the three that saves nobody at 2am. Asset Lifetime does. A palette over bad navigation is lipstick; over good navigation it is genuinely fast — which is an argument for building it after the navigation lands, not for skipping it.',
+          cost: 'Nothing structural. Shipping without it just means people use the rail, which is the point of the rail.',
+          revisit: 'If it slips twice, cut it. Nothing depends on it.',
+        },
+      ],
+
+      order: [
+        { n: '1', tone: '#FF6B68', what: 'The shell and the rail',       why: 'every other screen lives inside it',              size: '~2 days' },
+        { n: '2', tone: '#FF6B68', what: 'Validator, grouped',           why: 'it is what blocks builds today',                  size: '~1 day' },
+        { n: '3', tone: '#F5C24C', what: 'Profiles conformance',         why: 'closes the CI story you are standing up now',     size: '~1 day' },
+        { n: '4', tone: '#F5C24C', what: 'Rules with a dry run',         why: 'the daily path, and it has no preview at all',    size: '~2 days' },
+        { n: '5', tone: '#6E9FD4', what: 'Build + Update Preview diff',  why: 'patch size is the number releases are judged on', size: '~2 days' },
+        { n: '6', tone: '#6E9FD4', what: 'Asset Lifetime',               why: 'nothing else can answer what it answers',         size: '~2 days' },
+        { n: '7', tone: '#6FBF73', what: 'Runtime Monitor, Local Server, Catalog', why: 'mostly reshaping what exists',          size: '~2 days' },
+        { n: '8', tone: '#6FBF73', what: 'Menu consolidation',           why: 'do it once the destinations are real',            size: '~half a day' },
+        { n: '9', tone: '#8A8A8A', what: 'Ctrl+K palette',               why: 'additive, cut it if anything slips',              size: '~1 day' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

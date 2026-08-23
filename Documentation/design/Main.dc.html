@@ -1,0 +1,908 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    a { color: #6E9FD4; text-decoration: none; }
+    a:hover { color: #8FB8E4; }
+    .row:hover      { background-color: #414141 !important; }
+    .btn:hover      { background-color: #666666 !important; border-color: #2A2A2A !important; }
+    .btn-p:hover    { background-color: #4B84C4 !important; }
+    .nav:hover      { background-color: #3B3B3B; }
+    .nav-on:hover   { background-color: #2C5D87 !important; }
+    .chip:hover     { background-color: #4E4E4E !important; color: #E4E4E4 !important; }
+    .lnk:hover      { color: #8FB8E4 !important; }
+    .stage:hover .stage-title { color: #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 880px; display: flex; flex-direction: column; background-color: #383838; color: #D2D2D2; font-size: 12px; line-height: 1.5; overflow: hidden;">
+
+  <!-- ══════════ HEADER ══════════ -->
+  <div style="display: flex; align-items: center; gap: 12px; padding: 0 10px; height: 34px; flex-shrink: 0; background-color: #3C3C3C; border-bottom: 1px solid #232323;">
+    <div style="display: flex; align-items: center; gap: 7px; flex-shrink: 0;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9FC0E0" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"></path><path d="M3 7l9 5 9-5"></path><path d="M12 12v10"></path></svg>
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: -0.01em;">Addressable Manager</span>
+    </div>
+
+    <!-- command palette affordance -->
+    <div class="chip" style="display: flex; align-items: center; gap: 7px; width: 300px; padding: 3px 8px; background-color: #454545; border: 1px solid #2B2B2B; border-radius: 3px; cursor: text; color: #8A8A8A;">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <span style="flex-grow: 1; font-size: 11px;">Go to anything…</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 0 4px; background-color: #383838; border: 1px solid #2B2B2B; border-radius: 2px;">Ctrl K</span>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+      <sc-for list="{{context}}" as="c" hint-placeholder-count="3">
+        <div class="chip" style="display: flex; align-items: center; gap: 5px; padding: 2px 7px; background-color: #454545; border: 1px solid #2B2B2B; border-radius: 3px; cursor: pointer;">
+          <span style="color: #8A8A8A; font-size: 10px;">{{c.k}}</span>
+          <span style="color: {{c.tone}}; font-weight: 500;">{{c.v}}</span>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#7E7E7E" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ══════════ BODY ══════════ -->
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+
+    <!-- ────────── PIPELINE SIDEBAR ────────── -->
+    <div style="width: 228px; flex-shrink: 0; background-color: #323232; border-right: 1px solid #232323; display: flex; flex-direction: column; overflow-y: auto;">
+      <div style="padding: 11px 12px 5px 12px; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: #6B6B6B;">DELIVERY PIPELINE</div>
+
+      <sc-for list="{{stages}}" as="st" hint-placeholder-count="5">
+        <div>
+          <!-- stage header with connector -->
+          <div class="stage" onClick="{{st.pick}}" style="display: flex; align-items: flex-start; gap: 0; cursor: pointer; padding: 3px 12px 1px 12px;">
+            <div style="width: 16px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; align-self: stretch;">
+              <div style="{{st.dotStyle}}"></div>
+              <div style="{{st.lineStyle}}"></div>
+            </div>
+            <div style="flex-grow: 1; min-width: 0; padding-bottom: 2px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="stage-title" style="{{st.titleStyle}}">{{st.label}}</span>
+                <div style="flex-grow: 1;"></div>
+                <span style="{{st.badgeStyle}}">{{st.badge}}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- stage items -->
+          <sc-for list="{{st.items}}" as="it" hint-placeholder-count="2">
+            <div class="{{it.cls}}" onClick="{{it.pick}}" style="{{it.rowStyle}}">
+              <div style="width: 16px; flex-shrink: 0; display: flex; justify-content: center; align-self: stretch;">
+                <div style="{{it.railStyle}}"></div>
+              </div>
+              <span style="{{it.textStyle}}">{{it.label}}</span>
+              <div style="flex-grow: 1;"></div>
+              <sc-if value="{{it.dot}}" hint-placeholder-val="{{true}}">
+                <div style="width: 5px; height: 5px; border-radius: 3px; margin-right: 2px; background-color: {{it.dot}};"></div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+
+      <div style="flex-grow: 1; min-height: 10px;"></div>
+
+      <!-- blocked-by summary -->
+      <div style="margin: 8px; padding: 8px 9px; background-color: #3A3330; border: 1px solid #4A3E34; border-radius: 3px;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F5C24C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9 2.4 17.4A1.8 1.8 0 0 0 4 20h16a1.8 1.8 0 0 0 1.6-2.6L13.7 3.9a1.8 1.8 0 0 0-3.4 0z"></path></svg>
+          <span style="font-size: 10px; font-weight: 600; color: #E8C87C;">Pipeline stops at Build</span>
+        </div>
+        <div style="font-size: 10px; color: #A09587; margin-top: 3px; text-wrap: pretty;">One configuration issue blocks it.</div>
+        <div class="lnk" onClick="{{goValidator}}" style="font-size: 10px; color: #6E9FD4; margin-top: 5px; cursor: pointer;">Fix it →</div>
+      </div>
+    </div>
+
+    <!-- ────────── CONTENT ────────── -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+
+      <!-- section header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; height: 42px; flex-shrink: 0; background-color: #3A3A3A; border-bottom: 1px solid #2B2B2B;">
+        <div style="min-width: 0;">
+          <div style="font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: #E4E4E4;">{{title}}</div>
+          <div style="font-size: 10px; color: #8A8A8A; margin-top: -1px;">{{subtitle}}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+          <sc-for list="{{headerActions}}" as="ha" hint-placeholder-count="2">
+            <div class="{{ha.cls}}" style="{{ha.style}}">{{ha.label}}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 14px;">
+
+        <!-- ═════════ OVERVIEW ═════════ -->
+        <sc-if value="{{isOverview}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+
+            <!-- horizontal pipeline -->
+            <div style="padding: 14px 16px 16px 16px; background-color: #3F3F3F; border: 1px solid #2B2B2B; border-radius: 4px;">
+              <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: #7E7E7E; margin-bottom: 12px;">HOW FAR CONTENT GETS RIGHT NOW</div>
+              <div style="display: flex; align-items: flex-start;">
+                <sc-for list="{{flow}}" as="f" hint-placeholder-count="5">
+                  <div style="{{f.cellStyle}}">
+                    <div style="display: flex; align-items: center; width: 100%;">
+                      <div style="{{f.leftLine}}"></div>
+                      <div style="{{f.nodeStyle}}">
+                        <sc-if value="{{f.done}}" hint-placeholder-val="{{true}}">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2A2A2A" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                        </sc-if>
+                        <sc-if value="{{f.blocked}}" hint-placeholder-val="{{true}}">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2A2A2A" stroke-width="3.4" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="M6 6l12 12"></path></svg>
+                        </sc-if>
+                      </div>
+                      <div style="{{f.rightLine}}"></div>
+                    </div>
+                    <div style="{{f.labelStyle}}">{{f.label}}</div>
+                    <div style="{{f.noteStyle}}">{{f.note}}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- what needs you -->
+            <div>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px;">
+                <span style="font-size: 12px; font-weight: 600; color: #E4E4E4;">What needs you</span>
+                <span style="font-size: 10px; color: #7E7E7E;">ordered by what unblocks the most</span>
+              </div>
+              <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                <sc-for list="{{todo}}" as="t" hint-placeholder-count="4">
+                  <div class="row" style="{{t.rowStyle}}">
+                    <div style="{{t.barStyle}}"></div>
+                    <div style="flex-shrink: 0; width: 20px; display: flex; justify-content: center;">
+                      <div style="width: 7px; height: 7px; border-radius: 4px; background-color: {{t.tone}};"></div>
+                    </div>
+                    <div style="flex-grow: 1; min-width: 0;">
+                      <div style="font-size: 11.5px; color: #DCDCDC;">{{t.title}}</div>
+                      <div style="font-size: 10px; color: #8A8A8A; margin-top: 1px; text-wrap: pretty;">{{t.detail}}</div>
+                    </div>
+                    <div style="flex-shrink: 0; width: 108px; font-size: 10px; color: #7E7E7E;">{{t.blocks}}</div>
+                    <div class="btn" onClick="{{t.go}}" style="flex-shrink: 0; padding: 3px 11px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 10.5px; cursor: pointer;">{{t.action}}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- recent activity -->
+            <div>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px;">
+                <span style="font-size: 12px; font-weight: 600; color: #E4E4E4;">Recent</span>
+                <span class="lnk" style="font-size: 10px; color: #6E9FD4; cursor: pointer;">Full history</span>
+              </div>
+              <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                <sc-for list="{{history}}" as="h" hint-placeholder-count="4">
+                  <div class="row" style="{{h.rowStyle}}">
+                    <span style="width: 74px; flex-shrink: 0; font-size: 10px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">{{h.when}}</span>
+                    <div style="width: 5px; height: 5px; border-radius: 3px; background-color: {{h.tone}}; flex-shrink: 0; margin-right: 9px;"></div>
+                    <span style="flex-grow: 1; font-size: 11px; color: #C8C8C8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{h.what}}</span>
+                    <span style="flex-shrink: 0; font-size: 10px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">{{h.meta}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ VALIDATOR ═════════ -->
+        <sc-if value="{{isValidator}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+
+            <!-- segmented filter -->
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="display: flex; background-color: #333333; border: 1px solid #2B2B2B; border-radius: 3px; overflow: hidden;">
+                <sc-for list="{{segs}}" as="sg" hint-placeholder-count="4">
+                  <div class="chip" style="{{sg.style}}">{{sg.label}}</div>
+                </sc-for>
+              </div>
+              <div style="flex-grow: 1;"></div>
+              <span style="font-size: 10px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">last checked 14:22:07 · 0.4s</span>
+            </div>
+
+            <!-- grouped by consequence, not by rule id -->
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+              <div>
+                <div style="display: flex; align-items: center; gap: 7px; margin-bottom: 6px;">
+                  <div style="width: 3px; height: 13px; border-radius: 2px; background-color: {{g.tone}};"></div>
+                  <span style="font-size: 11.5px; font-weight: 600; color: #E0E0E0;">{{g.title}}</span>
+                  <span style="font-size: 10px; color: #8A8A8A;">{{g.count}}</span>
+                </div>
+                <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                  <sc-for list="{{g.rules}}" as="r" hint-placeholder-count="2">
+                    <div style="{{r.wrapStyle}}">
+                      <div style="display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px;">
+                        <div style="width: 7px; height: 7px; border-radius: 4px; background-color: {{r.tone}}; flex-shrink: 0; margin-top: 4px;"></div>
+                        <div style="flex-grow: 1; min-width: 0;">
+                          <div style="font-size: 11.5px; color: #DCDCDC; text-wrap: pretty;">{{r.headline}}</div>
+                          <div style="font-size: 10.5px; color: #909090; margin-top: 3px; text-wrap: pretty;">{{r.why}}</div>
+                          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+                            <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: #6E6E6E; padding: 1px 5px; background-color: #333333; border-radius: 2px;">{{r.id}}</span>
+                            <sc-if value="{{r.docs}}" hint-placeholder-val="{{true}}">
+                              <span class="lnk" style="font-size: 10px; color: #6E9FD4; cursor: pointer;">{{r.docs}}</span>
+                            </sc-if>
+                          </div>
+                        </div>
+                        <div style="flex-shrink: 0; display: flex; gap: 6px;">
+                          <sc-for list="{{r.actions}}" as="ac" hint-placeholder-count="2">
+                            <div class="{{ac.cls}}" style="{{ac.style}}">{{ac.label}}</div>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="padding: 9px 11px; background-color: #363636; border: 1px solid #2B2B2B; border-radius: 4px;">
+              <div style="font-size: 10.5px; color: #8A8A8A; text-wrap: pretty;"><span style="color: #B4B4B4; font-weight: 600;">Why some issues have no Fix button.</span> An auto-fix is only offered where one answer is unambiguously right. "Remote origin unknown" has two valid answers — add the origin to CdnSettings, or build against a different profile — and they mean different things, so the tool refuses to guess.</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ BUILD ═════════ -->
+        <sc-if value="{{isBuild}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+
+            <div style="display: flex; gap: 10px; align-items: stretch;">
+              <div style="flex: 1.35; min-width: 0; border: 1px solid #4A3236; border-radius: 4px; overflow: hidden; background-color: #3A3032;">
+                <div style="display: flex; align-items: center; gap: 7px; padding: 8px 11px; background-color: #43373A; border-bottom: 1px solid #4A3236;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FF8A87" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4.5"></path><path d="M12 16h.01"></path></svg>
+                  <span style="font-size: 11.5px; font-weight: 600; color: #F0B5B3;">This build cannot start</span>
+                </div>
+                <div style="padding: 11px;">
+                  <div style="font-size: 11.5px; color: #DCDCDC; text-wrap: pretty;">The active <span style="font-weight: 600;">Prod</span> profile still contains the placeholder <span style="font-family: 'JetBrains Mono', monospace; color: #FF9A97;">&lt;cdnBase&gt;</span>.</div>
+                  <div style="font-size: 10.5px; color: #9E9490; margin-top: 5px; text-wrap: pretty;">Building would bake a hostname that does not exist into the catalog. Every player on that build would ask for it forever, and no later upload could change it.</div>
+                  <div style="display: flex; gap: 7px; margin-top: 10px;">
+                    <div class="btn-p" style="padding: 4px 12px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFFFFF; cursor: pointer;">Set the host</div>
+                    <div class="btn" style="padding: 4px 12px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px; cursor: pointer;">Read CDN_HOST from the environment</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="flex: 1; min-width: 0; border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">What would be produced</div>
+                <div style="padding: 5px 0;">
+                  <sc-for list="{{buildFacts}}" as="bf" hint-placeholder-count="6">
+                    <div style="display: flex; align-items: baseline; padding: 3px 11px;">
+                      <span style="width: 108px; flex-shrink: 0; font-size: 10.5px; color: #8A8A8A;">{{bf.k}}</span>
+                      <span style="flex-grow: 1; min-width: 0; font-size: 10.5px; color: {{bf.tone}}; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{bf.v}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <!-- what ships where -->
+            <div>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px;">
+                <span style="font-size: 12px; font-weight: 600; color: #E4E4E4;">What ships where</span>
+                <span style="font-size: 10px; color: #7E7E7E;">14 groups · 2.4 GB total</span>
+              </div>
+              <div style="display: flex; height: 22px; border-radius: 3px; overflow: hidden; border: 1px solid #2B2B2B;">
+                <sc-for list="{{split}}" as="sp" hint-placeholder-count="3">
+                  <div style="{{sp.style}}"><span style="font-size: 9.5px; font-weight: 600; color: #1F1F1F;">{{sp.label}}</span></div>
+                </sc-for>
+              </div>
+              <div style="display: flex; gap: 16px; margin-top: 7px;">
+                <sc-for list="{{splitLegend}}" as="sl" hint-placeholder-count="3">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="width: 8px; height: 8px; border-radius: 2px; background-color: {{sl.tone}};"></div>
+                    <span style="font-size: 10.5px; color: #B4B4B4;">{{sl.label}}</span>
+                    <span style="font-size: 10.5px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">{{sl.v}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; padding-top: 2px;">
+              <span style="font-size: 10px; color: #7E7E7E; flex-grow: 1; text-wrap: pretty;">A full build replaces the catalog; an update keeps it and patches only what changed since <span style="font-family: 'JetBrains Mono', monospace;">content_state.bin</span>.</span>
+              <div style="padding: 4px 14px; background-color: #464646; border: 1px solid #303030; border-radius: 3px; font-size: 11px; color: #757575; cursor: not-allowed;">Build content</div>
+              <div style="padding: 4px 14px; background-color: #464646; border: 1px solid #303030; border-radius: 3px; font-size: 11px; color: #757575; cursor: not-allowed;">Build update</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ UPDATE PREVIEW (diff) ═════════ -->
+        <sc-if value="{{isUpdate}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 10px;">
+              <sc-for list="{{diffStats}}" as="ds" hint-placeholder-count="4">
+                <div style="flex: 1; padding: 10px 12px; background-color: #3F3F3F; border: 1px solid #2B2B2B; border-radius: 4px;">
+                  <div style="font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: #7E7E7E;">{{ds.k}}</div>
+                  <div style="display: flex; align-items: baseline; gap: 5px; margin-top: 4px;">
+                    <span style="font-size: 21px; font-weight: 600; color: {{ds.tone}}; letter-spacing: -0.02em;">{{ds.v}}</span>
+                    <span style="font-size: 10.5px; color: #9A9A9A;">{{ds.unit}}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+              <div style="display: flex; align-items: center; padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+                <span style="font-size: 11px; font-weight: 600; flex-grow: 1;">Changed since the last publish</span>
+                <span style="font-size: 10px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">catalog 1.4.1 → 1.4.2</span>
+              </div>
+              <sc-for list="{{diffRows}}" as="dr" hint-placeholder-count="7">
+                <div class="row" style="{{dr.rowStyle}}">
+                  <span style="width: 16px; flex-shrink: 0; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: {{dr.tone}};">{{dr.sign}}</span>
+                  <span style="flex-grow: 1; min-width: 0; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #C8C8C8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{dr.name}}</span>
+                  <span style="width: 118px; flex-shrink: 0; font-size: 10px; color: #8A8A8A;">{{dr.reason}}</span>
+                  <span style="width: 64px; flex-shrink: 0; text-align: right; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: {{dr.tone}};">{{dr.size}}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding: 9px 11px; background-color: #363636; border: 1px solid #2B2B2B; border-radius: 4px;">
+              <div style="font-size: 10.5px; color: #8A8A8A; text-wrap: pretty;"><span style="color: #B4B4B4; font-weight: 600;">3.1 MB is what a returning player downloads.</span> A player installing fresh downloads all 347 bundles. The number that matters for a live patch is the first one.</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ RULES ═════════ -->
+        <sc-if value="{{isRules}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; gap: 12px; height: 100%;">
+            <div style="width: 292px; flex-shrink: 0; display: flex; flex-direction: column; border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+              <div style="display: flex; align-items: center; padding: 6px 10px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+                <span style="font-size: 11px; font-weight: 600; flex-grow: 1;">Rules</span>
+                <span style="font-size: 10px; color: #7E7E7E;">40</span>
+              </div>
+              <div style="flex-grow: 1; overflow-y: auto;">
+                <sc-for list="{{ruleList}}" as="rl" hint-placeholder-count="6">
+                  <div class="{{rl.cls}}" style="{{rl.rowStyle}}">
+                    <div style="{{rl.barStyle}}"></div>
+                    <div style="flex-grow: 1; min-width: 0;">
+                      <div style="font-size: 11px; color: {{rl.textTone}};">{{rl.name}}</div>
+                      <div style="font-size: 9.5px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px;">{{rl.scope}}</div>
+                    </div>
+                    <span style="flex-shrink: 0; font-size: 10px; color: {{rl.hitTone}}; font-family: 'JetBrains Mono', monospace;">{{rl.hits}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 11px;">
+              <div style="border: 1px solid #3F4A3F; border-radius: 4px; overflow: hidden; background-color: #343A34;">
+                <div style="padding: 6px 11px; background-color: #3A423A; border-bottom: 1px solid #3F4A3F; font-size: 11px; font-weight: 600; color: #B8D4B8;">Dry run — nothing has been written</div>
+                <div style="padding: 7px 0;">
+                  <sc-for list="{{dryRun}}" as="d" hint-placeholder-count="6">
+                    <div style="display: flex; align-items: baseline; padding: 3px 11px;">
+                      <span style="width: 138px; flex-shrink: 0; font-size: 10.5px; color: #8F978F;">{{d.k}}</span>
+                      <span style="flex-grow: 1; font-size: 11px; color: {{d.tone}};">{{d.v}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="border: 1px solid #4A3236; border-radius: 4px; overflow: hidden; background-color: #3A3032;">
+                <div style="padding: 6px 11px; background-color: #43373A; border-bottom: 1px solid #4A3236; font-size: 11px; font-weight: 600; color: #F0B5B3;">1 collision would make an asset unreachable</div>
+                <div style="padding: 10px 11px;">
+                  <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #DCDCDC;">coin</div>
+                  <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 5px;">
+                    <div style="font-size: 10.5px; color: #A89A98; font-family: 'JetBrains Mono', monospace;">← Assets/UI/Icons/coin.png</div>
+                    <div style="font-size: 10.5px; color: #A89A98; font-family: 'JetBrains Mono', monospace;">← Assets/UI/Shop/coin.png <span style="font-family: Inter, sans-serif; color: #FF8A87;">imported 4 min ago</span></div>
+                  </div>
+                  <div style="display: flex; gap: 7px; margin-top: 9px;">
+                    <div class="btn" style="padding: 3px 11px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 10.5px; cursor: pointer;">Ping both</div>
+                    <div class="btn" style="padding: 3px 11px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 10.5px; cursor: pointer;">Narrow the rule</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="flex-grow: 1;"></div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 10px; color: #7E7E7E; flex-grow: 1; text-wrap: pretty;">Applying writes to the Addressables settings asset. Ctrl+Z undoes the whole run.</span>
+                <div class="btn" style="padding: 4px 12px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px; cursor: pointer;">Re-run</div>
+                <div class="btn-p" style="padding: 4px 14px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFFFFF; cursor: pointer;">Apply 14 changes</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ MONITOR ═════════ -->
+        <sc-if value="{{isMonitor}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 10px;">
+              <div style="flex: 1; min-width: 0; border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">Runtime state</div>
+                <div style="padding: 6px 0;">
+                  <sc-for list="{{runtime}}" as="s" hint-placeholder-count="6">
+                    <div style="display: flex; align-items: center; padding: 3px 11px;">
+                      <div style="width: 6px; height: 6px; border-radius: 3px; background-color: {{s.dot}}; flex-shrink: 0; margin-right: 8px;"></div>
+                      <span style="width: 118px; flex-shrink: 0; font-size: 10.5px; color: #8A8A8A;">{{s.k}}</span>
+                      <span style="flex-grow: 1; min-width: 0; font-size: 10.5px; color: {{s.tone}}; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{s.v}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="flex: 1; min-width: 0; border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;">
+                <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">Download</div>
+                <div style="padding: 11px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px;">
+                    <span style="font-size: 15px; font-weight: 600; color: #E4E4E4; font-family: 'JetBrains Mono', monospace;">73%</span>
+                    <span style="font-size: 10.5px; color: #8A8A8A;">2s left</span>
+                  </div>
+                  <div style="height: 6px; background-color: #2B2B2B; border-radius: 3px; overflow: hidden;">
+                    <div style="width: 73%; height: 6px; background-color: #6E9FD4;"></div>
+                  </div>
+                  <div style="font-size: 10.5px; color: #A0A0A0; margin-top: 7px; font-family: 'JetBrains Mono', monospace;">8.02 / 10.95 MB · 2.14 MB/s</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- action outcome that persists -->
+            <div style="display: flex; align-items: center; gap: 9px; padding: 9px 11px; background-color: #343A34; border: 1px solid #3F4A3F; border-radius: 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7DC183" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              <div style="flex-grow: 1;">
+                <div style="font-size: 11px; color: #C8DCC8;">Content is up to date</div>
+                <div style="font-size: 10px; color: #85957F; margin-top: 1px;">Checked 14:31:02 against https://cdn.acme.com — catalog hash matched.</div>
+              </div>
+              <span style="font-size: 10px; color: #7E7E7E;">stays until you act again</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <span style="flex-grow: 1; font-size: 10px; color: #7E7E7E; text-wrap: pretty;">Sampled once a second. A fast transfer — 70 bundles off a local server in about a second — can finish between two samples; the Local Server request log is the reliable view.</span>
+              <div class="btn" style="padding: 4px 12px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px; cursor: pointer;">Check for update</div>
+              <div class="btn" style="padding: 4px 12px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px; cursor: pointer;">Clean obsolete</div>
+              <div class="btn" style="padding: 4px 12px; background-color: #524244; border: 1px solid #3E3032; border-radius: 3px; font-size: 11px; color: #E0B8B6; cursor: pointer;">Clear cache…</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ PROFILES (conformance, not a second editor) ═════════ -->
+        <sc-if value="{{isProfiles}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+
+            <div style="padding: 9px 11px; background-color: #363636; border: 1px solid #2B2B2B; border-radius: 4px;">
+              <div style="font-size: 10.5px; color: #8A8A8A; text-wrap: pretty;"><span style="color: #B4B4B4; font-weight: 600;">Addressables owns these values; this screen only checks them.</span> A second editor for the same data is a second source of truth, and the only field editable here is the origin &mdash; the one CI has to set.</div>
+            </div>
+
+            <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+              <div style="display: flex; align-items: center; padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+                <span style="width: 92px; flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: #8A8A8A;">PROFILE</span>
+                <span style="flex-grow: 1; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: #8A8A8A;">ORIGIN</span>
+                <span style="width: 150px; flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: #8A8A8A;">SUFFIX</span>
+                <span style="width: 132px; flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: #8A8A8A;">IN CDNSETTINGS</span>
+              </div>
+              <sc-for list="{{profiles}}" as="pf" hint-placeholder-count="4">
+                <div class="row" style="{{pf.rowStyle}}">
+                  <div style="width: 92px; flex-shrink: 0; display: flex; align-items: center; gap: 7px;">
+                    <div style="width: 6px; height: 6px; border-radius: 3px; background-color: {{pf.tone}};"></div>
+                    <span style="font-size: 11px; font-weight: {{pf.weight}}; color: #DCDCDC;">{{pf.name}}</span>
+                  </div>
+                  <span style="flex-grow: 1; min-width: 0; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: {{pf.originTone}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{pf.origin}}</span>
+                  <span style="width: 150px; flex-shrink: 0; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: {{pf.suffixTone}};">{{pf.suffix}}</span>
+                  <span style="width: 132px; flex-shrink: 0; font-size: 10.5px; color: {{pf.knownTone}};">{{pf.known}}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+              <div style="flex: 1; border: 1px solid #4A3E34; border-radius: 4px; overflow: hidden; background-color: #3A3330;">
+                <div style="padding: 6px 11px; background-color: #423931; border-bottom: 1px solid #4A3E34; font-size: 11px; font-weight: 600; color: #E8C87C;">Prod has no host yet</div>
+                <div style="padding: 11px;">
+                  <div style="font-size: 10.5px; color: #A09587; text-wrap: pretty;">Set it here, or leave it templated and let CI inject it. Both are normal; a release build must not go out with the placeholder either way.</div>
+                  <div style="display: flex; gap: 7px; margin-top: 9px;">
+                    <div style="flex-grow: 1; padding: 4px 9px; background-color: #333333; border: 1px solid #3A79C4; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #DCDCDC;">cdn.acme.com<span style="color: #6E9FD4;">|</span></div>
+                    <div class="btn-p" style="padding: 4px 12px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFFFFF; cursor: pointer;">Set</div>
+                  </div>
+                  <div style="font-size: 10px; color: #8C8177; margin-top: 8px; font-family: 'JetBrains Mono', monospace;">or:  CDN_HOST=cdn.acme.com  before the build</div>
+                </div>
+              </div>
+
+              <div style="flex: 1; border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+                <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">Which profile should CI build with?</div>
+                <div style="padding: 11px;">
+                  <div style="font-size: 10.5px; color: #B4B4B4; text-wrap: pretty;">The one for the environment you are shipping to. The URL that profile carries is the one your players poll forever, and no later upload can change it.</div>
+                  <div style="font-size: 10.5px; color: #8A8A8A; margin-top: 7px; text-wrap: pretty;">Building with Local and switching environment at runtime is path-safe, and it is what QA should use &mdash; but a shipped build whose rewrite fails falls back to localhost with no way to recover it.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ ASSET LIFETIME ═════════ -->
+        <sc-if value="{{isLifetime}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+
+            <div style="display: flex; gap: 10px;">
+              <sc-for list="{{lifeStats}}" as="ls" hint-placeholder-count="4">
+                <div style="flex: 1; padding: 10px 12px; background-color: #3F3F3F; border: 1px solid #2B2B2B; border-radius: 4px;">
+                  <div style="font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: #7E7E7E;">{{ls.k}}</div>
+                  <div style="display: flex; align-items: baseline; gap: 5px; margin-top: 4px;">
+                    <span style="font-size: 21px; font-weight: 600; color: {{ls.tone}}; letter-spacing: -0.02em;">{{ls.v}}</span>
+                    <span style="font-size: 10.5px; color: #9A9A9A;">{{ls.unit}}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding: 10px 12px; background-color: #3A3032; border: 1px solid #4A3236; border-radius: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FF8A87" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9 2.4 17.4A1.8 1.8 0 0 0 4 20h16a1.8 1.8 0 0 0 1.6-2.6L13.7 3.9a1.8 1.8 0 0 0-3.4 0z"></path></svg>
+                <span style="font-size: 11.5px; font-weight: 600; color: #F0B5B3;">3 handles outlived the object that took them</span>
+              </div>
+              <div style="font-size: 10.5px; color: #A89A98; margin-top: 4px; text-wrap: pretty;">Their owning GameObject is destroyed and the reference count never reached zero, so the bundle behind each one stays resident for the rest of the session. Unity&rsquo;s profiler can show you the memory; only this package knows who was supposed to give it back.</div>
+            </div>
+
+            <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+              <div style="display: flex; align-items: center; padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+                <span style="flex-grow: 1; font-size: 11px; font-weight: 600;">Live handles by owning scope</span>
+                <span style="font-size: 10px; color: #7E7E7E; font-family: 'JetBrains Mono', monospace;">sampled 14:33:19 &middot; play mode</span>
+              </div>
+              <sc-for list="{{scopes}}" as="sc" hint-placeholder-count="4">
+                <div>
+                  <div style="display: flex; align-items: center; padding: 6px 11px; background-color: #3A3A3A; border-bottom: 1px solid #2B2B2B;">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 7px; flex-shrink: 0;"><path d="M6 9l6 6 6-6"></path></svg>
+                    <span style="font-size: 11px; font-weight: 600; color: #DCDCDC;">{{sc.name}}</span>
+                    <span style="font-size: 10px; color: #7E7E7E; margin-left: 8px;">{{sc.kind}}</span>
+                    <div style="flex-grow: 1;"></div>
+                    <span style="font-size: 10.5px; color: #9A9A9A; font-family: 'JetBrains Mono', monospace;">{{sc.count}}</span>
+                    <span style="width: 74px; text-align: right; font-size: 10.5px; color: #9A9A9A; font-family: 'JetBrains Mono', monospace;">{{sc.size}}</span>
+                  </div>
+                  <sc-for list="{{sc.handles}}" as="h" hint-placeholder-count="3">
+                    <div class="row" style="{{h.rowStyle}}">
+                      <div style="width: 3px; align-self: stretch; background-color: {{h.tone}}; flex-shrink: 0;"></div>
+                      <span style="width: 24px; flex-shrink: 0;"></span>
+                      <span style="flex-grow: 1; min-width: 0; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: {{h.nameTone}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{h.address}}</span>
+                      <span style="width: 176px; flex-shrink: 0; font-size: 10px; color: #8A8A8A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{h.owner}}</span>
+                      <span style="width: 46px; flex-shrink: 0; text-align: right; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: {{h.refTone}};">{{h.refs}}</span>
+                      <span style="width: 74px; flex-shrink: 0; text-align: right; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: #9A9A9A; padding-right: 11px;">{{h.size}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding: 9px 11px; background-color: #363636; border: 1px solid #2B2B2B; border-radius: 4px;">
+              <div style="font-size: 10.5px; color: #8A8A8A; text-wrap: pretty;"><span style="color: #B4B4B4; font-weight: 600;">Not a memory profiler.</span> Unity&rsquo;s is better at bytes. This answers the one question it cannot: which scope is still holding this, and who took the reference. Sizes are the bundle&rsquo;s, shown so a leak can be ranked &mdash; not to be added up against the Profiler&rsquo;s numbers.</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ═════════ SHELL-ONLY ═════════ -->
+        <sc-if value="{{isOther}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 9px;">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#565656" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+            <div style="font-size: 12px; color: #9E9E9E;">{{title}}</div>
+            <div style="font-size: 10.5px; color: #6E6E6E; max-width: 360px; text-align: center; text-wrap: pretty;">Shares the shell and the vocabulary; drawn in the build, not in this prototype.</div>
+          </div>
+        </sc-if>
+
+      </div>
+
+      <!-- status bar -->
+      <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 24px; flex-shrink: 0; background-color: #3C3C3C; border-top: 1px solid #232323; font-size: 10px; color: #8A8A8A;">
+        <div style="width: 6px; height: 6px; border-radius: 3px; background-color: {{statusTone}};"></div>
+        <span style="flex-grow: 1;">{{statusText}}</span>
+        <span style="font-family: 'JetBrains Mono', monospace;">Android · Prod · content_state 2h old</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"section":{"editor":"enum","default":"overview","options":["overview","validator","rules","build","update","monitor","profiles","lifetime","conflicts","catalog","server"],"section":"Prototype"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { section: null };
+  }
+
+  cur() { return this.state.section || this.props.section || 'overview'; }
+
+  renderVals() {
+    const cur = this.cur();
+    const go = (id) => () => this.setState({ section: id });
+
+    const OK = '#6FBF73', WARN = '#F5C24C', ERR = '#FF6B68', IDLE = '#6E6E6E', INK = '#D2D2D2';
+
+    // ---- pipeline definition: stage state drives the rail colour ----
+    const STAGES = [
+      { id: 'configure', label: 'Configure', state: 'warn',    badge: '3 to fix',
+        items: [ { id: 'validator', label: 'Validator', dot: WARN }, { id: 'profiles', label: 'Profiles', dot: WARN } ] },
+      { id: 'author',    label: 'Author',    state: 'warn',    badge: '1 conflict',
+        items: [ { id: 'rules', label: 'Layout Rules' }, { id: 'conflicts', label: 'Conflicts', dot: ERR } ] },
+      { id: 'build',     label: 'Build',     state: 'blocked', badge: 'blocked',
+        items: [ { id: 'build', label: 'Build' }, { id: 'update', label: 'Update Preview' } ] },
+      { id: 'publish',   label: 'Publish',   state: 'idle',    badge: '—',
+        items: [ { id: 'catalog', label: 'Catalog Inspector' }, { id: 'server', label: 'Local Server', dot: OK } ] },
+      { id: 'run',       label: 'Run',       state: 'idle',    badge: '—',
+        items: [ { id: 'monitor', label: 'Runtime Monitor' }, { id: 'lifetime', label: 'Asset Lifetime', dot: ERR } ] },
+    ];
+
+    const stageTone = { ok: OK, warn: WARN, blocked: ERR, idle: IDLE };
+
+    const stages = STAGES.map((s, i) => {
+      const tone = stageTone[s.state];
+      const reached = i <= 2;
+      const railColor = i < 2 ? '#4E6E4E' : '#3A3A3A';
+      return {
+        label: s.label,
+        badge: s.badge,
+        pick: go(s.items[0].id),
+        dotStyle: 'width: 9px; height: 9px; border-radius: 5px; flex-shrink: 0; margin-top: 4px;'
+          + ' background-color: ' + (s.state === 'idle' ? '#3C3C3C' : tone)
+          + '; border: 2px solid ' + (s.state === 'idle' ? '#565656' : tone) + ';',
+        lineStyle: 'width: 2px; flex-grow: 1; min-height: 4px; background-color: ' + railColor + ';',
+        titleStyle: 'font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: '
+          + (reached ? '#C4C4C4' : '#6E6E6E') + ';',
+        badgeStyle: 'font-size: 9.5px; font-weight: 600; color: ' + (s.state === 'idle' ? '#5E5E5E' : tone) + ';',
+        items: s.items.map((it) => {
+          const on = it.id === cur;
+          return {
+            label: it.label,
+            dot: it.dot || null,
+            pick: go(it.id),
+            cls: on ? 'nav-on' : 'nav',
+            rowStyle: 'display: flex; align-items: center; padding: 2.5px 12px 2.5px 12px; cursor: pointer;'
+              + (on ? ' background-color: #2C5D87;' : ''),
+            railStyle: 'width: 2px; align-self: stretch; background-color: ' + railColor + ';',
+            textStyle: 'font-size: 11px; margin-left: 8px; color: ' + (on ? '#FFFFFF' : '#B4B4B4') + ';',
+          };
+        }),
+      };
+    });
+
+    // ---- section metadata ----
+    const META = {
+      overview:   ['Overview', 'Where content stands, and what is stopping it'],
+      validator:  ['Configuration', '58 contract rules · grouped by what they cost you'],
+      profiles:   ['Profiles', 'Does each environment follow the convention that keeps a build switchable'],
+      rules:      ['Layout Rules', 'What gets an address, a label and a group'],
+      conflicts:  ['Conflicts', 'Rules that disagree about the same asset'],
+      build:      ['Build', 'Produce bundles and a catalog for Prod'],
+      update:     ['Update Preview', 'What a returning player would download'],
+      catalog:    ['Catalog Inspector', 'Read a built or published catalog'],
+      server:     ['Local Server', 'Serve ServerData/ on localhost:8080'],
+      monitor:    ['Runtime Monitor', 'What the running player is doing'],
+      lifetime:   ['Asset Lifetime', 'What is loaded, which scope holds it, and what leaked'],
+    };
+    const meta = META[cur] || ['Section', ''];
+
+    const btn  = 'padding: 3px 11px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 10.5px; cursor: pointer;';
+    const btnP = 'padding: 3px 11px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 10.5px; font-weight: 600; color: #FFFFFF; cursor: pointer;';
+
+    const HEADER_ACTIONS = {
+      validator: [ { label: 'Re-check', cls: 'btn', style: btn }, { label: 'Fix 2 safe issues', cls: 'btn-p', style: btnP } ],
+      overview:  [ { label: 'Re-scan everything', cls: 'btn', style: btn } ],
+      rules:     [ { label: 'Import…', cls: 'btn', style: btn }, { label: 'Export…', cls: 'btn', style: btn } ],
+      update:    [ { label: 'Re-compare', cls: 'btn', style: btn } ],
+      monitor:   [ { label: 'Attach to player', cls: 'btn', style: btn } ],
+      profiles:  [ { label: 'Open Addressables Profiles', cls: 'btn', style: btn } ],
+      lifetime:  [ { label: 'Snapshot', cls: 'btn', style: btn }, { label: 'Release leaked (3)', cls: 'btn-p', style: btnP } ],
+    };
+
+    const rowBase = 'display: flex; align-items: center; gap: 9px; padding: 8px 11px 8px 0; background-color: #383838; border-bottom: 1px solid #2B2B2B;';
+    const denseRow = 'display: flex; align-items: center; padding: 4px 11px; background-color: #383838; border-bottom: 1px solid #2B2B2B;';
+
+    // ---- overview: horizontal flow ----
+    const FLOW = [
+      { label: 'Configure', note: '3 to fix',    state: 'warn' },
+      { label: 'Author',    note: '1 conflict',  state: 'warn' },
+      { label: 'Build',     note: 'blocked',     state: 'blocked' },
+      { label: 'Publish',   note: 'not reached', state: 'idle' },
+      { label: 'Run',       note: 'not reached', state: 'idle' },
+    ];
+    const flow = FLOW.map((f, i) => {
+      const tone = stageTone[f.state];
+      const filled = f.state !== 'idle';
+      const lineBefore = i === 0 ? 'transparent' : (i <= 2 ? '#4E6E4E' : '#3A3A3A');
+      const lineAfter  = i === FLOW.length - 1 ? 'transparent' : (i < 2 ? '#4E6E4E' : '#3A3A3A');
+      return {
+        label: f.label, note: f.note,
+        done: f.state === 'warn' || f.state === 'ok',
+        blocked: f.state === 'blocked',
+        cellStyle: 'flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0;',
+        leftLine:  'height: 2px; flex-grow: 1; background-color: ' + lineBefore + ';',
+        rightLine: 'height: 2px; flex-grow: 1; background-color: ' + lineAfter + ';',
+        nodeStyle: 'width: 20px; height: 20px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center;'
+          + ' justify-content: center; background-color: ' + (filled ? tone : '#3C3C3C')
+          + '; border: 2px solid ' + (filled ? tone : '#565656') + ';',
+        labelStyle: 'font-size: 11px; font-weight: 600; margin-top: 7px; color: ' + (filled ? '#DCDCDC' : '#7E7E7E') + ';',
+        noteStyle: 'font-size: 10px; margin-top: 1px; color: ' + (f.state === 'idle' ? '#6E6E6E' : tone) + ';',
+      };
+    });
+
+    return {
+      stages, goValidator: go('validator'),
+      title: meta[0], subtitle: meta[1],
+      headerActions: HEADER_ACTIONS[cur] || [],
+      context: [
+        { k: 'Profile', v: 'Prod',    tone: INK },
+        { k: 'Target',  v: 'Android', tone: INK },
+        { k: 'Mode',    v: 'Remote',  tone: INK },
+      ],
+      isOverview: cur === 'overview',
+      isValidator: cur === 'validator',
+      isRules: cur === 'rules',
+      isBuild: cur === 'build',
+      isUpdate: cur === 'update',
+      isMonitor: cur === 'monitor',
+      isProfiles: cur === 'profiles',
+      isLifetime: cur === 'lifetime',
+      isOther: ['overview','validator','rules','build','update','monitor','profiles','lifetime'].indexOf(cur) === -1,
+      statusTone: cur === 'build' ? ERR : IDLE,
+      statusText: cur === 'build' ? 'Build blocked — the active profile has an unresolved host' : 'Ready',
+
+      flow,
+
+      todo: [
+        { tone: ERR,  title: 'Two assets would share the address "coin"',
+          detail: 'Assets/UI/Shop/coin.png was imported 4 minutes ago and collides with Assets/UI/Icons/coin.png.',
+          blocks: 'blocks nothing yet', action: 'Resolve', go: go('conflicts') },
+        { tone: WARN, title: 'The Prod profile still contains <cdnBase>',
+          detail: 'Nothing has replaced the placeholder, so a build would bake a hostname that does not exist.',
+          blocks: 'blocks Build', action: 'Fix', go: go('profiles') },
+        { tone: WARN, title: 'cdn.acme.com is not one of the origins in CdnSettings',
+          detail: 'Switching environment at runtime would silently do nothing for content built against it.',
+          blocks: 'blocks Publish', action: 'Review', go: go('validator') },
+        { tone: IDLE, title: 'The published catalog has never been reached from this machine',
+          detail: 'Not a failure — it has simply never been checked, so nothing here can vouch for what is live.',
+          blocks: '—', action: 'Check', go: go('catalog') },
+      ].map((t) => ({ ...t, rowStyle: rowBase, barStyle: 'width: 3px; align-self: stretch; background-color: ' + t.tone + ';' })),
+
+      history: [
+        { when: '14:31:02', tone: OK,   what: 'Catalog checked — up to date',                    meta: '0.4s' },
+        { when: '12:08:44', tone: OK,   what: 'Content built · 347 bundles · Android · Prod',    meta: '2.4 GB' },
+        { when: '12:02:10', tone: WARN, what: 'Layout rules applied · 14 of 40 matched',         meta: '12 addr' },
+        { when: '11:47:55', tone: ERR,  what: 'Build refused — unresolved host in profile',      meta: '—' },
+      ].map((h) => ({ ...h, rowStyle: denseRow })),
+
+      segs: ['Needs action 3', 'Passing 55', 'Not applicable 0', 'All 58'].map((label, i) => ({
+        label,
+        style: 'padding: 3px 11px; font-size: 10.5px; cursor: pointer; '
+          + (i === 0 ? 'background-color: #2C5D87; color: #FFFFFF; font-weight: 600;' : 'background-color: #3F3F3F; color: #A8A8A8;')
+          + (i < 3 ? ' border-right: 1px solid #2B2B2B;' : ''),
+      })),
+
+      groups: [
+        { tone: ERR, title: 'Stops the build', count: '1 rule',
+          rules: [
+            { tone: ERR, id: 'settings.RemoteOriginIsKnown', docs: 'Why this matters',
+              headline: 'The catalog would point at https://cdn.acme.com, an origin CdnSettings has never heard of',
+              why: 'HostRewriter only swaps an origin it was told about. Every request would go where the build was pointed, and switching environment at runtime would do nothing at all.',
+              actions: [ { label: 'Add to CdnSettings', cls: 'btn', style: btn }, { label: 'Change profile', cls: 'btn', style: btn } ] },
+          ]},
+        { tone: WARN, title: 'Will bite you later', count: '2 rules',
+          rules: [
+            { tone: WARN, id: 'group.BundleNaming', docs: null,
+              headline: '3 groups name bundles by filename rather than by content hash',
+              why: 'A rebuilt bundle keeps its URL, so CDN edges and device caches keep serving the old bytes until they expire. Players see stale content with no way to force a refresh.',
+              actions: [ { label: 'Fix 3 groups', cls: 'btn-p', style: btnP } ] },
+            { tone: WARN, id: 'settings.ContentStatePath', docs: null,
+              headline: 'addressables_content_state.bin sits in a folder the standard .gitignore excludes',
+              why: 'It is the one build artifact that cannot be regenerated. Lose it and no future build can produce a patch — only a full re-download for every player.',
+              actions: [ { label: 'Move it', cls: 'btn-p', style: btnP }, { label: 'Explain', cls: 'btn', style: btn } ] },
+          ]},
+      ],
+
+      buildFacts: [
+        { k: 'Bundles',       v: 'https://cdn.<cdnBase>/Android/bundles', tone: ERR },
+        { k: 'Catalog',       v: '…/Android/catalog/1.4.2',              tone: ERR },
+        { k: 'Content state', v: 'ServerData/…state.bin · 2h old',       tone: INK },
+        { k: 'Groups',        v: '14 remote · 4 local',                  tone: INK },
+        { k: 'Compression',   v: 'LZ4',                                  tone: INK },
+        { k: 'Estimated',     v: '~2.4 GB · about 6 min',                tone: INK },
+      ],
+
+      split: [
+        { label: 'Remote 2.1 GB', style: 'width: 86%; background-color: #6E9FD4; display: flex; align-items: center; padding-left: 8px;' },
+        { label: 'In-app 310 MB', style: 'width: 14%; background-color: #7DC183; display: flex; align-items: center; padding-left: 8px;' },
+      ],
+      splitLegend: [
+        { tone: '#6E9FD4', label: 'Fetched from the CDN', v: '14 groups' },
+        { tone: '#7DC183', label: 'Ships inside the player', v: '4 groups' },
+      ],
+
+      diffStats: [
+        { k: 'PATCH SIZE',    v: '3.1',  unit: 'MB',      tone: '#7DC183' },
+        { k: 'CHANGED',       v: '18',   unit: 'bundles', tone: INK },
+        { k: 'NEW',           v: '4',    unit: 'bundles', tone: INK },
+        { k: 'NOW UNUSED',    v: '2',    unit: 'bundles', tone: '#9A9A9A' },
+      ],
+
+      diffRows: [
+        { sign: '~', tone: '#E0B96A', name: 'ui_shop_assets_a7f3.bundle',    reason: 'contents changed', size: '+412 KB' },
+        { sign: '~', tone: '#E0B96A', name: 'ui_common_2c81.bundle',         reason: 'contents changed', size: '+88 KB' },
+        { sign: '+', tone: '#7DC183', name: 'level_17_9de2.bundle',          reason: 'new group',        size: '1.9 MB' },
+        { sign: '+', tone: '#7DC183', name: 'level_18_1b4c.bundle',          reason: 'new group',        size: '640 KB' },
+        { sign: '~', tone: '#E0B96A', name: 'audio_sfx_44a0.bundle',         reason: 'dependency moved', size: '+12 KB' },
+        { sign: '−', tone: '#9A9A9A', name: 'chars_old_5f21.bundle',         reason: 'no longer refd',   size: '−2.2 MB' },
+        { sign: '−', tone: '#9A9A9A', name: 'chars_old_8ba7.bundle',         reason: 'no longer refd',   size: '−1.4 MB' },
+      ].map((d) => ({ ...d, rowStyle: denseRow })),
+
+      ruleList: [
+        { name: 'UI Sprites by Filename', scope: 'Assets/UI/** → {filename}',     hits: '128', tone: OK,   textTone: INK,       hitTone: '#8A8A8A', on: true },
+        { name: 'Audio by Folder',        scope: 'Assets/Audio/** → audio/{dir}', hits: '64',  tone: OK,   textTone: INK,       hitTone: '#8A8A8A' },
+        { name: 'Levels',                 scope: 'Assets/Levels/** → level/{n}',  hits: '32',  tone: OK,   textTone: INK,       hitTone: '#8A8A8A' },
+        { name: 'Shop icons',             scope: 'Assets/Shop/Icons/**',          hits: '0',   tone: WARN, textTone: '#A8A8A8', hitTone: WARN },
+        { name: 'Legacy characters',      scope: 'Assets/Chars_old/**',           hits: '0',   tone: WARN, textTone: '#A8A8A8', hitTone: WARN },
+        { name: 'Localisation',           scope: 'Assets/Loc/** → loc/{lang}',    hits: '—',   tone: IDLE, textTone: '#7E7E7E', hitTone: '#6E6E6E' },
+      ].map((r) => ({
+        ...r,
+        cls: r.on ? 'nav-on' : 'row',
+        rowStyle: 'display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 0; border-bottom: 1px solid #2B2B2B; cursor: pointer;'
+          + (r.on ? ' background-color: #2C5D87;' : ''),
+        barStyle: 'width: 3px; align-self: stretch; background-color: ' + r.tone + ';',
+      })),
+
+      dryRun: [
+        { k: 'Rules run',         v: '40',                                   tone: '#C8DCC8' },
+        { k: 'Rules that matched', v: '14',                                  tone: '#C8DCC8' },
+        { k: 'Matched nothing',   v: '26  — usually a renamed folder',       tone: '#E0B96A' },
+        { k: 'Addresses change',  v: '12 assets',                            tone: '#C8DCC8' },
+        { k: 'Labels change',     v: '2 assets',                             tone: '#C8DCC8' },
+        { k: 'Version filter',    v: '3 label shapes could not be compared', tone: '#E0B96A' },
+      ],
+
+      profiles: [
+        { name: 'Local',   tone: OK,   weight: '400', origin: 'http://localhost:8080',        originTone: INK,
+          suffix: '/[BuildTarget]/…',  suffixTone: '#9A9A9A', known: 'yes',                knownTone: '#8FBF93' },
+        { name: 'Dev',     tone: OK,   weight: '400', origin: 'https://cdn-dev.acme.com',     originTone: INK,
+          suffix: '/[BuildTarget]/…',  suffixTone: '#9A9A9A', known: 'yes',                knownTone: '#8FBF93' },
+        { name: 'Staging', tone: WARN, weight: '400', origin: 'https://cdn-stg.acme.com',     originTone: INK,
+          suffix: '/[BuildTarget]/…',  suffixTone: '#9A9A9A', known: 'no — add it',         knownTone: WARN },
+        { name: 'Prod',    tone: ERR,  weight: '600', origin: 'https://cdn.<cdnBase>',        originTone: ERR,
+          suffix: '/[BuildTarget]/…',  suffixTone: '#9A9A9A', known: 'cannot tell yet',     knownTone: '#8A8A8A' },
+      ].map((pf) => ({ ...pf, rowStyle: denseRow })),
+
+      lifeStats: [
+        { k: 'LIVE HANDLES', v: '184',  unit: '',        tone: INK },
+        { k: 'BUNDLES HELD', v: '31',   unit: '',        tone: INK },
+        { k: 'LEAKED',       v: '3',    unit: 'handles', tone: ERR },
+        { k: 'HELD BY LEAKS', v: '18.4', unit: 'MB',     tone: ERR },
+      ],
+
+      scopes: [
+        { name: 'GameplayScene', kind: 'SceneAssetScope', count: '96 handles', size: '212 MB',
+          handles: [
+            { address: 'level/17/terrain',    owner: 'TerrainRoot',           refs: '3', size: '42.1 MB', tone: OK,  nameTone: INK, refTone: '#9A9A9A' },
+            { address: 'ui/hud/atlas',        owner: 'HudCanvas',             refs: '1', size: '8.4 MB',  tone: OK,  nameTone: INK, refTone: '#9A9A9A' },
+            { address: 'audio/ambience/wind', owner: 'AmbienceEmitter',       refs: '1', size: '3.2 MB',  tone: OK,  nameTone: INK, refTone: '#9A9A9A' },
+          ]},
+        { name: 'ShopPopup', kind: 'HierarchyAssetScope', count: '12 handles', size: '24 MB',
+          handles: [
+            { address: 'ui/shop/coin',        owner: 'ShopPopup/Icons',       refs: '2', size: '1.1 MB',  tone: OK,  nameTone: INK, refTone: '#9A9A9A' },
+            { address: 'ui/shop/bundle_bg',   owner: 'ShopPopup/Bg',          refs: '1', size: '4.8 MB',  tone: OK,  nameTone: INK, refTone: '#9A9A9A' },
+          ]},
+        { name: 'no owner', kind: 'orphaned', count: '3 handles', size: '18.4 MB',
+          handles: [
+            { address: 'chars/hero_old/mesh', owner: 'CharacterView (destroyed)', refs: '1', size: '11.2 MB', tone: ERR, nameTone: '#F0B5B3', refTone: ERR },
+            { address: 'vfx/explosion_lg',    owner: 'BattleFx (destroyed)',      refs: '2', size: '5.6 MB',  tone: ERR, nameTone: '#F0B5B3', refTone: ERR },
+            { address: 'audio/sfx/hit_04',    owner: 'BattleFx (destroyed)',      refs: '1', size: '1.6 MB',  tone: ERR, nameTone: '#F0B5B3', refTone: ERR },
+          ]},
+        { name: 'Global', kind: 'GlobalAssetScope', count: '73 handles', size: '96 MB',
+          handles: [
+            { address: 'ui/fonts/main',       owner: 'held for the session',  refs: '9', size: '2.4 MB',  tone: IDLE, nameTone: '#B4B4B4', refTone: '#9A9A9A' },
+          ]},
+      ],
+
+      runtime: [
+        { dot: OK,   k: 'CDN',           v: 'initialised',                       tone: INK },
+        { dot: OK,   k: 'Environment',   v: 'prod',                              tone: INK },
+        { dot: OK,   k: 'Active origin', v: 'https://cdn.acme.com',              tone: INK },
+        { dot: OK,   k: 'URL rewriting', v: 'active · 347 locations remapped',   tone: INK },
+        { dot: OK,   k: 'Catalog',       v: '1.4.2 · hash 8f3a…c21',             tone: INK },
+        { dot: IDLE, k: 'Cache on disk', v: 'not reported by this platform',     tone: '#8A8A8A' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

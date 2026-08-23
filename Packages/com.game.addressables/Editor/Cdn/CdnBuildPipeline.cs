@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
@@ -303,12 +304,82 @@ namespace AddressableManager.Editor.Cdn
                 return CdnEditorResult<AddressableAssetSettings>.Failure($"Could not activate profile '{profileName}': {ex.Message}");
             }
 
+            // A local-only build publishes nothing, so a placeholder host cannot reach a player and
+            // there is no reason to refuse the build over it.
+            var placeholders = CdnBuildModes.IsLocalOnly
+                ? new List<string>()
+                : UnresolvedProfilePlaceholders(settings);
+            if (placeholders.Count > 0)
+            {
+                return CdnEditorResult<AddressableAssetSettings>.Failure(
+                    $"Profile '{profileName}' still contains unresolved host placeholders, and they would " +
+                    $"be baked into the catalog:\n  {string.Join("\n  ", placeholders)}\n\n" +
+                    $"The Dev/Staging/Prod templates this package generates carry a literal " +
+                    $"\"{CdnProfileManager.PathConvention.OriginPlaceholder}\" because the real host is " +
+                    "environment-specific - their own doc comment calls the value a fallback that env-var " +
+                    "injection is meant to replace. Nothing injected it, so this build would have " +
+                    "succeeded, passed verification, and shipped a player that fetches every bundle from " +
+                    "a host that does not exist.\n\n" +
+                    "Fix: set the profile's Remote paths to the real host (Addressables > Profiles), or " +
+                    "call CdnProfileManager.InjectRemoteHostFromEnvironment with CDN_HOST set before " +
+                    "building.");
+            }
+
             return CdnEditorResult<AddressableAssetSettings>.Success(settings);
+        }
+
+        /// <summary>
+        /// Profile values that still carry a <c>&lt;placeholder&gt;</c> where a real host belongs.
+        /// </summary>
+        /// <remarks>
+        /// Refusing here is the difference between a loud failure and a silent one. The generated
+        /// Dev/Staging/Prod profiles ship <c>https://cdn.&lt;domain&gt;/game/...</c>; that string is
+        /// what gets baked into the catalog at build time, and nothing downstream objects to it -
+        /// the build reports success, the verifier passes (it only compares output against the manifest
+        /// the same build wrote), and the failure surfaces much later as content that will not load.
+        ///
+        /// Deliberately NOT auto-injecting from the environment here: which host a build should point
+        /// at is a release decision, and a build that quietly rewrote its own target would be a worse
+        /// version of the same problem. The package's job is to refuse to guess.
+        /// </remarks>
+        private static List<string> UnresolvedProfilePlaceholders(AddressableAssetSettings settings)
+        {
+            var found = new List<string>();
+
+            foreach (string variable in new[]
+                     {
+                         AddressableAssetSettings.kRemoteLoadPath,
+                         AddressableAssetSettings.kRemoteBuildPath,
+                         SettingsContract.RemoteCatalogLoadPathVariable,
+                         SettingsContract.RemoteCatalogBuildPathVariable
+                     })
+            {
+                string raw = settings.profileSettings.GetValueByName(settings.activeProfileId, variable);
+                if (string.IsNullOrEmpty(raw)) continue;
+
+                // A '<' that is not part of an Addressables profile token: those use [square] brackets
+                // and {curly} braces, so an angle bracket left in a path is always a placeholder.
+                if (raw.IndexOf('<') >= 0 && raw.IndexOf('>') > raw.IndexOf('<'))
+                    found.Add($"{variable} = {raw}");
+            }
+
+            return found;
         }
 
         /// <summary>Manifest, then verification. Both builds end the same way.</summary>
         private static CdnEditorResult<bool> Finish(BuildOutcome outcome, BuildLogSink log)
         {
+            // Nothing was written to the remote output directory, so writing a manifest of it and then
+            // verifying the directory against that manifest would compare two empty things and call it
+            // proof. Say what was skipped instead of reporting a verification that did not happen.
+            if (CdnBuildModes.IsLocalOnly)
+            {
+                log("Local-only build: content ships inside the player, so there is no remote output " +
+                    "to manifest or verify. Set CdnSettings > Build Mode to Remote to publish to a CDN.",
+                    BuildLogLevel.Info);
+                return CdnEditorResult<bool>.Success(true);
+            }
+
             log("Writing build manifest...", BuildLogLevel.Info);
             var written = BuildManifestWriter.Write(
                 outcome.Result, outcome.BundleDir, outcome.CatalogDir, outcome.IsUpdateBuild);

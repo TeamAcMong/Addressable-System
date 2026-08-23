@@ -1,6 +1,597 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.0] - 2026-08-23 - One Editor window, and eleven fixes where the patch had landed on one side of a pair
+
+The stable release of the 4.1 line. Coming from `4.0.1`, this entry is the last increment, not the
+whole story: the CDN content pipeline, the tiered-cache rework, reference counting, the pooling
+rewrite and the Unity floor correction all landed across `4.1.0-pre.1` through `4.1.0-pre.15`, each
+with its own entry below. Read them in order if you are upgrading from 4.0.x; read
+[Migrating from 4.0.x](README.md#-migrating-from-40x) if you only want the renames.
+
+Dropping the `-pre` label says the API surface has stopped moving. It does not say every part has
+been exercised in the field — the CDN layer's evidence is still local, and
+[Not yet validated](README.md#not-yet-validated) is the list of what nobody has run against a real
+CDN yet.
+
+### Fixed - eleven defects, almost all the same shape
+
+A full read of the package turned up seventy-two findings; twenty-six survived an adversarial
+second pass. Nearly every one had the same cause: a change applied where it was written and never
+propagated to its counterpart. Reading the side that changed always looks correct, which is why six
+rounds of review had missed them.
+
+| One side was fixed | The other was not |
+| :-- | :-- |
+| Profile templates renamed `<domain>` to `<cdnBase>` | `InjectRemoteHostFromEnvironment` still matched `<domain>`, so CI host injection replaced nothing and the build then failed telling the operator to run it |
+| `CdnRequestDecorator` reset its statics for play mode | `CdnManager` did not, so a second Play session reported itself initialised with no URL rewriter |
+| `Install` rebound the host rewriter on a repeat call | It did not rebind the auth provider or the timeout, so a retry after a failed init went out unauthenticated |
+| The address import loop disarmed a degraded rule | The label and version loops did not, so a rule that lost some filters imported still enabled, matching wider, and the CLI exited 0 |
+| `DownloadProgress.Percent` is a 0..1 fraction, and the UXML bar is `high-value="1"` | The tab divided it by 100, so 4.1.0-pre.15's fix for a dead progress bar shipped it near-dead |
+| Version providers write four label shapes | `SemanticVersion` parsed one, so an unparseable label fell through to "match everything" |
+| The compile gate rebuilt dependencies | Its cache ignored their timestamps, so a Runtime rename that breaks Editor call sites reported PASS |
+
+Also: the metered-network and free-disk gates ran once before the retry loop rather than inside it,
+so a WiFi-to-cellular handoff mid-download resumed over metered data and returned success; a
+cancelled download left `CdnDownloadMonitor` reporting a transfer that had stopped; duplicate-address
+detection could only see inside its own batch, so the on-import path — one asset per call — could
+never catch a collision with an entry that already existed; and four filters memoised answers about
+state the rule run itself rewrites without clearing them, so `Match Mode = NoAddress` kept matching
+already-addressed assets for the rest of the editor session.
+
+### Added - `Window > Addressable Manager > Open`
+
+One window replaces four windows, ten tabs and twenty-one menu items spread across four root menus —
+four of which were registered twice at the same path, which Unity accepts without defining which
+handler runs.
+
+**The rail is not a menu.** It is the delivery pipeline — Configure, Author, Build, Publish, Run —
+and each stage's colour is that stage's real health right now, with the connector drawn dead below
+the first blocked stage. "How far does my content get, and what stops it" is answered before
+anything is clicked.
+
+- **Four health states, and the fourth is the point.** `NotMeasured` cannot be constructed without a
+  reason, and the stylesheet paints it hollow rather than filled. "We checked and found nothing" and
+  "we did not check" rendered identically across the Validator, the build manifest, the restriction
+  check and the Runtime Monitor — which is how a CDN nobody had ever reached read as healthy.
+- **Validator, grouped by consequence.** "Fails the CI gate" is a checkable claim, not a figure of
+  speech: `CatalogVerifier` files an unsatisfied rule under `Problems` unless it is warning-only.
+  Rules skipped in Local-only mode get their own group instead of being counted as passing.
+- **Profiles conformance** — four profiles, three checks each, and exactly one editable field: the
+  origin. Not a second profile editor; Addressables stays the single owner of those values.
+- **Layout Rules with a dry run.** The rule system had no preview at all. `PreviewRules` runs the
+  identical code path with a dry-run flag, so it cannot describe a run that will not happen, and
+  Apply is reachable only past it.
+- **Asset Lifetime** — what each scope is holding. The one question Unity's profiler cannot answer,
+  because scopes are this package's idea. Leak detection is not implemented and the screen says so
+  rather than showing a fabricated list.
+- **Ctrl+K** — subsequence search across sections. Navigation only; it does not run actions.
+
+### Added - public diagnostics on `AssetLoader`
+
+`SnapshotLoadedAssets()` and `CachedAssetCount`, so a QA build can log what a scope is holding
+without forking the package.
+
+### Changed
+
+- `Window > Addressable Manager > Dashboard` no longer binds Ctrl+Alt+A; the hub does. Three menu
+  items were claiming that chord.
+- `AddressableRuleMenuItems.OpenLayoutRuleEditor` / `OpenLayoutViewer` are `[Obsolete]` and no longer
+  carry menu items. They forward, and stay until 5.0.0.
+- `Create Debug Settings` writes to `Assets/Resources/AddressableManager/`, where
+  `DebugSettings.Instance` actually looks, and selects an existing asset instead of creating
+  `DebugSettings 1`, `DebugSettings 2`, and so on forever.
+- `Window > Addressable Manager > Documentation` looks under `Packages/`, not `Assets/` — a UPM
+  package is never under `Assets/`, and the error dialog used to send the reader to that same wrong
+  path.
+
+### Notes
+
+`CdnManagerWindow` and the Dashboard still work unchanged. The hub hosts the six CDN tabs through an
+adapter rather than a rewrite, so sections can move across one at a time instead of as one flag day.
+
+## [4.1.0-pre.15] - 2026-08-21 - The pre.14 local-server fix could never fire, and a progress bar that was never wired
+
+Second round of the Icon Match integration report. `4.1.0-pre.14` closed all seven items from the
+first round and their CDN tier now works end to end (58/58 contract rules pass, 347 bundles verified,
+70 bundles / 10.95 MB fetched with no failed requests). Two new items came out of running it.
+
+### Fixed - the pre.14 local-server fix was disabled by its own change
+
+`4.1.0-pre.14` taught `LocalContentServer` to survive a domain reload by recording the intent in
+`SessionState`. That intent was cleared by `Stop()`, and `Stop()` is what
+`AssemblyReloadEvents.beforeAssemblyReload` was wired to - so every domain reload cleared the flag
+microseconds before the reload that was supposed to read it. The flag was never true on the other
+side and the server never came back. **The feature could not fire once.**
+
+The cause was giving one method two jobs: an automatic teardown is not a decision about whether the
+server should be running, but it was calling the method that makes that decision. Split:
+
+| | |
+| :-- | :-- |
+| `Stop()` (public) | the user's decision - clears the intent, then tears down |
+| `Shutdown()` (internal) | releases the listener only; the intent is untouched |
+
+`beforeAssemblyReload` and `quitting` now call `Shutdown`.
+
+### Fixed - the Runtime Monitor tab's download bar was never wired
+
+`monitor-download-bar` was queried at construction and then assigned in exactly one place -
+`SetDownloadIdle`, which sets it to zero. No branch could show a running download, and there was
+nothing to show one from: progress reached only the `IProgress<DownloadProgress>` the caller of
+`DownloadAsync` passed, and a background prefetch normally passes `null`.
+
+A bar frozen at "No download in progress" while content is visibly downloading reads as "the CDN is
+not working", and it sent a team off diagnosing the wrong thing.
+
+- New `CdnDownloadMonitor`: a snapshot of the last reported progress plus `IsDownloading`, fed by the
+  download path **regardless of whether the caller wanted progress**. Also cleared on the failure
+  path - a monitor stuck at "downloading" after an error is the same frozen-state lie pointing the
+  other way.
+- The tab reads it on its existing one-second refresh. Polling rather than an event: an event would
+  need unsubscribing across domain reloads and play-mode transitions for a cosmetic row.
+- Documented limit: a fast download can finish between two refreshes - 70 bundles land in about a
+  second against a local server. The Server tab's request log remains the reliable view; this row is
+  for watching a real CDN transfer.
+
+### On which profile CI should build with
+
+Asked in the report, answered here rather than left implicit. Since `4.1.0-pre.14` unified the path
+suffix, building with `Local` and switching environment at runtime is path-safe - but it carries a
+failure mode that building with the target profile does not: if the rewrite fails to apply (an origin
+missing from `CdnSettings`, or boot not reaching `SetEnvironment`), the URL baked into the catalog is
+`http://localhost:8080`, and a shipped build cannot be rescued.
+
+**Build with the profile for the environment you are shipping to.** Runtime switching is for QA
+pointing one existing build at another environment. This is what CDN guide 3.4 says.
+
+### Verification
+
+Compile gate PASS on both assemblies. `Tests/Editor/CdnDownloadMonitorTests.cs` added (3 cases,
+including the failure path that must clear the flag).
+
+**The EditMode suite did not run for this release.** The project was locked by an open Unity Editor
+(`Temp/UnityLockfile`), so batchmode could not acquire it, and this build was cut at the requester's
+direction to unblock testing in their production project. The last full green run was 168/168 at
+`4.1.0-pre.14`; the changes here are one Editor-only method split and one new static plus its call
+sites, all compiling clean, but that is a weaker claim than a test run and is recorded as such.
+
+## [4.1.0-pre.14] - 2026-08-21 - Seven ways the CDN layer let a broken build through without a word
+
+An integration report (Icon Match) traced why its CDN tier had never worked, and the finding was not
+a bug in the content path - it was that every guard the package has let the case through silently:
+the build reported SUCCESS, the verifier PASSED, and the runtime skipped a wrong URL without logging
+it. All seven items were verified against source before acting on them.
+
+### The central defect: two sources of truth about the host, and nothing compared them
+
+`Remote.LoadPath` on the Addressables profile decides the URL **baked into the catalog** at build
+time. `CdnSettings.environments[].baseUrl` decides the origin `HostRewriter` swaps **to** at runtime.
+They only work together when the baked origin is one of the configured base URLs, because `Rewrite`
+only rewrites a URL whose origin it recognises.
+
+Nothing stated that invariant, let alone checked it - `SettingsContract` had 14 rules and zero
+references to `CdnSettings`. The package's own generated Dev/Staging/Prod profiles ship a literal
+placeholder host, so a build against them was the *default* way to hit this.
+
+### Fixed
+
+- **New contract rule `settings.RemoteOriginIsKnown`.** The active profile's remote origins must
+  match a `CdnEnvironment.BaseUrl`. No auto-fix: adding the origin to `CdnSettings` and rebuilding
+  against a different profile are both valid answers and they mean different things.
+
+- **The build refuses to start on an unresolved `<...>` host placeholder.** The generated templates'
+  own doc comments called those values a fallback that env-var injection was meant to replace -
+  nothing called the injector, and nothing checked, so the placeholder was what got baked into the
+  catalog. Filling it stays the user's job; the package's job is to refuse to guess.
+
+- **`HostRewriter` warns once per unknown origin, regardless of `logUrlRewrites`.** Skipping an
+  unrecognised URL is deliberate, but it is also exactly what a misconfigured build looks like, and
+  the only evidence was behind a flag that defaults to false. Once per origin, not per request -
+  this fires on every bundle.
+
+- **Profile path templates are now uniform.** `Local` used `/[BuildTarget]/bundles` while
+  Dev/Staging/Prod used `/game/[BuildTarget]/bundles`, so content built with one profile and
+  rewritten to another landed at a different path - two routes, two CDN layouts, and whichever you
+  had not tested was broken. The suffix now comes from one constant per path kind. The placeholder is
+  renamed `<cdnBase>`, because what belongs there is an origin (optionally including a path prefix),
+  not a hostname.
+
+- **`CdnBuildMode { Remote, LocalOnly }` on `CdnSettings`, as a first-class setting.** In
+  `LocalOnly` the remote rules are skipped rather than reported as failing, and the build writes no
+  remote manifest and runs no remote verification. This removes the tug-of-war that made a
+  deliberately-local project unworkable: `settings.BuildRemoteCatalog` carried an unconditional
+  auto-fix, so every "Fix All" and every unattended `CdnSetupCLI` run switched it back on. A project
+  with no `CdnSettings` asset is treated as `LocalOnly` - the runtime CDN layer cannot function
+  without that asset, so a project without one is not publishing to a CDN whatever else it says.
+
+- **`DownloadPolicy.CatalogOperationTimeoutSeconds` (default 5s).** `Application.internetReachability`
+  reports the interface, not whether anything answers, so a captive portal or one bar of signal passed
+  the reachability guard and the catalog check then never returned - hanging the caller's first
+  screen. A deadline on the whole operation now returns the offline answer instead. Distinct from
+  `TimeoutSeconds`, which bounds a single request, and linked to the caller's token so cancellation
+  still works.
+
+- **The local content server survives a domain reload.** Entering play mode wiped the static holding
+  it and took the `HttpListener` with it; `[InitializeOnLoad]` recreated the instance but not the
+  running server. The symptom was `ConnectionError : Cannot connect to destination host` - which
+  reads as a broken CDN, not as a server that quietly died, and on Addressables 2.9.1 a failed
+  catalog fetch then poisons `ResourceManager.Update` for the rest of the session (see
+  `4.1.0-pre.12`). The intent is now kept in `SessionState`, whose lifetime is exactly the server's:
+  it survives a domain reload and dies when the editor closes.
+
+### Documentation
+
+New sections in the CDN guide: **3.4 Where the URL comes from** (the origin+suffix convention, why
+every origin must be declared, and which profile CI should build with) and **3.5 Turning the CDN
+off**.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 168/168 PASS, doc sweep 314/314.
+
+## [4.1.0-pre.13] - 2026-08-20 - "The restriction check could not run" was the wrong answer half the time
+
+Reported from the CDN Manager's Update Preview tab, which refused to evaluate:
+
+> No groups with static content (Cannot Change Post Release) detected. This is a configuration
+> failure ... If no content is static, ensure that at least one group has the
+> ContentUpdateGroupSchema with StaticContent enabled.
+
+That advice contradicts itself - *if no content is static, mark a group static* - which is the tell
+that one branch was being asked to answer two different questions.
+
+### Fixed
+
+`ContentUpdateRestrictions` treated "no group is marked Cannot Change Post Release" as a
+configuration failure regardless of why, and returned `CanEvaluate = false`. Two situations were
+collapsed into one, and they need opposite answers:
+
+- **Something ships inside the player and was not declared.** A group whose `BuildPath` resolves to a
+  Local path is baked into the build and can never be replaced by a content update, so it must be
+  marked Cannot Change Post Release. Leaving it unmarked is precisely the misconfiguration this check
+  exists to catch, and the check genuinely cannot run. This now reports as before - and **names the
+  offending groups**, instead of leaving the user to guess which of them needs the flag.
+
+- **Nothing is immutable.** Every group builds remote, which is an ordinary CDN layout: there is no
+  content a content update could break, so the restriction check has nothing to guard and passes for
+  that reason. This used to be blocked outright. It now passes, with a message that says *why* -
+  "this check passes for that reason, not because content was compared" - so a vacuous pass is never
+  mistaken for a real comparison against the content state.
+
+The distinguishing fact is the group's build path, which the package already reads for the
+`group:<name>:RemotePathsConsistent` contract rule added in `4.1.0-pre.10`.
+
+### Added
+
+`Tests/Editor/ContentUpdateRestrictionsTests.cs` - three cases pinning both branches and the
+no-groups edge, so they cannot collapse back into a single answer. The decision was extracted to
+`EvaluateStaticContentConfiguration` (internal) so it can be tested on group configuration alone,
+without constructing an `addressables_content_state.bin`. EditMode 165 -> 168.
+
+### Note on the failure this was found alongside
+
+Nothing here changes the underlying Addressables 2.9.1 defect described in `4.1.0-pre.12`: a failed
+catalog check still ends the session with a misleading re-entrancy flood. These are separate
+problems that surfaced in the same integration.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 168/168 PASS, doc sweep 313/313.
+
+## [4.1.0-pre.12] - 2026-08-20 - A failed catalog check ends the session, and Unity blames the wrong thing
+
+Root-caused from a production log. The reported symptom was thousands of
+
+```
+Exception: Reentering the Update method is not allowed.  This can happen when calling
+WaitForCompletion on an operation while inside of a callback.
+```
+
+That message is wrong on both counts: no `WaitForCompletion` was called, and nothing re-entered. The
+two-frame stack (`ResourceManager.Update` <- `MonoBehaviourCallbackHooks.Update`) is the giveaway -
+real re-entrancy would carry the caller's frames between them. This is the ordinary once-per-frame
+call finding a flag that was already set.
+
+The actual chain, all inside Addressables 2.9.1:
+
+1. `CheckCatalogsOperation` failed - the catalog hash URL was unreachable
+   (`http://localhost:8080/Android/catalog/1.0/catalog_1.0.hash`, the Local profile's default, with no
+   local server running).
+2. `CheckCatalogsOperation.Destroy()` is `m_DepOp.Release()` with no `IsValid()` guard
+   (CheckCatalogsOperation.cs:62-65). After a failure that handle is already invalid, so
+   `AsyncOperationHandle.get_InternalOp` throws **"Attempting to use an invalid operation handle"**.
+3. That throw escapes `ResourceManager.ExecuteDeferredCallbacks` (ResourceManager.cs:1065), called
+   from `ResourceManager.Update`, which sets `m_InsideUpdateMethod = true` at line 1100 and clears it
+   at 1121 **with no try/finally**. The flag stays set for the rest of the session.
+4. Every frame thereafter throws the re-entrancy message, and Addressables is unusable until play
+   mode is exited.
+
+Both defects are Unity's, and neither can be caught from this package: the throw happens on Unity's
+own stack inside `Update`. What this package can do is stop the developer losing an afternoon to it.
+
+### Added
+
+- `CatalogService` now explains the failure at the moment it becomes inevitable - naming the URL, the
+  two Addressables defects, the misleading message about to flood the console, and the fact that only
+  exiting play mode recovers. Logged once per service, not per check.
+- A `Reentering the Update method` section in the troubleshooting guide, with the quick-diagnosis row
+  that points at it, how to find the real first error, and the four causes worth checking.
+
+### Not fixed, because it cannot be
+
+The package cannot prevent or contain either defect. It also cannot pre-flight its way out reliably: a
+check that passes can still fail a moment later on the real request. Reporting precisely is the whole
+of what is available here.
+
+Relevant if you hit this: the Local profile's catalog path is `http://localhost:8080/...`, which needs
+the CDN Manager's Local Server started. `4.1.0-pre.10` fixed a related defect where creating the
+profile variable pushed that localhost default into **every** profile, Prod included.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 165/165 PASS, doc sweep 313/313.
+
+## [4.1.0-pre.11] - 2026-08-20 - The auth hook runs inside Addressables' update loop, and never said so
+
+Reported from a production integration: `Reentering the Update method is not allowed. This can happen
+when calling WaitForCompletion on an operation while inside of a callback.` thrown from
+`ResourceManager.Update`.
+
+The package itself never calls `WaitForCompletion` - grep over `Runtime/` and `Editor/` returns
+nothing - and neither of its await paths resumes inside the update loop: Addressables builds its
+`Task` with `RunContinuationsAsynchronously` (`AsyncOperationBase.cs:247`), and UniTask's handle
+awaiter polls on the PlayerLoop (`AddressablesAsyncExtensions.cs:96,157`). So code after
+`await Assets.Load(...)` is not the hazard.
+
+But two pieces of package code *are* invoked from inside `ResourceManager.Update`, and both call
+straight back out into consumer delegates: `Addressables.WebRequestOverride` and
+`Addressables.InternalIdTransformFunc`, installed by `CdnRequestDecorator`. Between them they invoke
+`CdnManager.AuthTokenProvider` on **every** bundle, catalog and hash request, plus whatever hooks the
+project already had installed.
+
+`AuthTokenProvider`'s documentation said only "Called on every request, so a refreshed token is
+picked up without reinstalling" - which reads as an invitation to fetch a token there. Fetching one
+by blocking, or by awaiting an Addressables operation, re-enters the update loop and produces exactly
+the reported exception, from a stack that names only Unity's own frames and never the delegate that
+caused it.
+
+### Fixed
+
+- **Consumer delegates invoked from the hooks are isolated.** A throwing hook no longer propagates
+  into the middle of Addressables' update; it is caught, and the log **names which delegate threw**
+  along with the constraint it violated. The request continues without that hook's contribution - an
+  ordinary 401 or an untransformed id, both of which `CdnErrorMapper` already classifies.
+
+- **The constraint is documented where the delegate is supplied**: on `CdnManager.AuthTokenProvider`,
+  in the package README, and in the CDN usage guide. Return a token you already hold; refresh it on
+  your own schedule.
+
+- **The README's auth example was wrong.** It showed `() => $"Bearer {token}"` while the decorator
+  writes the header as `Bearer {token}` itself, so following it produced
+  `Authorization: Bearer Bearer <token>` and a 401 that looks like an expired credential.
+
+### Still open
+
+This release fixes the package's share: an undocumented re-entrancy-hostile callback whose failure
+mode was unreadable. It cannot stop a `WaitForCompletion` in project code, and the reporting
+integration's full stack has not been captured yet, so whether `AuthTokenProvider` was the trigger in
+that particular case is unconfirmed. With this release the log will name the delegate if it was.
+
+### Verification
+
+Compile gate PASS on both assemblies, EditMode 165/165 PASS, and the mechanical doc sweep still
+resolves all 313 assertions.
+
+## [4.1.0-pre.10] - 2026-08-20 - Everything the package said it did, checked against what it does
+
+A review that started from three reported design flaws and ended up auditing the package against
+its own documentation. The three findings were real; two of the three fixes proposed for them were
+wrong, and are corrected here. Beyond that: a whole-subsystem CDN review that had never been run, a
+2.3.1 -> 2.9.1 API drift sweep that had never been run, and a doc-vs-code audit that extracted 388
+checkable claims from the documentation and followed each one to the code. 248 held.
+
+One defect class runs through nearly all of it: **the package counted intent and never read back
+effect.** Counters counted attempts, not results. `IsPublishable` had no term for how much was
+actually checked. The build manifest was generated by scanning the output directory and then
+verified against that same directory. Nothing asked "is what I just wrote actually there?", so every
+divergence left the building as a green tick.
+
+### Fixed - Addressables 2.9.1 API drift
+
+The package declares `com.unity.addressables` 2.9.1 while much of this code was written against
+2.3.x. Unity changed behaviour without changing signatures, so the drift compiled cleanly.
+
+- **`AddressableAssetEntry.labels` returns a copy on 2.9.1** (`m_Labels.ToHashSet()`), where 2.3.1
+  returned the live field. Every write through it was a silent no-op. Unity migrated all of its own
+  writes off the property in the same release - it added an internal `RemoveLabel` and routed
+  `SetLabel`, `CreateKeyList` and `RenameLabel` through it - while leaving reads on it. All three
+  sites now use `entry.SetLabel(..., postEvent: false)` with one `BatchModification` event per run,
+  and the counters follow `SetLabel`'s return value. The removal site that strips stale `version:`
+  labels is included: fixing only the two additions would have made version labels accumulate
+  forever, so every version bump left the previous one attached.
+
+  There is a second, version-independent layer underneath. Entry labels are serialized into each
+  **group** asset, not into `AddressableAssetSettings.asset`, and the only thing that dirties a group
+  asset is `SetLabel -> entry.SetDirty -> parentGroup.SetDirty(groupModified: true)`. The processor
+  dirtied only the settings object, so on 2.3.1 the labels did not reach disk either.
+
+- **`AssetReference.LoadAssetAsync()` is single-use per instance.** The second load returned an
+  invalid default handle whose `.Task` throws, which surfaced to the caller as a plain `null`. Loads
+  now go through `Addressables.LoadAssetAsync<T>(RuntimeKey)`, which is what that method calls
+  internally.
+
+### Fixed - content that shipped to the wrong place, silently
+
+- **A target group name containing `/` created one group per matched asset.** `CreateGroup` rewrites
+  `/` and `\` to `-` before creating the asset, but the rule looked the group up by the raw string,
+  so `FindGroup` never matched - and `GetOrCreateTargetGroup` runs once per **asset**, with
+  `FindUniqueGroupName` appending an incrementing suffix each time. A rule targeting `Icons/Small`
+  over N assets produced `Icons-Small`, `Icons-Small1`, `Icons-Small2` ...: N groups, one entry each,
+  N bundles, with the counters reporting success. Names are normalized before lookup now.
+
+- **`AssetReference` loads keyed the cache by `AssetGUID`, not `RuntimeKey`.** Two sub-object
+  references into one atlas share a GUID, so the second caller silently received the first caller's
+  sprite. Keyed by `RuntimeKey` now, with `AssetCacheKey.MatchesAddress` keeping GUID-based
+  invalidation and release reaching those entries.
+
+- **A load in flight across a catalog update cached its pre-update handle** after the invalidation
+  sweep had already run. `AssetLoader` carries an invalidation epoch; a load that crosses one is
+  handed to its caller but not cached.
+
+- **`AddressRule` gains an optional `AddressableAssetGroupTemplate`.** Without one, a re-created
+  group inherits the DefaultGroup's schema *values* - `Object.Instantiate` copies them, which in a
+  stock project means PackTogether and Local paths - so a remote, label-split group came back local
+  and packed-together with the entry count unchanged. The rule now says so loudly when it has to
+  create a group with no template.
+
+- **Duplicate generated addresses are a `ProcessResult` error.** Nothing checked: `SetAddress`
+  accepts any duplicate, `RuleValidator` checks rule *names*, and `RuleConflictDetector` was only
+  reachable from read-only surfaces. Two entries sharing one address makes one asset unreachable.
+
+- **`BatchAddressUpdater`**: `FindAndReplace` matched literally but substituted by regex, so
+  `FindAndReplace("[UI]", "ui")` rewrote every U and I in every address that merely contained the
+  literal; `RemovePrefix` could blank an address, after which Addressables substitutes the asset
+  path; `ConvertToLowercase` used culture-sensitive `ToLower` (`I` -> `i` fails on a tr-TR editor)
+  and could collide two addresses undetected.
+
+- **`AddressableAutoProcessor` fed raw import paths to the processor.** Unity reports **folders** in
+  `importedAssets`/`movedAssets`, and `PathFilter` is pure string matching, so a folder could be made
+  addressable - and Addressables expands a folder entry into everything beneath it. One shared
+  `IsRuleEligibleAsset` predicate now, instead of three copies with different rules.
+
+### Fixed - CDN
+
+- **The request timeout was applied to bundle downloads.** `UnityWebRequest.timeout` caps the whole
+  transfer, while the 30s this package configures everywhere is Addressables' **idle** timeout -
+  `AssetBundleProvider` resets it on every byte received and never aborts a progressing download,
+  which is why Addressables leaves the field unset for bundles and sets it only for small
+  catalog/hash/text files. Any bundle slower than 30 seconds was aborted mid-flight at full speed,
+  and because Unity's cache only commits completed downloads, every retry restarted from zero and hit
+  the same wall - a permanently un-downloadable bundle on exactly the connections that need a CDN.
+
+- **A second `Install()` did not rebind**, so the hooks kept the rewriter from the first attempt while
+  the facade reported the new environment. **`HostRewriter` seeded known origins with unresolved
+  `{platform}`/`{appVersion}`**, so an origin from a non-active environment could never match a baked
+  URL and `Rewrite()` returned it unchanged. **`CdnErrorMapper` tested `DataProcessingError` only
+  under status 0**, but a corrupt bundle reports it with HTTP 200, so the most important corruption
+  case fell through to `Unknown` - not retryable, matching no repair path.
+
+- **No concurrency guard existed anywhere.** Two overlapping `ApplyUpdateAsync` calls both reached
+  `Addressables.UpdateCatalogs`, which mutates shared locator state with no interlock.
+
+- **Creating a profile variable pushes its default into every profile**, so Dev/Staging/Prod all
+  silently acquired the localhost catalog path and a Prod build baked `http://localhost:8080` as its
+  remote catalog URL.
+
+- **New per-group contract rule**: `BuildPath` and `LoadPath` must both be remote or both be local.
+  `CatalogVerifier` structurally cannot catch this - it only proves the output matches the manifest
+  the same build just wrote. It also passed when the manifest listed **zero** bundles, and
+  `CatalogInspection.IsPublishable` could not be false when nothing had been checked; both are gated
+  now.
+
+### Fixed - ownership
+
+- **`TieredCache.Set` / `ThreadSafeCacheManager.Set` had two opposite ownership outcomes behind one
+  `void` return.** The fresh-key path takes its own reference; the duplicate-key path spent the
+  *caller's*. A caller doing the documented thing then over-released, which unloaded the asset out
+  from under `AssetLoader` whenever the loader held the second reference - and `IsValid` could not
+  detect it, because the count was still 1. The contract is uniform now: the caller always keeps its
+  reference. The two rejection paths in `ThreadSafeCacheManager` are separated, since the `TryAdd`
+  failure path releases the cache's own reference and was always correct.
+
+- **`LoadAssetSmartAsync` / `ToSmart` with `autoRelease: false` orphaned the birth reference.** Those
+  overloads create the handle and return only the wrapper, so nothing could ever release it - and the
+  finalizer's leak warning is explicitly suppressed for non-owning wrappers.
+
+### Added - features that were documented, or half-built, but did not work
+
+- **`ConstantLabelProvider`.** Documented in two guides, used by roughly thirty worked examples,
+  listed in the editor tools guide, referenced by the shipped templates - and absent. `LabelRule` has
+  no inline label list, so there was no way to emit a constant label at all.
+
+- **`LayoutRuleData.VersionExpression` / `ExcludeUnversioned` are enforced.** Serialized, exported,
+  CLI-writable, syntax-validated by the CLI - and read by nothing. An unparseable expression now
+  aborts the run, which is what its error message always claimed; falling through left no filter set
+  and applied every rule to every asset. `VersionExpression.TryParse` also gained the four comparison
+  forms (`>=`, `>`, `<=`, `<`) that the CLI's own error message has always advertised and the parser
+  then rejected.
+
+- **`LabelRule.AppendToExisting` is honoured.** Serialized, exposed, exported - never read. Labels
+  were only ever appended. `version:` labels are exempt from replacement, since they belong to the
+  version-rule path.
+
+- **`CompositeLayoutRuleData`'s "Respect Source Order" survives.** The composite preserved the order
+  and the processor then re-sorted by priority in all three of its loops, discarding it.
+  `LayoutRuleData.PreserveRuleOrder` carries the decision through.
+
+- **`RuleConflictDetector.PreviewRuleConflicts` has a caller.** It had zero, anywhere in the
+  repository, and iterated rules in a different order than the apply path - a preview that disagreed
+  with the run it was previewing. Aligned, and wired into the Rule Editor's preview panel.
+
+- **`AddressablePreloadConfig.validateOnBuild` / `failBuildOnError` are honoured** by a new
+  `IPreprocessBuildWithReport`. The package had no build callback of any kind, so a team that enabled
+  both and relied on the build to catch a broken `AssetReference` shipped it. Its `preloadEntries`,
+  `loadInParallel` and `maxConcurrentLoads` are still read by nothing and are documented as such.
+
+- **The Dashboard's Settings tab writes to `DebugSettings.Instance`.** Four of its six controls were
+  queried into fields at initialisation and never read again, and the window never loaded the asset.
+
+- **The Scopes tab cleanup buttons release real handles** via `ScopeManager.ClearScope`. They used to
+  touch only the Dashboard's bookkeeping: rows vanished and the memory figure dropped to zero while
+  every asset stayed loaded, under a dialog reading "This will release all tracked assets".
+
+- **`SettingsContract` has an extension point**: `[SettingsRuleProvider]` static methods, discovered
+  via `TypeCache`. Not a static event - those lose their subscribers on domain reload, and an absent
+  rule reads as green.
+
+- **Rule templates work, and rule JSON is portable.** Four of the five shipped templates imported into
+  rule sets that could never run: every rule carried `"filters": []` and empty provider paths, the
+  importer read only paths, so every rule got no filters and a null provider, failed validation, and
+  aborted the whole run - while the import reported success. `RuleSerializer` now resolves a
+  filter/provider by **type name** when no asset path resolves, and carries each one's own serialized
+  configuration inline, so a rule set survives moving between projects. A rule that ends up with no
+  filters is imported disabled and counted as a failure.
+
+- **`PathFilter` warns when a wildcard pattern sits in a literal match mode.** `Contains` is the
+  default, so the Quick Start's own `Assets/UI/**/*.png` matched nothing, silently. The mode is not
+  switched automatically: a saved mode is the user's decision.
+
+### Documentation
+
+Every document was rewritten against the code and then checked twice - an adversarial pass that
+re-tested each deletion and sampled signatures member by member, and a mechanical sweep that extracts
+every `Type.Member` and menu path still asserted anywhere in the docs and greps it back against the
+source. 313 assertions, all resolvable.
+
+Deleted for want of an implementation: keyboard shortcuts, Development/Testing/Production presets, an
+Examples submenu, a separate Debug Settings window, a Layout Viewer inspector panel, and an entire
+runtime API built on `AddressableManager.LoadAsync` - `AddressableManager` is a namespace, not a
+type, and none of those members exist.
+
+Limits are stated rather than omitted: `PathFilter`'s `Contains` default, Editor-only monitoring, the
+non-thread-safe standalone `TieredCache`, and `Simple.Load` handing back a raw asset whose lifetime
+the caller does not control.
+
+### Known, not fixed
+
+- **The catalog-update path has never run.** `Addressables.CheckForCatalogUpdates()` always returned
+  an empty list before 2.9 - `CanUpdateContent` required `Dependencies.Count == 2` while builds emit
+  three - so `CheckForUpdateAsync -> ApplyUpdateAsync -> UpdateCatalogs -> InvalidateLoaderCaches` was
+  dead code until the 2.9.1 bump. It compiles, it has unit tests around it, and nothing has yet proved
+  it works end to end. That needs an integration test that swaps a real catalog and asserts a
+  previously cached handle is re-resolved.
+
+- **`Simple.Load`'s raw asset can be destroyed by a catalog invalidation.** After its `Dispose()`, the
+  cache's reference is the only thing keeping the object alive, and the caller holds no handle with
+  which to object. Making invalidation retain those would trade a rare crash for unbounded retention
+  across every update - a product decision, so the exposure is documented on the API instead.
+
+### Verification
+
+Compile gate PASS on both assemblies; Unity compiles all four assemblies including both test
+assemblies with 0 CS errors; EditMode 165/165 PASS.
+
 ## [4.1.0-pre.9] - 2026-08-17 - Four review findings, and the CI step that could not see a broken build
 
 An external review of the branch (Qodo, on PR #3) raised four items. Three were real and are fixed

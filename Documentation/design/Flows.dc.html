@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    a { color: #6E9FD4; } a:hover { color: #8FB8E4; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 820px; background-color: #383838; color: #D2D2D2; font-size: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+
+  <div>
+    <div style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">The three things people actually come here to do</div>
+    <div style="font-size: 11px; color: #9A9A9A; margin-top: 4px; text-wrap: pretty; max-width: 860px;">The old UI was organised by subsystem, so every task crossed two or three windows and you had to already know which one owned which step. Each row below is one task, start to finish, in the order it happens. Steps that used to live in a different window are marked.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; flex-grow: 1; min-height: 0; overflow-y: auto;">
+
+    <sc-for list="{{flows}}" as="fl" hint-placeholder-count="3">
+      <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 9px; padding: 9px 13px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+          <div style="width: 3px; height: 15px; border-radius: 2px; background-color: {{fl.tone}};"></div>
+          <span style="font-size: 12.5px; font-weight: 600; color: #E4E4E4;">{{fl.title}}</span>
+          <span style="font-size: 10.5px; color: #8A8A8A;">{{fl.who}}</span>
+          <div style="flex-grow: 1;"></div>
+          <span style="font-size: 10px; color: #7E7E7E;">{{fl.before}}</span>
+        </div>
+
+        <div style="display: flex; align-items: stretch; padding: 14px 13px;">
+          <sc-for list="{{fl.steps}}" as="s" hint-placeholder-count="5">
+            <div style="{{s.cellStyle}}">
+              <div style="display: flex; align-items: center; width: 100%;">
+                <div style="{{s.leftLine}}"></div>
+                <div style="{{s.nodeStyle}}"><span style="font-size: 10px; font-weight: 700; color: {{s.numTone}};">{{s.n}}</span></div>
+                <div style="{{s.rightLine}}"></div>
+              </div>
+              <div style="font-size: 11px; font-weight: 600; color: #DCDCDC; margin-top: 8px; text-align: center; text-wrap: pretty;">{{s.label}}</div>
+              <div style="font-size: 10px; color: #8A8A8A; margin-top: 2px; text-align: center; text-wrap: pretty;">{{s.where}}</div>
+              <sc-if value="{{s.moved}}" hint-placeholder-val="{{true}}">
+                <div style="margin-top: 5px; padding: 1px 6px; border-radius: 8px; background-color: #3A3330; border: 1px solid #4A3E34;">
+                  <span style="font-size: 9px; color: #C9A96A;">{{s.moved}}</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex-shrink: 0;">
+      <sc-for list="{{principles}}" as="p" hint-placeholder-count="3">
+        <div style="padding: 11px 13px; background-color: #3A3A3A; border: 1px solid #2B2B2B; border-radius: 4px;">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <div style="width: 6px; height: 6px; border-radius: 3px; background-color: {{p.tone}};"></div>
+            <span style="font-size: 11.5px; font-weight: 600; color: #E0E0E0;">{{p.title}}</span>
+          </div>
+          <div style="font-size: 10.5px; color: #969696; margin-top: 5px; text-wrap: pretty;">{{p.body}}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const mk = (steps, tone) => steps.map((s, i) => {
+      const first = i === 0, last = i === steps.length - 1;
+      return {
+        n: String(i + 1),
+        label: s.label, where: s.where, moved: s.moved || null,
+        cellStyle: 'flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center;',
+        leftLine:  'height: 2px; flex-grow: 1; background-color: ' + (first ? 'transparent' : '#4A4A4A') + ';',
+        rightLine: 'height: 2px; flex-grow: 1; background-color: ' + (last ? 'transparent' : '#4A4A4A') + ';',
+        nodeStyle: 'width: 22px; height: 22px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center;'
+          + ' justify-content: center; background-color: #3F3F3F; border: 2px solid ' + tone + ';',
+        numTone: tone,
+      };
+    });
+
+    return {
+      flows: [
+        {
+          tone: '#7DC183',
+          title: 'Ship a content update to players',
+          who: '· build engineer, on CI or by hand',
+          before: 'was: 2 windows, 6 menu items',
+          steps: mk([
+            { label: 'Confirm the setup', where: 'Configure › Validator' },
+            { label: 'See the patch size', where: 'Build › Update Preview', moved: 'was a separate tab' },
+            { label: 'Build the update', where: 'Build' },
+            { label: 'Verify the output', where: 'Build', moved: 'was a CLI-only step' },
+            { label: 'Watch it land', where: 'Run › Runtime Monitor', moved: 'was another window' },
+          ], '#7DC183'),
+        },
+        {
+          tone: '#6E9FD4',
+          title: 'Get assets named and grouped the way we want',
+          who: '· whoever adds art',
+          before: 'was: 3 windows, 4 menu items',
+          steps: mk([
+            { label: 'Write the rule', where: 'Author › Layout Rules' },
+            { label: 'Dry run', where: 'same screen', moved: 'had no dry run at all' },
+            { label: 'Read the collisions', where: 'same screen', moved: 'was Layout Viewer' },
+            { label: 'Apply', where: 'same screen' },
+          ], '#6E9FD4'),
+        },
+        {
+          tone: '#E0B96A',
+          title: 'Work out why content will not load in the game',
+          who: '· whoever is on the bug',
+          before: 'was: no path at all',
+          steps: mk([
+            { label: 'Read the pipeline', where: 'Overview' },
+            { label: 'Is the origin known?', where: 'Configure › Validator' },
+            { label: 'Is the catalog live?', where: 'Publish › Catalog' },
+            { label: 'Is the player asking?', where: 'Publish › Local Server' },
+            { label: 'What did it get?', where: 'Run › Runtime Monitor' },
+          ], '#E0B96A'),
+        },
+      ],
+
+      principles: [
+        { tone: '#7DC183', title: 'One screen per decision',
+          body: 'Everything a step needs is on that step\'s screen. No task should send you to another window to answer a question it raised.' },
+        { tone: '#6E9FD4', title: 'Preview before effect',
+          body: 'Anything that writes to the project shows what it would write first. Apply and Build are both reachable only past a preview.' },
+        { tone: '#E0B96A', title: 'The pipeline is the map',
+          body: 'The rail on the left is not decoration — its colour is where content actually stops today, so "what is broken" is answered before you click anything.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -37,10 +37,33 @@ namespace AddressableManager.Editor.Automation
 
                     if (entry.address.IndexOf(find, comparison) >= 0)
                     {
+                        // Match and substitution must use the SAME semantics. The guard above is a
+                        // literal substring test, so the replacement has to be literal too. It used to
+                        // hand `find` to Regex.Replace as a PATTERN and `replace` as a substitution
+                        // TEMPLATE, which disagreed with the guard in both directions:
+                        //   FindAndReplace("[UI]", "ui")        -> "[UI]" is a character class, so it
+                        //                                          rewrote every U and I in every
+                        //                                          address that merely contained "[UI]"
+                        //   FindAndReplace("Icon(Small)", "..") -> "(Small)" is a capture group, so the
+                        //                                          pattern never matched and nothing
+                        //                                          was replaced
+                        // and a `replace` containing $1 or $& injected captured text instead of literal
+                        // characters. Regex.Escape on the needle and Match.Result-free replacement fix
+                        // both; the case-insensitive path keeps using Regex only because
+                        // string.Replace(string, string, StringComparison) is not available on the
+                        // C# version this package targets.
                         string newAddress = caseSensitive
                             ? entry.address.Replace(find, replace)
-                            : System.Text.RegularExpressions.Regex.Replace(entry.address, find, replace,
+                            : System.Text.RegularExpressions.Regex.Replace(
+                                entry.address,
+                                System.Text.RegularExpressions.Regex.Escape(find),
+                                replace.Replace("$", "$$"),
                                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                        // Count what actually changed, not what was attempted. SetAddress no-ops when
+                        // the value is unchanged, so an unconditional count++ reported successful
+                        // renames for entries it had not touched.
+                        if (string.IsNullOrEmpty(newAddress) || newAddress == entry.address) continue;
 
                         entry.SetAddress(newAddress, false);
                         count++;
@@ -104,6 +127,7 @@ namespace AddressableManager.Editor.Automation
             if (settings == null) return 0;
 
             int count = 0;
+            int skipped = 0;
             foreach (var group in settings.groups)
             {
                 if (group == null) continue;
@@ -114,7 +138,20 @@ namespace AddressableManager.Editor.Automation
 
                     if (entry.address.StartsWith(prefix))
                     {
-                        entry.SetAddress(entry.address.Substring(prefix.Length), false);
+                        // An address equal to the prefix would shorten to "". SetAddress does not
+                        // reject that - it assigns the empty string and then substitutes AssetPath,
+                        // so the entry silently ends up keyed by "Assets/UI/Panel.prefab" instead of
+                        // anything the caller asked for, every runtime load on the old key throws
+                        // InvalidKeyException, and the log still counts it as a successful shorten.
+                        // Same guard the sibling FindAndReplace carries.
+                        string newAddress = entry.address.Substring(prefix.Length);
+                        if (string.IsNullOrEmpty(newAddress) || newAddress == entry.address)
+                        {
+                            skipped++;
+                            continue;
+                        }
+
+                        entry.SetAddress(newAddress, false);
                         count++;
                     }
                 }
@@ -125,6 +162,14 @@ namespace AddressableManager.Editor.Automation
                 EditorUtility.SetDirty(settings);
                 AssetDatabase.SaveAssets();
                 Debug.Log($"[BatchAddressUpdater] Removed prefix from {count} address(es)");
+            }
+
+            if (skipped > 0)
+            {
+                Debug.LogWarning(
+                    $"[BatchAddressUpdater] Skipped {skipped} entr(ies) whose address is exactly '{prefix}' - " +
+                    "removing the prefix would have left an empty address, which Addressables silently " +
+                    "replaces with the asset path.");
             }
 
             return count;
@@ -143,6 +188,18 @@ namespace AddressableManager.Editor.Automation
                 ? settings.groups
                 : new List<AddressableAssetGroup> { settings.FindGroup(groupName) };
 
+            // Collision check BEFORE writing anything. SetAddress performs no uniqueness check of its
+            // own, and no conflict detector runs on any write path, so "UI/Icon" and "ui/icon" both
+            // collapsing to "ui/icon" produced two entries sharing one key: a single-asset load
+            // resolves to one of them and the other asset becomes permanently unreachable, while the
+            // log reported "Converted 2 address(es)". A batch that would collide is refused whole
+            // rather than half-applied.
+            //
+            // ToLowerInvariant, not ToLower: on a tr-TR editor 'I' lowercases to 'ı' (U+0131), which no
+            // ordinal runtime key comparison will ever match, and the result differs per machine.
+            var planned = new Dictionary<AddressableAssetEntry, string>();
+            var claimed = new Dictionary<string, string>(System.StringComparer.Ordinal);
+
             foreach (var group in groupsToProcess)
             {
                 if (group == null) continue;
@@ -151,13 +208,39 @@ namespace AddressableManager.Editor.Automation
                 {
                     if (entry == null || string.IsNullOrEmpty(entry.address)) continue;
 
-                    string lower = entry.address.ToLower();
-                    if (entry.address != lower)
-                    {
-                        entry.SetAddress(lower, false);
-                        count++;
-                    }
+                    string lower = entry.address.ToLowerInvariant();
+                    if (entry.address != lower) planned[entry] = lower;
                 }
+            }
+
+            // Every address that will exist afterwards: the rewritten ones plus the untouched ones.
+            foreach (var group in settings.groups)
+            {
+                if (group == null) continue;
+
+                foreach (var entry in group.entries)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.address)) continue;
+
+                    string final = planned.TryGetValue(entry, out var rewritten) ? rewritten : entry.address;
+                    if (claimed.TryGetValue(final, out var firstOwner))
+                    {
+                        Debug.LogError(
+                            $"[BatchAddressUpdater] Aborted: lowercasing would give '{entry.address}' and " +
+                            $"'{firstOwner}' the same address '{final}'. Two entries sharing one address " +
+                            "makes one of the assets unreachable at runtime, and nothing downstream detects " +
+                            "it. No address was changed.");
+                        return 0;
+                    }
+
+                    claimed[final] = entry.address;
+                }
+            }
+
+            foreach (var kvp in planned)
+            {
+                kvp.Key.SetAddress(kvp.Value, false);
+                count++;
             }
 
             if (count > 0)

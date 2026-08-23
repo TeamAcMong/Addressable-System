@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 using AddressableManager.Editor.Filters;
 using AddressableManager.Editor.Providers;
@@ -39,9 +40,15 @@ namespace AddressableManager.Editor.Rules
             public int priority;
             public bool skipExisting;
             public string targetGroupName;
+            // Serialized as an asset path, following addressProviderPath's convention. Without this
+            // an export/import round-trip silently drops the rule's group template and the rule
+            // reverts to inheriting the DefaultGroup's schemas - the same silent-misconfiguration
+            // failure the template exists to prevent, reached through a supported workflow.
+            public string targetGroupTemplatePath;
             public List<FilterExport> filters = new List<FilterExport>();
             public string addressProviderType;
             public string addressProviderPath;
+            public string addressProviderJson;
         }
 
         [Serializable]
@@ -55,6 +62,7 @@ namespace AddressableManager.Editor.Rules
             public List<FilterExport> filters = new List<FilterExport>();
             public string labelProviderType;
             public string labelProviderPath;
+            public string labelProviderJson;
         }
 
         [Serializable]
@@ -68,6 +76,7 @@ namespace AddressableManager.Editor.Rules
             public List<FilterExport> filters = new List<FilterExport>();
             public string versionProviderType;
             public string versionProviderPath;
+            public string versionProviderJson;
         }
 
         [Serializable]
@@ -75,6 +84,105 @@ namespace AddressableManager.Editor.Rules
         {
             public string filterType;
             public string filterAssetPath;
+
+            // The filter's own serialized fields, so a rule set is portable and a template can ship a
+            // CONFIGURED filter. Type alone only ever yields a default-constructed one - a PathFilter
+            // with no pattern, which is not a starting point, it is a different bug.
+            public string filterJson;
+        }
+
+        /// <summary>
+        /// Resolve a filter/provider by asset path, falling back to constructing one from the
+        /// exported TYPE NAME and storing it inside the rule data asset.
+        /// </summary>
+        /// <remarks>
+        /// The export format has always carried both a path and a type name, but only the path was
+        /// ever read - which made every `*Type` field in the JSON write-only decoration and made
+        /// shared rule sets non-portable, because an asset path from the exporting project usually
+        /// does not resolve in the importing one.
+        ///
+        /// It also broke the package's own shipped templates: PlatformSpecificRules,
+        /// VersionedAssetsRules, MaterialTextureRules and ComprehensiveRules all specify types with
+        /// empty paths, so every rule imported with a null provider, failed validation, and aborted
+        /// the whole run - while the importer reported success.
+        ///
+        /// Constructing from the type name fixes both. The new instance is added as a sub-asset of
+        /// the rule data so it persists and stays editable in the inspector, rather than being a
+        /// transient CreateInstance that serializes back as null after the next domain reload.
+        /// </remarks>
+        private static T ResolveOrCreate<T>(
+            string assetPath, string typeName, string configJson, LayoutRuleData owner, out string problem)
+            where T : ScriptableObject
+        {
+            problem = null;
+
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                var loaded = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+                if (loaded != null) return loaded;
+
+                problem = $"asset not found at '{assetPath}'";
+                // fall through and try the type name rather than giving up - a rule set exported from
+                // another project is the common case, and the type is enough to rebuild a default.
+            }
+
+            if (string.IsNullOrEmpty(typeName))
+            {
+                problem = problem ?? "no asset path and no type name";
+                return null;
+            }
+
+            System.Type resolved = null;
+            foreach (var candidate in TypeCache.GetTypesDerivedFrom<T>())
+            {
+                if (candidate.IsAbstract) continue;
+                if (!string.Equals(candidate.Name, typeName, System.StringComparison.Ordinal)) continue;
+
+                resolved = candidate;
+                break;
+            }
+
+            if (resolved == null)
+            {
+                problem = $"no {typeof(T).Name} named '{typeName}' exists in this project";
+                return null;
+            }
+
+            var created = ScriptableObject.CreateInstance(resolved) as T;
+            if (created == null)
+            {
+                problem = $"could not instantiate '{typeName}'";
+                return null;
+            }
+
+            created.name = typeName;
+
+            // Configuration is applied ONLY to an instance this method just built. An asset the user
+            // pointed at belongs to their project and must not be rewritten by an import.
+            if (!string.IsNullOrEmpty(configJson))
+            {
+                try
+                {
+                    JsonUtility.FromJsonOverwrite(configJson, created);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning(
+                        $"[RuleSerializer] '{typeName}' was created but its saved configuration could not be " +
+                        $"applied ({ex.Message}); it is at its default values.");
+                }
+            }
+
+            // Only persist when the rule data itself is on disk; an in-memory LayoutRuleData (the
+            // merged one CompositeLayoutRuleData builds, for instance) has nothing to attach to.
+            if (owner != null && AssetDatabase.Contains(owner))
+            {
+                AssetDatabase.AddObjectToAsset(created, owner);
+                EditorUtility.SetDirty(owner);
+            }
+
+            problem = null;
+            return created;
         }
 
         /// <summary>
@@ -113,8 +221,12 @@ namespace AddressableManager.Editor.Rules
                         priority = rule.Priority,
                         skipExisting = rule.SkipExisting,
                         targetGroupName = rule.TargetGroupName,
+                        targetGroupTemplatePath = rule.TargetGroupTemplate != null
+                            ? AssetDatabase.GetAssetPath(rule.TargetGroupTemplate)
+                            : "",
                         addressProviderType = rule.AddressProvider?.GetType().Name ?? "",
-                        addressProviderPath = rule.AddressProvider != null ? AssetDatabase.GetAssetPath(rule.AddressProvider) : ""
+                        addressProviderPath = rule.AddressProvider != null ? AssetDatabase.GetAssetPath(rule.AddressProvider) : "",
+                        addressProviderJson = rule.AddressProvider != null ? JsonUtility.ToJson(rule.AddressProvider) : ""
                     };
 
                     foreach (var filter in rule.Filters)
@@ -122,6 +234,7 @@ namespace AddressableManager.Editor.Rules
                         if (filter == null) continue;
                         ruleExport.filters.Add(new FilterExport
                         {
+                            filterJson = JsonUtility.ToJson(filter),
                             filterType = filter.GetType().Name,
                             filterAssetPath = AssetDatabase.GetAssetPath(filter)
                         });
@@ -143,7 +256,8 @@ namespace AddressableManager.Editor.Rules
                         priority = rule.Priority,
                         appendToExisting = rule.AppendToExisting,
                         labelProviderType = rule.LabelProvider?.GetType().Name ?? "",
-                        labelProviderPath = rule.LabelProvider != null ? AssetDatabase.GetAssetPath(rule.LabelProvider) : ""
+                        labelProviderPath = rule.LabelProvider != null ? AssetDatabase.GetAssetPath(rule.LabelProvider) : "",
+                        labelProviderJson = rule.LabelProvider != null ? JsonUtility.ToJson(rule.LabelProvider) : ""
                     };
 
                     foreach (var filter in rule.Filters)
@@ -151,6 +265,7 @@ namespace AddressableManager.Editor.Rules
                         if (filter == null) continue;
                         ruleExport.filters.Add(new FilterExport
                         {
+                            filterJson = JsonUtility.ToJson(filter),
                             filterType = filter.GetType().Name,
                             filterAssetPath = AssetDatabase.GetAssetPath(filter)
                         });
@@ -172,7 +287,8 @@ namespace AddressableManager.Editor.Rules
                         priority = rule.Priority,
                         skipExisting = rule.SkipExisting,
                         versionProviderType = rule.VersionProvider?.GetType().Name ?? "",
-                        versionProviderPath = rule.VersionProvider != null ? AssetDatabase.GetAssetPath(rule.VersionProvider) : ""
+                        versionProviderPath = rule.VersionProvider != null ? AssetDatabase.GetAssetPath(rule.VersionProvider) : "",
+                        versionProviderJson = rule.VersionProvider != null ? JsonUtility.ToJson(rule.VersionProvider) : ""
                     };
 
                     foreach (var filter in rule.Filters)
@@ -180,6 +296,7 @@ namespace AddressableManager.Editor.Rules
                         if (filter == null) continue;
                         ruleExport.filters.Add(new FilterExport
                         {
+                            filterJson = JsonUtility.ToJson(filter),
                             filterType = filter.GetType().Name,
                             filterAssetPath = AssetDatabase.GetAssetPath(filter)
                         });
@@ -265,35 +382,100 @@ namespace AddressableManager.Editor.Rules
                             TargetGroupName = ruleImport.targetGroupName
                         };
 
-                        // Load filters
+                        // Group template. A path that no longer resolves must be loud: silently
+                        // leaving it null puts the rule back on DefaultGroup-inheritance, which is
+                        // exactly the outcome that looks like success and ships the wrong content.
+                        if (!string.IsNullOrEmpty(ruleImport.targetGroupTemplatePath))
+                        {
+                            var template = AssetDatabase.LoadAssetAtPath<AddressableAssetGroupTemplate>(
+                                ruleImport.targetGroupTemplatePath);
+                            if (template != null)
+                            {
+                                rule.TargetGroupTemplate = template;
+                            }
+                            else
+                            {
+                                Debug.LogWarning(
+                                    $"[RuleSerializer] Group template not found at " +
+                                    $"'{ruleImport.targetGroupTemplatePath}' for rule '{ruleImport.ruleName}'. " +
+                                    "The rule will inherit the DefaultGroup's schemas instead - if this group " +
+                                    "is meant to be remote or label-split, reassign the template before applying.");
+                            }
+                        }
+
+                        // Load filters.
+                        //
+                        // A filter that does not resolve CANNOT be skipped quietly. Filters are ANDed
+                        // (AddressRule.IsMatch), so dropping one strictly WIDENS what the rule matches:
+                        // PathFilter("Assets/UI") + ExtensionFilter(".png") imported without the
+                        // PathFilter becomes "every .png in the project", which then gets its address
+                        // rewritten and its entry moved into the rule's target group - while the import
+                        // dialog reports success. Downstream cannot catch it either: AddressRule.Validate
+                        // only requires at least one filter, and IsMatch's match-all guard fires only
+                        // when the list is empty.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
-                            if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
+                            var filter = ResolveOrCreate<AssetFilterBase>(
+                                filterExport.filterAssetPath, filterExport.filterType, filterExport.filterJson,
+                                ruleData, out string filterProblem);
+
+                            if (filter != null)
                             {
-                                var filter = AssetDatabase.LoadAssetAtPath<AssetFilterBase>(filterExport.filterAssetPath);
-                                if (filter != null)
-                                {
-                                    rule.Filters.Add(filter);
-                                }
-                                else
-                                {
-                                    Debug.LogWarning($"[RuleSerializer] Filter not found: {filterExport.filterAssetPath}");
-                                }
+                                rule.Filters.Add(filter);
                             }
+                            else
+                            {
+                                degraded = true;
+                                Debug.LogError(
+                                    $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
+                                    $"({filterProblem}).");
+                            }
+                        }
+
+                        // A rule with no filters at all matches nothing and fails validation, which
+                        // aborts the ENTIRE run - so it cannot be imported as enabled.
+                        if (rule.Filters.Count == 0)
+                        {
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters. A rule needs at " +
+                                "least one filter; imported disabled.");
                         }
 
                         // Load address provider
-                        if (!string.IsNullOrEmpty(ruleImport.addressProviderPath))
+                        rule.AddressProvider = ResolveOrCreate<AddressProviderBase>(
+                            ruleImport.addressProviderPath, ruleImport.addressProviderType,
+                            ruleImport.addressProviderJson, ruleData, out string addrProblem);
+
+                        if (rule.AddressProvider == null)
                         {
-                            rule.AddressProvider = AssetDatabase.LoadAssetAtPath<AddressProviderBase>(ruleImport.addressProviderPath);
-                            if (rule.AddressProvider == null)
-                            {
-                                Debug.LogWarning($"[RuleSerializer] Address provider not found: {ruleImport.addressProviderPath}");
-                            }
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}': address provider could not be " +
+                                $"resolved ({addrProblem}).");
                         }
 
-                        ruleData.AddAddressRule(rule);
-                        successCount++;
+                        if (degraded)
+                        {
+                            // Imported but disarmed. Dropping the rule entirely would lose the user's
+                            // work; importing it live would let it match far more than it was written
+                            // to. Disabled + counted as a failure is the only option that neither
+                            // loses data nor acts on a rule nobody has re-approved.
+                            rule.Enabled = false;
+                            ruleData.AddAddressRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Address rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters/providers could not be resolved, and a rule missing a filter " +
+                                "matches MORE than it was written to. Reattach the missing assets, then re-enable it.");
+                        }
+                        else
+                        {
+                            ruleData.AddAddressRule(rule);
+                            successCount++;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -316,23 +498,76 @@ namespace AddressableManager.Editor.Rules
                             AppendToExisting = ruleImport.appendToExisting
                         };
 
-                        // Load filters
+                        // Load filters. Same path/type-name/JSON resolution the address rules use - the
+                        // label and version paths were left on plain LoadAssetAtPath, so every shipped
+                        // template imported its label and version rules with ZERO filters (their
+                        // filterAssetPath is empty by design now that filters travel inline), which
+                        // fails validation and aborts the entire run.
+                        // Losing SOME filters is the dangerous case, not losing all of them. Filters
+                        // are ANDed, so dropping one makes the rule match STRICTLY MORE than it was
+                        // written to: PathFilter("Assets/UI") AND ExtensionFilter(".png") degrades to
+                        // "every .png". This loop used to log the error and carry on, leaving the rule
+                        // ENABLED and counting it as a success - so the CLI printed
+                        // "Rules imported successfully" and exited 0, and the next Apply relabelled
+                        // every addressable asset the surviving filters happened to match. The address
+                        // loop above has always tracked this; label and version did not.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
-                            if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
+                            var filter = ResolveOrCreate<AssetFilterBase>(
+                                filterExport.filterAssetPath, filterExport.filterType, filterExport.filterJson,
+                                ruleData, out string filterProblem);
+
+                            if (filter != null)
                             {
-                                var filter = AssetDatabase.LoadAssetAtPath<AssetFilterBase>(filterExport.filterAssetPath);
-                                if (filter != null)
-                                {
-                                    rule.Filters.Add(filter);
-                                }
+                                rule.Filters.Add(filter);
+                            }
+                            else
+                            {
+                                degraded = true;
+                                Debug.LogError(
+                                    $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
+                                    $"({filterProblem}).");
                             }
                         }
 
-                        // Load label provider
-                        if (!string.IsNullOrEmpty(ruleImport.labelProviderPath))
+                        if (rule.Filters.Count == 0)
                         {
-                            rule.LabelProvider = AssetDatabase.LoadAssetAtPath<LabelProviderBase>(ruleImport.labelProviderPath);
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters. A rule needs at " +
+                                "least one filter; imported disabled.");
+                        }
+
+                        // Load label provider. The reason is kept, not discarded with `out _`: a rule
+                        // that imported without its provider needs to be able to say why.
+                        rule.LabelProvider = ResolveOrCreate<LabelProviderBase>(
+                            ruleImport.labelProviderPath, ruleImport.labelProviderType,
+                            ruleImport.labelProviderJson, ruleData, out string labelProblem);
+
+                        if (rule.LabelProvider == null)
+                        {
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}': label provider could not be " +
+                                $"resolved ({labelProblem}).");
+                        }
+
+                        if (degraded)
+                        {
+                            // Imported but disarmed, and counted as a failure. The two counters are
+                            // mutually exclusive: incrementing both, which the zero-filter branch used
+                            // to do, made `failCount == 0` and the printed summary disagree.
+                            rule.Enabled = false;
+                            ruleData.AddLabelRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Label rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters or its provider could not be resolved, and running it as-is " +
+                                "would label more assets than the rule was written to match. Re-point it and " +
+                                "re-enable it by hand.");
+                            continue;
                         }
 
                         ruleData.AddLabelRule(rule);
@@ -359,23 +594,72 @@ namespace AddressableManager.Editor.Rules
                             SkipExisting = ruleImport.skipExisting
                         };
 
-                        // Load filters
+                        // Load filters. Same path/type-name/JSON resolution the address rules use - the
+                        // label and version paths were left on plain LoadAssetAtPath, so every shipped
+                        // template imported its label and version rules with ZERO filters (their
+                        // filterAssetPath is empty by design now that filters travel inline), which
+                        // fails validation and aborts the entire run.
+                        // Losing SOME filters is the dangerous case, not losing all of them. Filters
+                        // are ANDed, so dropping one makes the rule match STRICTLY MORE than it was
+                        // written to: PathFilter("Assets/UI") AND ExtensionFilter(".png") degrades to
+                        // "every .png". This loop used to log the error and carry on, leaving the rule
+                        // ENABLED and counting it as a success - so the CLI printed
+                        // "Rules imported successfully" and exited 0, and the next Apply relabelled
+                        // every addressable asset the surviving filters happened to match. The address
+                        // loop above has always tracked this; label and version did not.
+                        bool degraded = false;
+
                         foreach (var filterExport in ruleImport.filters)
                         {
-                            if (!string.IsNullOrEmpty(filterExport.filterAssetPath))
+                            var filter = ResolveOrCreate<AssetFilterBase>(
+                                filterExport.filterAssetPath, filterExport.filterType, filterExport.filterJson,
+                                ruleData, out string filterProblem);
+
+                            if (filter != null)
                             {
-                                var filter = AssetDatabase.LoadAssetAtPath<AssetFilterBase>(filterExport.filterAssetPath);
-                                if (filter != null)
-                                {
-                                    rule.Filters.Add(filter);
-                                }
+                                rule.Filters.Add(filter);
+                            }
+                            else
+                            {
+                                degraded = true;
+                                Debug.LogError(
+                                    $"[RuleSerializer] Rule '{ruleImport.ruleName}': filter could not be resolved " +
+                                    $"({filterProblem}).");
                             }
                         }
 
-                        // Load version provider
-                        if (!string.IsNullOrEmpty(ruleImport.versionProviderPath))
+                        if (rule.Filters.Count == 0)
                         {
-                            rule.VersionProvider = AssetDatabase.LoadAssetAtPath<VersionProviderBase>(ruleImport.versionProviderPath);
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}' has no filters. A rule needs at " +
+                                "least one filter; imported disabled.");
+                        }
+
+                        // Load version provider. The reason is kept, not discarded with `out _`.
+                        rule.VersionProvider = ResolveOrCreate<VersionProviderBase>(
+                            ruleImport.versionProviderPath, ruleImport.versionProviderType,
+                            ruleImport.versionProviderJson, ruleData, out string versionProblem);
+
+                        if (rule.VersionProvider == null)
+                        {
+                            degraded = true;
+                            Debug.LogError(
+                                $"[RuleSerializer] Rule '{ruleImport.ruleName}': version provider could not be " +
+                                $"resolved ({versionProblem}).");
+                        }
+
+                        if (degraded)
+                        {
+                            rule.Enabled = false;
+                            ruleData.AddVersionRule(rule);
+                            failCount++;
+                            Debug.LogError(
+                                $"[RuleSerializer] Version rule '{ruleImport.ruleName}' imported DISABLED: one or " +
+                                "more of its filters or its provider could not be resolved, and running it as-is " +
+                                "would version more assets than the rule was written to match. Re-point it and " +
+                                "re-enable it by hand.");
+                            continue;
                         }
 
                         ruleData.AddVersionRule(rule);

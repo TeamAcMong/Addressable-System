@@ -141,6 +141,11 @@ namespace AddressableManager.Editor.Rules
             var merged = CreateInstance<LayoutRuleData>();
             merged.name = $"{name} (Merged)";
 
+            // Carry the ordering decision through to the processor. GetCombined*Rules already returns
+            // the rules in the requested order; without this the processor re-sorts by Priority and
+            // "Respect Source Order" means nothing.
+            merged.PreserveRuleOrder = _respectSourceOrder;
+
             // Add all rules
             foreach (var rule in GetCombinedAddressRules())
             {

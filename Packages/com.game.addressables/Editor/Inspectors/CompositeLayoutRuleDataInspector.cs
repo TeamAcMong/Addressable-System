@@ -149,7 +149,14 @@ namespace AddressableManager.Editor.Inspectors
                     // Cleanup temporary merged data
                     DestroyImmediate(mergedRuleData);
 
-                    string resultMessage = $"Combined rules applied successfully!\n\n" +
+                    // Headline follows the outcome. It used to open with "successfully!" and append an
+                    // error count underneath, so a failed run still read as a success at a glance -
+                    // the same report-intent-not-effect habit audited out of the rest of this package.
+                    string headline = result.Success
+                        ? "Combined rules applied successfully!"
+                        : $"Combined rules applied WITH {result.Errors.Count} ERROR(S).";
+
+                    string resultMessage = headline + "\n\n" +
                         $"Processed: {result.TotalAssetsProcessed} assets\n" +
                         $"Addresses: {result.AddressesApplied}\n" +
                         $"Labels: {result.LabelsApplied}\n" +

@@ -27,10 +27,19 @@ namespace AddressableManager.Editor.Automation
         {
             if (_isProcessing) return;
 
-            // Collect all affected assets
+            // Collect all affected assets, through the SAME filter the project-wide path uses.
+            // These arrays contain folders, Packages/ paths and Addressables' own data assets, none of
+            // which a rule may be applied to - see LayoutRuleProcessor.IsRuleEligibleAsset.
             var affectedAssets = new HashSet<string>();
-            affectedAssets.UnionWith(importedAssets);
-            affectedAssets.UnionWith(movedAssets);
+            foreach (string path in importedAssets)
+            {
+                if (LayoutRuleProcessor.IsRuleEligibleAsset(path)) affectedAssets.Add(path);
+            }
+
+            foreach (string path in movedAssets)
+            {
+                if (LayoutRuleProcessor.IsRuleEligibleAsset(path)) affectedAssets.Add(path);
+            }
 
             if (affectedAssets.Count == 0) return;
 
@@ -131,8 +140,7 @@ namespace AddressableManager.Editor.Automation
             // the "Force Process All Assets" menu item (HANDOFF_TO_SESSION_B.md E-PAIR-1).
             var allAssets = AssetDatabase.FindAssets("", new[] { "Assets" })
                 .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                .Where(path => !string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
-                .Where(path => !path.StartsWith("Assets/AddressableAssetsData/"))
+                .Where(LayoutRuleProcessor.IsRuleEligibleAsset)
                 .ToList();
 
             Debug.Log($"[AddressableAutoProcessor] Force processing {allAssets.Count} assets");
@@ -149,7 +157,25 @@ namespace AddressableManager.Editor.Automation
 
                 EditorUtility.ClearProgressBar();
 
-                Debug.Log($"[AddressableAutoProcessor] {ruleData.name}: Complete - " +
+                // Surface errors the same way ProcessPendingAssets already does. Reporting only the
+                // counters made a run that validated nothing and applied nothing print
+                // "Complete - 0 addresses, 0 labels applied" with no error anywhere in the console -
+                // which is exactly what a rule set with an unassigned AddressProvider produces.
+                foreach (var error in result.Errors)
+                {
+                    Debug.LogError($"[AddressableAutoProcessor] {ruleData.name}: {error}");
+                }
+
+                foreach (var warning in result.Warnings)
+                {
+                    Debug.LogWarning($"[AddressableAutoProcessor] {ruleData.name}: {warning}");
+                }
+
+                string status = result.Success
+                    ? "Complete"
+                    : $"Complete with {result.Errors.Count} error(s)";
+
+                Debug.Log($"[AddressableAutoProcessor] {ruleData.name}: {status} - " +
                     $"{result.AddressesApplied} addresses, {result.LabelsApplied} labels applied");
             }
         }

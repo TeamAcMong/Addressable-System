@@ -86,7 +86,7 @@ namespace AddressableManager.Core
 #endif
         {
             var handle = await handleTask;
-            return handle?.ToSmart(autoRelease);
+            return handle?.ToSmart(OwningWrapper(autoRelease));
         }
 
         /// <summary>
@@ -106,7 +106,7 @@ namespace AddressableManager.Core
             bool autoRelease = true)
         {
             var handle = await loader.LoadAssetAsync<T>(address);
-            return handle?.ToSmart(autoRelease);
+            return handle?.ToSmart(OwningWrapper(autoRelease));
         }
 
         /// <summary>
@@ -122,7 +122,40 @@ namespace AddressableManager.Core
             bool autoRelease = true)
         {
             var handle = await loader.LoadAssetAsync<T>(assetReference);
-            return handle?.ToSmart(autoRelease);
+            return handle?.ToSmart(OwningWrapper(autoRelease));
+        }
+
+        /// <summary>
+        /// Forces ownership on for the overloads that CREATE the handle they wrap.
+        /// </summary>
+        /// <remarks>
+        /// <c>autoRelease:false</c> means "this wrapper does not own a reference; something else will
+        /// release it". That is a valid thing to say about a handle the caller already holds and passes
+        /// to <c>handle.ToSmart(false)</c> — the caller is the something else.
+        ///
+        /// It cannot be true for the overloads here: they await the loader, receive a handle whose
+        /// birth reference belongs to whoever received it, wrap it, and return ONLY the wrapper. The
+        /// raw handle never reaches the caller, so with autoRelease:false nobody owns that reference
+        /// and nothing can ever release it — <c>Dispose()</c> releases nothing because
+        /// <c>_ownedReferences</c> is 0, <c>Release()</c> logs "wrapper owns no reference" and returns,
+        /// and the finalizer's leak warning is explicitly suppressed for exactly that case. A
+        /// guaranteed, permanently silent leak of one Addressables operation per call.
+        ///
+        /// So the flag is ignored here rather than honoured, and the caller is told why. Ignoring it is
+        /// the conservative choice: the alternative leaks with no diagnostic at all.
+        /// </remarks>
+        private static bool OwningWrapper(bool autoRelease)
+        {
+            if (!autoRelease)
+            {
+                UnityEngine.Debug.LogError(
+                    "[AssetHandleExtensions] autoRelease:false was ignored. This overload creates the handle " +
+                    "it wraps and returns only the wrapper, so a non-owning wrapper would orphan the " +
+                    "handle's reference with nothing able to release it. If you want to own the reference " +
+                    "yourself, take the handle from LoadAssetAsync and call handle.ToSmart(false) on it.");
+            }
+
+            return true;
         }
     }
 }
