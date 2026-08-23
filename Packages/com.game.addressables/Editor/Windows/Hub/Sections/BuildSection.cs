@@ -377,16 +377,27 @@ namespace AddressableManager.Editor.Windows.Hub
                     EditorUtility.DisplayDialog("The build did not run",
                         result.ErrorMessage + "\n\nNothing was published.", "OK");
                     Debug.LogError($"[Build] {result.ErrorMessage}");
+
+                    HubHistory.Record(HistoryKind.Failed,
+                        update ? "Content update refused" : "Content build refused",
+                        profileName);
                 }
                 else
                 {
                     Debug.Log($"[Build] {(update ? "Update" : "Full build")} finished with profile '{profileName}'.");
+
+                    HubHistory.Record(HistoryKind.Ok,
+                        update ? "Content update built" : "Content built",
+                        $"{profileName} · {EditorUserBuildSettings.activeBuildTarget}");
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
                 EditorUtility.DisplayDialog("The build threw", $"{ex.GetType().Name}: {ex.Message}", "OK");
+
+                HubHistory.Record(HistoryKind.Failed,
+                    update ? "Content update threw" : "Content build threw", ex.GetType().Name);
             }
             finally
             {

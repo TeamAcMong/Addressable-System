@@ -16,16 +16,21 @@ namespace AddressableManager.Editor.Windows.Hub
     /// loaders. "The scene unloaded — so why is this bundle still resident?" is answerable only from
     /// in here.
     ///
-    /// <b>What this does not do yet, and why it says so.</b> The decision record calls for leak
-    /// detection: a handle whose owning object was destroyed while its reference count never reached
-    /// zero. Two things are missing for that, and neither is guessable —
-    /// <c>ScopeManager.Registration</c> keeps the owner's type NAME rather than a weak reference to
-    /// the owner, so "was it destroyed" cannot be asked; and <c>IOwnedHandle</c> exposes
-    /// <c>IsAlive</c> but no reference count, so "how many holders remain" cannot be answered either.
-    /// Both are small additions to code that governs asset lifetime, which is precisely the code not
-    /// to change casually. Until they land, this screen reports the inventory it can actually see and
-    /// says plainly that the leak column is not measured — rather than showing a plausible,
-    /// fabricated one.
+    /// <b>Leaks.</b> A scope whose owning object has been destroyed while its loader is still
+    /// holding assets is memory nobody is going to give back, and it is reported here as such.
+    /// <c>ScopeManager</c> keeps a WEAK reference to each foreign owner for exactly this - weak by
+    /// requirement, so the directory can never be the reason an owner stays alive.
+    ///
+    /// The check is the PAIR, not either half. A dead owner holding nothing is an untidy
+    /// registration, not an expensive one; a live owner holding a great deal is a game doing its job.
+    /// And a destroyed <c>UnityEngine.Object</c> is not null to the CLR - only Unity's overloaded
+    /// <c>==</c> knows - so the weak reference is unwrapped and asked Unity's question rather than
+    /// tested for null, which would report a destroyed MonoBehaviour as alive for exactly as long as
+    /// the leak was worth catching.
+    ///
+    /// Per-handle reference counts are still not available (<c>IOwnedHandle</c> exposes
+    /// <c>IsAlive</c> and nothing else), so this reports leaks at scope granularity rather than
+    /// naming which holder failed to release. That is the useful half.
     /// </remarks>
     public sealed class AssetLifetimeSection : IHubSection
     {
@@ -51,16 +56,27 @@ namespace AddressableManager.Editor.Windows.Hub
 
             // CachedAssetCount, not SnapshotLoadedAssets().Count: this runs on the rail's timer and
             // the snapshot allocates one row per cached asset. Counting is a dictionary read.
-            int scopes = 0, assets = 0;
-            foreach (var scopeId in ScopeManager.Instance.ActiveScopes)
+            var scopes = ScopeManager.Instance.SnapshotScopes();
+            if (scopes.Count == 0)
+                return SectionHealth.NotMeasured("No scopes are registered in this play session.");
+
+            int assets = 0, leaked = 0, leakedAssets = 0;
+            foreach (var scope in scopes)
             {
-                scopes++;
-                var loader = ScopeManager.Instance.GetScope(scopeId);
-                if (loader != null) assets += loader.CachedAssetCount;
+                assets += scope.HeldAssetCount;
+                if (!scope.IsLeaked) continue;
+
+                leaked++;
+                leakedAssets += scope.HeldAssetCount;
             }
 
-            if (scopes == 0)
-                return SectionHealth.NotMeasured("No scopes are registered in this play session.");
+            if (leaked > 0)
+            {
+                return SectionHealth.Warning(
+                    leaked == 1 ? "1 leaked scope" : $"{leaked} leaked scopes",
+                    $"{leakedAssets} asset(s) are held by {leaked} scope(s) whose owner no longer " +
+                    "exists. Nothing is going to release them this session.");
+            }
 
             return SectionHealth.Ok($"{assets} held");
         }
@@ -121,15 +137,16 @@ namespace AddressableManager.Editor.Windows.Hub
             public long Bytes;
             public int Dead;
             public bool BytesKnown;
+            public ScopeInfo Info;
         }
 
         private static List<ScopeRow> ReadScopes()
         {
             var rows = new List<ScopeRow>();
 
-            foreach (var scopeId in ScopeManager.Instance.ActiveScopes)
+            foreach (var info in ScopeManager.Instance.SnapshotScopes())
             {
-                var loader = ScopeManager.Instance.GetScope(scopeId);
+                var loader = ScopeManager.Instance.GetScope(info.ScopeId);
                 if (loader == null) continue;
 
                 var assets = loader.SnapshotLoadedAssets();
@@ -147,15 +164,22 @@ namespace AddressableManager.Editor.Windows.Hub
 
                 rows.Add(new ScopeRow
                 {
-                    Id = scopeId,
+                    Id = info.ScopeId,
                     Assets = assets,
                     Bytes = bytes,
                     Dead = dead,
                     BytesKnown = bytesKnown,
+                    Info = info,
                 });
             }
 
-            rows.Sort((a, b) => b.Assets.Count.CompareTo(a.Assets.Count));
+            // Leaked scopes first, then by how much they are holding. The ordering IS the finding:
+            // a list sorted only by size buries a small leak under a large, legitimate scene scope.
+            rows.Sort((a, b) =>
+            {
+                if (a.Info.IsLeaked != b.Info.IsLeaked) return a.Info.IsLeaked ? -1 : 1;
+                return b.Assets.Count.CompareTo(a.Assets.Count);
+            });
             return rows;
         }
 
@@ -180,9 +204,18 @@ namespace AddressableManager.Editor.Windows.Hub
                     $"{dead} released handle(s) still cached"));
             }
 
-            // The column the decision record asked for, reported honestly as absent rather than
-            // silently omitted. A missing column reads as "no leaks"; this reads as what it is.
-            strip.Add(SummaryItem(HealthState.NotMeasured, "leaks not measured"));
+            int leaked = 0, leakedAssets = 0;
+            foreach (var scope in scopes)
+            {
+                if (!scope.Info.IsLeaked) continue;
+                leaked++;
+                leakedAssets += scope.Assets.Count;
+            }
+
+            strip.Add(leaked > 0
+                ? SummaryItem(HealthState.Warning,
+                    $"{leaked} leaked scope(s) holding {leakedAssets} asset(s)")
+                : SummaryItem(HealthState.Ok, "no leaked scopes"));
 
             return strip;
         }
@@ -215,7 +248,14 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var title = new Label(scope.Id);
             title.AddToClassList("hub-card-title");
+            if (scope.Info.IsLeaked) ApplyText(title, HealthState.Warning);
             head.Add(title);
+
+            var owner = new Label(DescribeOwner(scope.Info));
+            owner.AddToClassList("hub-card-count");
+            owner.style.marginRight = 10;
+            if (scope.Info.IsLeaked) ApplyText(owner, HealthState.Warning);
+            head.Add(owner);
 
             var count = new Label(scope.BytesKnown
                 ? $"{scope.Assets.Count} held  ·  {FormatBytes(scope.Bytes)}"
@@ -227,6 +267,22 @@ namespace AddressableManager.Editor.Windows.Hub
             head.Add(count);
 
             card.Add(head);
+
+            if (scope.Info.IsLeaked)
+            {
+                var why = new Label(
+                    $"{scope.Info.OwnerTypeName ?? "The owner"} " +
+                    (scope.Info.OwnerState == ScopeOwnerState.Destroyed
+                        ? "was destroyed"
+                        : "was garbage collected") +
+                    $" while this scope still holds {scope.Assets.Count} asset(s). Nothing is going " +
+                    "to release them for the rest of this session.");
+                why.AddToClassList("hub-rule-meta");
+                why.style.paddingLeft = 8;
+                why.style.paddingRight = 8;
+                why.style.paddingTop = 6;
+                card.Add(why);
+            }
 
             const int cap = 60;
             int shown = 0;
@@ -309,17 +365,27 @@ namespace AddressableManager.Editor.Windows.Hub
         private static VisualElement BuildLimitsNote()
         {
             return Note(
-                "Leak detection is not implemented yet, and this screen will not fake it. Finding a " +
-                "handle whose owner was destroyed needs two things the runtime does not expose today: " +
-                "a weak reference to the owning object (ScopeManager keeps only its type name) and a " +
-                "reference count on the handle (IOwnedHandle exposes IsAlive and nothing else). Both " +
-                "are changes to the code that governs asset lifetime, which is not code to change " +
-                "casually.\n\n" +
-                "What is here is real: every entry each live scope is holding, read from the loader " +
-                "itself.");
+                "A leak here means the object that created a scope is gone while its loader still " +
+                "holds assets. Both halves matter: a dead owner holding nothing is untidy, a live " +
+                "owner holding a lot is a game doing its job.\n\n" +
+                "Reported per scope, not per handle. Naming which holder failed to release needs a " +
+                "reference count on the handle, and IOwnedHandle exposes IsAlive and nothing else — " +
+                "so that half is still not measured, and this screen does not guess at it.");
         }
 
         // ------------------------------------------------------------------ helpers
+
+        private static string DescribeOwner(ScopeInfo info)
+        {
+            switch (info.OwnerState)
+            {
+                case ScopeOwnerState.ManagerOwned: return "created by ScopeManager";
+                case ScopeOwnerState.Destroyed:    return $"{info.OwnerTypeName ?? "owner"} — destroyed";
+                case ScopeOwnerState.Collected:    return $"{info.OwnerTypeName ?? "owner"} — collected";
+                case ScopeOwnerState.Alive:        return info.OwnerTypeName ?? "owned externally";
+                default:                           return "owner unknown";
+            }
+        }
 
         private static string FormatBytes(long bytes)
         {

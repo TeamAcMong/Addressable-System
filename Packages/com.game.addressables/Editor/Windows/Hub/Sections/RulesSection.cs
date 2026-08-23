@@ -447,6 +447,14 @@ namespace AddressableManager.Editor.Windows.Hub
                           $"{result.LabelsApplied} label(s), {result.VersionsApplied} version(s). " +
                           $"Preview had predicted {_preview.Planned.Count} change(s).");
 
+                // The APPLY's numbers, not the preview's. Where the two disagree that disagreement
+                // is the interesting fact, and a history that echoed the prediction back would erase
+                // exactly the evidence someone would want a week later.
+                HubHistory.Record(
+                    result.Errors.Count > 0 ? HistoryKind.Warning : HistoryKind.Ok,
+                    "Layout rules applied",
+                    $"{result.AddressesApplied} addr · {result.LabelsApplied} label");
+
                 if (result.Errors.Count > 0)
                 {
                     EditorUtility.DisplayDialog("Applied with errors",
