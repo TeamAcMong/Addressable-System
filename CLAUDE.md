@@ -4,7 +4,8 @@ Repo này là một **UPM package** (`com.game.addressables`), không phải gam
 AI hay animation. Công việc chia thành bốn mảng: **runtime infrastructure C#**, **Editor tooling**,
 **build pipeline / CI**, và **tài liệu**.
 
-Workstream đang chạy: **CDN system**, nhánh `feat/cdn-system`, 6 phase — xem
+Workstream CDN đã merge và phát hành ở **4.1.0** (tag `4.1.0`, PR #4). Doc thiết kế 6 phase vẫn là
+nguồn chân lý cho tầng CDN — xem
 [Documentation/CDN_SYSTEM.html](Documentation/CDN_SYSTEM.html) (hoặc bản
 [tiếng Việt](Documentation/CDN_SYSTEM_VI.html)).
 
@@ -184,8 +185,8 @@ Không fan-out các agent cùng sửa **một file** — sẽ đè nhau. Cùng f
 Mỗi lần delegate, prompt gửi cho agent PHẢI mang đủ context sau — agent không thấy được conversation này:
 
 ```
-Package:      com.game.addressables 4.0.1 → target 4.1.0
-Unity:        2022.3+  |  Addressables: 2.3.1 (Phase 0 nâng lên 2.9.x)
+Package:      com.game.addressables 4.1.0
+Unity:        2023.1+ (package.json; project chạy 6000.5.7f1)  |  Addressables: 2.9.1
 Phase:        <số> — <tên>
 Task:         <mã task, vd 1.9> — <mô tả>
 Doc governing: Documentation/CDN_SYSTEM.html#<anchor>   ← đọc mục này trước khi code

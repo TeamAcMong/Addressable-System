@@ -87,8 +87,13 @@ without forking the package.
 
 ### Notes
 
-`CdnManagerWindow` and the Dashboard still work unchanged. The hub hosts the six CDN tabs through an
-adapter rather than a rewrite, so sections can move across one at a time instead of as one flag day.
+`CdnManagerWindow` and the Dashboard still work unchanged. Three of the six CDN tabs — Catalog
+Inspector, Local Server, Runtime Monitor — are hosted through an adapter rather than rewritten. The
+other three were rebuilt as native sections, because the tab was the problem in each case: the
+Validator tab listed all fifty-eight rules flat and sorted by id, which is the maintainer's ordering
+rather than the user's, and the Build tab offered its two buttons and let the pipeline explain itself
+afterwards, which is too late for the failure that matters. `SettingsValidatorTab` and `BuildTab`
+remain for `CdnManagerWindow` until that window retires, so nothing moved as one flag day.
 
 ## [4.1.0-pre.15] - 2026-08-21 - The pre.14 local-server fix could never fire, and a progress bar that was never wired
 

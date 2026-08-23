@@ -20,11 +20,13 @@ Version 4.1.0-pre.9 | Unity 2023.1+
 
 ## Overview
 
-The package ships four editor windows:
+The package ships five editor windows. Since 4.1.0 the first is the way in — the other four
+still open and still work, but the hub reaches all of them:
 
 | Tool | Purpose | Shortcut |
 |------|---------|----------|
-| Dashboard | Real-time monitoring and performance | `Ctrl+Alt+A` |
+| **Addressable Manager (hub)** | Ten sections on a rail that *is* the delivery pipeline; each stage carries its own health, and the first blocked one is named and clickable | `Ctrl+Alt+A` |
+| Dashboard | Real-time monitoring and performance | - |
 | Layout Rule Editor | Create and manage automation rules | - |
 | Layout Viewer | Inspect the addressable layout and its conflicts | - |
 | CDN Manager | Validate, build and inspect remote content | - |
@@ -36,7 +38,7 @@ Debug settings are a ScriptableObject (`Assets > Create > Addressable Manager > 
 ## Addressable Manager Dashboard
 
 **Path**: `Window > Addressable Manager > Dashboard`
-**Shortcut**: `Ctrl+Alt+A` (Windows) / `Cmd+Alt+A` (Mac)
+**Shortcut**: none since 4.1.0 — `Ctrl+Alt+A` now opens the hub
 **Minimum size**: 800×600
 
 The dashboard provides real-time monitoring of addressable assets during play mode. Monitoring is Editor-only — `EditorAssetMonitor` lives in the Editor assembly, and the tracker is cleared when you exit Play Mode.
@@ -385,7 +387,11 @@ Every path below is backed by a `[MenuItem]` or `[CreateAssetMenu]` in the packa
 
 ```
 Window > Addressable Manager >
-├─ Dashboard (Ctrl+Alt+A)
+├─ Open (Ctrl+Alt+A)
+├─ Validate Setup
+├─ Profiles
+├─ Build Content
+├─ Dashboard
 ├─ Layout Rule Editor
 ├─ Layout Viewer
 ├─ CDN Manager
@@ -474,9 +480,13 @@ Two entries: `Addressable Manager/Monitoring Helper` and `Addressable Manager/Pr
 
 | Shortcut | Action | Context |
 |----------|--------|---------|
-| `Ctrl+Alt+A` | Open Dashboard | Global |
+| `Ctrl+Alt+A` | Open the Addressable Manager hub | Global |
+| `Ctrl+K` | Search sections | Hub window only |
 
-That is the **only** keyboard shortcut in the package. The Rule Editor and Layout Viewer register none — use their toolbar buttons.
+`Ctrl+Alt+A` is the only `[MenuItem]` shortcut in the package; before 4.1.0 it opened the Dashboard,
+and three menu items claimed it at once. `Ctrl+K` is a key handler on the hub window rather than a
+menu shortcut, so it fires only while that window has focus. The Rule Editor and Layout Viewer
+register none — use their toolbar buttons.
 
 ---
 
