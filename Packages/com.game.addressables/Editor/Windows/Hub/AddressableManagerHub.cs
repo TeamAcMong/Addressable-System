@@ -82,6 +82,7 @@ namespace AddressableManager.Editor.Windows.Hub
         private Label _statusText;
         private Label _statusContext;
 
+        private string _blockerTarget;
         private HubPalette _palette;
         private string _activeSectionId;
         private double _nextHealthRefresh;
@@ -163,6 +164,10 @@ namespace AddressableManager.Editor.Windows.Hub
             _sectionBody     = root.Q<VisualElement>("hub-section-body");
             _sectionActions  = root.Q<VisualElement>("hub-section-actions");
             _blocker         = root.Q<VisualElement>("hub-rail-blocker");
+            _blocker.RegisterCallback<ClickEvent>(_ =>
+            {
+                if (!string.IsNullOrEmpty(_blockerTarget)) ShowSection(_blockerTarget);
+            });
             _statusDot       = root.Q<VisualElement>("hub-status-dot");
             _headerContext   = root.Q<Label>("hub-header-context");
             _headerChips     = root.Q<VisualElement>("hub-header-chips");
@@ -204,6 +209,12 @@ namespace AddressableManager.Editor.Windows.Hub
             // The palette overlays the whole window, so it is attached to the cloned root rather
             // than to the content pane - it has to be able to dim the rail too.
             _palette = new HubPalette(this, root);
+
+            // A keyboard shortcut nobody is told about is a feature only its author has. The chip is
+            // the affordance; clicking it does what the chord does.
+            var search = root.Q<VisualElement>("hub-header-search");
+            if (search != null)
+                search.RegisterCallback<ClickEvent>(_ => _palette.Open());
 
             // TrickleDown: the shortcut has to be seen before a focused TextField swallows the key.
             rootVisualElement.RegisterCallback<KeyDownEvent>(OnShortcut, TrickleDown.TrickleDown);
@@ -541,6 +552,28 @@ namespace AddressableManager.Editor.Windows.Hub
             _blockerTitle.text = $"Pipeline stops at {PipelineStages.Label(blockedStage.Value)}";
             ApplyState(_blockerTitle, HealthState.Blocked);
             _blockerBody.text = reason;
+
+            // Clickable, because this is the one control in the window that names a problem, and a
+            // control that names a problem without going to it makes the reader do the lookup the
+            // window just did. Rebound on every refresh so it always points at the CURRENT blocker
+            // rather than the one that was there when the window opened.
+            _blocker.RemoveFromClassList("hub-blocker--clickable");
+            _blockerTarget = FirstSectionOfStage(blockedStage.Value);
+
+            if (_blockerTarget != null)
+            {
+                _blocker.AddToClassList("hub-blocker--clickable");
+                _blocker.tooltip = "Go to the screen that is blocking it";
+            }
+        }
+
+        /// <summary>The first section under a stage, in rail order — where "fix it" should land.</summary>
+        private string FirstSectionOfStage(PipelineStage stage)
+        {
+            foreach (var section in _sections)
+                if (section.Stage == stage) return section.Id;
+
+            return null;
         }
 
         private void UpdateStatus(PipelineStage? blockedStage, string reason)
@@ -598,7 +631,37 @@ namespace AddressableManager.Editor.Windows.Hub
             _headerContext.text = string.Empty;
 
             if (_statusContext != null)
-                _statusContext.text = $"{profile} · {target} · {mode}";
+                _statusContext.text = $"{profile} · {target} · {ContentStateAge()}";
+        }
+
+        /// <summary>
+        /// How old the content state is, for the status bar.
+        /// </summary>
+        /// <remarks>
+        /// The design puts it there because it is the fact that silently decides whether the next
+        /// release can be a patch, and it is invisible everywhere else until a build refuses. "None"
+        /// and "three days old" are both worth knowing before pressing Build, not after.
+        /// </remarks>
+        private static string ContentStateAge()
+        {
+            try
+            {
+                var resolved = Cdn.ContentStateManager.ResolvePath();
+                if (resolved.IsFailure || string.IsNullOrEmpty(resolved.Value))
+                    return "content_state unknown";
+
+                if (!System.IO.File.Exists(resolved.Value))
+                    return "no content_state";
+
+                var age = DateTime.Now - System.IO.File.GetLastWriteTime(resolved.Value);
+                if (age.TotalDays >= 1) return $"content_state {(int)age.TotalDays}d old";
+                if (age.TotalHours >= 1) return $"content_state {(int)age.TotalHours}h old";
+                return $"content_state {(int)age.TotalMinutes}m old";
+            }
+            catch (Exception)
+            {
+                return "content_state unreadable";
+            }
         }
 
         /// <summary>One header fact, clickable when there is a screen that owns it.</summary>

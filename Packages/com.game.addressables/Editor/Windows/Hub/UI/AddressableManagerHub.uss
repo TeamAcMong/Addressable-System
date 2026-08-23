@@ -890,3 +890,41 @@
     flex-shrink: 1;
     min-width: 0;
 }
+
+/* ---------- header search affordance ---------- */
+
+.hub-header-search {
+    flex-direction: row;
+    align-items: center;
+    margin-left: 14px;
+    padding: 1px 6px;
+    min-width: 150px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: var(--unity-colors-window-border);
+    background-color: var(--unity-colors-default-background);
+}
+
+.hub-header-search:hover {
+    background-color: var(--unity-colors-highlight-background-hover);
+}
+
+.hub-header-search-text {
+    font-size: 11px;
+    flex-grow: 1;
+    color: var(--unity-colors-default-text);
+    opacity: 0.5;
+}
+
+.hub-header-search-key {
+    font-size: 9px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    color: var(--unity-colors-default-text);
+    opacity: 0.4;
+}
+
+/* the rail's blocked note goes somewhere when it can */
+.hub-blocker--clickable:hover {
+    background-color: var(--unity-colors-highlight-background-hover);
+}
