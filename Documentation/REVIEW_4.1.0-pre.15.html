@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review toàn hệ thống — com.game.addressables 4.1.0-pre.15</title>
+<style>
+:root{
+  --bg:#fbfaf8; --panel:#ffffff; --ink:#1a1917; --muted:#6b6862; --line:#e3dfd8;
+  --accent:#8a4b2a; --accent-soft:#f5ece6;
+  --crit:#b3261e; --high:#a8500f; --med:#7a6a1f; --low:#5b6b5b;
+  --crit-bg:#fdecea; --high-bg:#fdf1e4; --med-bg:#faf6e2; --low-bg:#eef2ee;
+  --code-bg:#f4f1ec; --ok:#2f6b4f;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16151a; --panel:#1d1c22; --ink:#e8e6e1; --muted:#9d9a94; --line:#302e37;
+    --accent:#d99a6c; --accent-soft:#2a2129;
+    --crit:#f2857c; --high:#e6a765; --med:#d4c778; --low:#9db39d;
+    --crit-bg:#33201e; --high-bg:#332619; --med-bg:#302d1c; --low-bg:#212a21;
+    --code-bg:#26242c; --ok:#7dbb9a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16151a; --panel:#1d1c22; --ink:#e8e6e1; --muted:#9d9a94; --line:#302e37;
+  --accent:#d99a6c; --accent-soft:#2a2129;
+  --crit:#f2857c; --high:#e6a765; --med:#d4c778; --low:#9db39d;
+  --crit-bg:#33201e; --high-bg:#332619; --med-bg:#302d1c; --low-bg:#212a21;
+  --code-bg:#26242c; --ok:#7dbb9a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+.wrap{max-width:980px;margin:0 auto;padding:48px 24px 120px}
+header.doc{border-bottom:3px solid var(--accent);padding-bottom:22px;margin-bottom:36px}
+h1{font-size:2rem;line-height:1.2;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:.95rem;margin:0}
+h2{font-size:1.35rem;margin:52px 0 14px;padding-top:14px;border-top:1px solid var(--line);letter-spacing:-.01em}
+h3{font-size:1.06rem;margin:30px 0 8px}
+p{margin:0 0 14px}
+code{background:var(--code-bg);padding:.12em .38em;border-radius:3px;
+  font:.87em/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-word}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:14px 16px;
+  overflow-x:auto;margin:0 0 16px}
+pre code{background:none;padding:0;font-size:.83rem;line-height:1.55}
+table{border-collapse:collapse;width:100%;margin:0 0 20px;font-size:.88rem}
+.scroll{overflow-x:auto;margin-bottom:20px}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);font-weight:600}
+blockquote{margin:0 0 18px;padding:12px 18px;border-left:3px solid var(--accent);
+  background:var(--panel);color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-left-width:4px;
+  border-radius:6px;padding:16px 18px;margin:0 0 18px}
+.card.c-crit{border-left-color:var(--crit)} .card.c-high{border-left-color:var(--high)}
+.card.c-med{border-left-color:var(--med)}  .card.c-low{border-left-color:var(--low)}
+.card h3{margin-top:0}
+.tag{display:inline-block;padding:.1em .5em;border-radius:3px;font-size:.72rem;
+  font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:1px}
+.t-crit{background:var(--crit-bg);color:var(--crit)} .t-high{background:var(--high-bg);color:var(--high)}
+.t-med{background:var(--med-bg);color:var(--med)}    .t-low{background:var(--low-bg);color:var(--low)}
+.loc{font:.8rem ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);
+  display:block;margin:-4px 0 12px}
+.lede{font-size:1.06rem;color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.9rem;margin:0 0 12px}
+.kv dt{color:var(--muted)} .kv dd{margin:0}
+ul,ol{margin:0 0 16px;padding-left:24px} li{margin-bottom:6px}
+.ok{color:var(--ok);font-weight:600}
+.bad{color:var(--crit);font-weight:600}
+hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+@media print{
+  body{background:#fff;color:#000;font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  h2{page-break-after:avoid} .card{page-break-inside:avoid}
+  pre{white-space:pre-wrap}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+<h1>Review toàn hệ thống — <code>com.game.addressables</code> 4.1.0-pre.15</h1>
+<p class="sub">22/08/2026 · nhánh <code>fix/review-4.1.0-pre.9</code> · HEAD <code>4ba8422</code> ·
+Unity 6000.5.7f1 · Addressables 2.9.1</p>
+</header>
+
+<p class="lede">Rà lại toàn bộ package và bộ công cụ đi kèm, dưới góc nhìn một team dùng nó để phát
+triển một game thật: cài đặt, dựng rule, build content, publish lên CDN, chạy CI, và sống với nó qua
+nhiều tháng. 50 agent đọc mã nguồn, không agent nào được phép sửa file.</p>
+
+<h2 id="phuong-phap">Cách làm, và giới hạn của nó</h2>
+
+<p>10 người rà độc lập, mỗi người một mảng: cài đặt lần đầu · rule automation · pipeline build CDN ·
+Editor UI · runtime API · runtime CDN · doc đối chiếu code · test &amp; CI · khả năng chẩn đoán · ma
+sát khi dùng lâu dài. Mỗi phát hiện nặng nhất của từng mảng bị đẩy sang một người thứ hai với nhiệm
+vụ <strong>bác bỏ</strong> nó, đọc lại từ source.</p>
+
+<div class="scroll">
+<table>
+<tr><th>Kết quả</th><th>Số lượng</th><th>Nghĩa là gì</th></tr>
+<tr><td>Tổng phát hiện</td><td><strong>72</strong></td><td>trước khi khử trùng lặp</td></tr>
+<tr><td>CONFIRMED</td><td><strong>26</strong></td><td>người phản biện đọc lại và xác nhận</td></tr>
+<tr><td>PARTIAL</td><td><strong>14</strong></td><td>lỗi có thật, nhưng mô tả sai hoặc phóng đại — đã đính chính</td></tr>
+<tr><td>REFUTED</td><td><strong>0</strong></td><td>xem cảnh báo bên dưới</td></tr>
+<tr><td>Không phản biện</td><td><strong>32</strong></td><td>severity thấp hơn, chỉ có một nguồn</td></tr>
+</table>
+</div>
+
+<blockquote>
+<strong>0/40 bị bác bỏ — đây là con số đáng nghi, không phải điểm cộng.</strong>
+Hoặc nhóm rà đã cẩn thận bất thường (14 lần đính chính PARTIAL cho thấy người phản biện có thật sự
+đẩy lại: có mục bị hạ từ critical xuống high, có mục bị chỉ ra sai cơ chế trung gian), hoặc tầng
+phản biện chưa đủ ác ý. Tôi tự kiểm chứng độc lập <strong>một</strong> phát hiện — thanh progress ở
+§3 — và nó đúng. 39 mục còn lại tôi tin ở mức bằng chứng file:line mà chúng đưa ra, không hơn.
+</blockquote>
+
+<p>Sau khi khử trùng lặp còn khoảng <strong>58 vấn đề riêng biệt</strong>. Có 4 vấn đề được nhiều
+người ở nhiều mảng khác nhau tìm ra độc lập — đó là tín hiệu mạnh nhất trong cả đợt rà này, vì họ đi
+vào từ bốn hướng không liên quan nhau và cùng dừng ở một dòng.</p>
+
+<h2 id="luan-de">Điểm chung của gần như toàn bộ lỗi lần này</h2>
+
+<p>Ở đợt trước, luận đề là <em>package đếm ý định mà không bao giờ đọc lại tác dụng</em>. Lần này
+mẫu hình khác, và nó nói nhiều điều về cách các bản pre.10–pre.15 được vá:</p>
+
+<blockquote style="border-left-color:var(--crit)">
+<strong>Bản vá được áp vào một nửa của một cặp.</strong> Một bên ghi và một bên đọc. Hai nửa của cùng
+một cơ chế reset. Ba vòng lặp đáng lẽ giống hệt nhau, và chỉ hai trong ba được sửa.
+</blockquote>
+
+<div class="scroll">
+<table>
+<tr><th>Bên đã được sửa</th><th>Bên bị bỏ quên</th><th>Hậu quả</th></tr>
+<tr><td>Profile template đổi <code>&lt;domain&gt;</code> → <code>&lt;cdnBase&gt;</code></td>
+    <td><code>InjectRemoteHostFromEnvironment</code> vẫn tìm <code>&lt;domain&gt;</code></td>
+    <td>Đường bơm host từ CI chết hẳn</td></tr>
+<tr><td><code>CdnRequestDecorator</code> có reset static cho play mode</td>
+    <td><code>CdnManager</code> thì không</td>
+    <td>Play lần 2 báo đã init mà không còn rewriter</td></tr>
+<tr><td><code>Install()</code> rebind lại <code>_activeRewriter</code></td>
+    <td>không rebind <code>authHeaderProvider</code></td>
+    <td>Init lại lần 2 mất auth token</td></tr>
+<tr><td>Vòng lặp address rule có cờ <code>degraded</code></td>
+    <td>vòng label và version thì không</td>
+    <td>Import hỏng mà vẫn exit 0</td></tr>
+<tr><td><code>Percent</code> trả phân số 0..1, UXML đặt <code>high-value="1"</code></td>
+    <td>tab lại chia thêm cho 100</td>
+    <td>Thanh progress vẫn nằm im ở mép trái</td></tr>
+<tr><td>Provider ghi nhãn version theo 4 định dạng</td>
+    <td><code>SemanticVersion</code> chỉ parse đúng 1</td>
+    <td>Version filter im lặng nới thành "khớp tất"</td></tr>
+<tr><td>Gate build lại dependency</td>
+    <td>không đọc mtime của dependency khi quyết định cache</td>
+    <td>Gate báo PASS cho lỗi cross-assembly</td></tr>
+<tr><td><code>Setup()</code> làm mới <code>_settings</code> và regex</td>
+    <td>không xoá cache kết quả filter</td>
+    <td>Filter trả lời từ ảnh chụp trước khi chạy</td></tr>
+</table>
+</div>
+
+<p>Điều này giải thích vì sao đọc code không bắt được chúng: <strong>đọc phía đã sửa thì thấy
+đúng.</strong> Lỗi chỉ hiện ra khi đặt hai phía cạnh nhau, mà không ai làm việc đó vì hai phía nằm ở
+hai file khác nhau và được sửa ở hai thời điểm khác nhau.</p>
+
+<h2 id="test">Test suite: 170/171 — và một lỗi trong chính bản vá pre.15</h2>
+
+<p>Unity Editor của bạn đã nhả lock, nên batchmode chạy được lần đầu kể từ pre.14. Không có
+<code>error CS</code> nào, file kết quả có thật (152 KB), 171 test chạy trong 1.76s.</p>
+
+<pre><code>AddressableManager.Tests.CdnDownloadMonitorTests.Report_MarksDownloadingAndKeepsTheValues
+  Expected: 25.0d +/- 0.01d
+  But was:  0.25d</code></pre>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Thanh download của pre.15 chia thêm cho 100, nên không rời mép trái</h3>
+<span class="loc">Editor/Cdn/Windows/Tabs/RuntimeMonitorTab.cs:161</span>
+<p>Ba chỗ khai báo đơn vị, hai chỗ nói cùng một điều và chỗ thứ ba thì không:</p>
+<div class="scroll"><table>
+<tr><th>Nơi</th><th>Nói gì</th><th></th></tr>
+<tr><td><code>DownloadProgress.cs:47</code></td><td><code>Fraction complete in 0..1</code></td><td class="ok">đúng</td></tr>
+<tr><td><code>RuntimeMonitorTab.uxml:9</code></td><td><code>low-value="0" high-value="1"</code></td><td class="ok">đúng</td></tr>
+<tr><td><code>RuntimeMonitorTab.cs:161</code></td><td><code>_downloadBar.value = p.Percent / 100f;</code></td><td class="bad">sai</td></tr>
+</table></div>
+<p>Download đạt 100% thì thanh nhận <code>0.01</code> trên thang <code>0..1</code>. Bản vá pre.15 tồn
+tại để chữa một thanh progress chết cứng, và nó ship ra một thanh progress chết cứng ở 1%. Không ai
+phát hiện bằng mắt được, vì nhìn vẫn y hệt lúc trước: rỗng.</p>
+<p><code>Percent</code> có ba nơi dùng khác và cả ba đều hiểu đúng là phân số
+(<code>AddressableProgressBar.cs:189</code>, <code>ProgressiveAssetLoader.cs:168</code>, và
+<code>:P0</code> trong <code>ToString</code>). Dòng 161 là nơi duy nhất sai.</p>
+<p><strong>Sửa:</strong> bỏ <code>/ 100f</code>; và assertion của tôi trong test cũng sai đơn vị theo
+đúng chiều đó — phải là <code>0.25f</code>.</p>
+</div>
+
+<p>Test đã bắt đúng thứ nó được viết ra để bắt, chỉ là nó tự sai đơn vị nên fail vì lý do hơi lệch.
+Đây là lần đầu tiên trong cả chuỗi pre-release một test tìm ra lỗi thật trước khi người dùng gặp.</p>
+
+<h2 id="ci">Chặn thẳng vào kịch bản CI/CD bạn đang dựng</h2>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Đường bơm CDN host từ CI đã chết — và thông báo lỗi chỉ bạn chạy đúng cái vừa không làm gì</h3>
+<span class="loc">Editor/Cdn/CdnProfileManager.cs:350, :358, :325 · 3/10 người rà tìm ra độc lập</span>
+<p>pre.14 đổi placeholder trong profile template từ <code>&lt;domain&gt;</code> sang
+<code>&lt;cdnBase&gt;</code>. Bên ghi đổi, bên đọc thì không:</p>
+<pre><code>CdnProfileManager.cs:103   ProdLoadPathValue = "https://cdn.&lt;cdnBase&gt;" + Suffix;   // ghi
+CdnProfileManager.cs:350   if (catalogPath.Contains("&lt;domain&gt;"))                  // đọc
+CdnProfileManager.cs:358   if (bundlePath.Contains("&lt;domain&gt;"))                   // đọc
+CdnProfileManager.cs:325   hasCatalogPlaceholder = ...Contains("&lt;domain&gt;");        // validate</code></pre>
+<p>Trên một project cài mới, <code>InjectRemoteHostFromEnvironment</code> không khớp gì cả, không
+thay gì cả, trả về nguyên giá trị cũ. Rồi <code>RequireResolvedProfile</code> — vốn kiểm tổng quát
+<code>&lt;...&gt;</code> nên vẫn bắt được — chặn build và in ra một thông báo bảo operator hãy chạy
+<code>InjectRemoteHostFromEnvironment</code> với <code>CDN_HOST</code>. Kỹ sư CI làm đúng từng chữ,
+build vẫn fail với đúng thông báo đó.</p>
+<p>Tệ hơn: nhánh <code>validatePlaceholders: true</code> — chính cái lưới an toàn của nó — trả về
+dictionary rỗng thay vì ném lỗi khi không thấy gì để thay.</p>
+<div class="kv">
+<dt>Ai bị:</dt><dd>mọi project cài mới từ pre.14 trở đi. Project nâng cấp từ ≤pre.13 giữ
+<code>&lt;domain&gt;</code> nên vẫn chạy — nên lỗi này <em>ẩn với chính bạn</em> và lộ ra với người
+cài mới.</dd>
+<dt>Sửa:</dt><dd>cho injector khớp <code>BundlePathDefaults.OriginPlaceholder</code> thay vì chuỗi
+cứng, giữ <code>&lt;domain&gt;</code> làm alias; sửa luôn text ở <code>CdnBuildPipeline.cs:317</code>
+và comment ở <code>SettingsContract.cs:304</code>.</dd>
+</div>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Một <code>build-manifest.json</code> dùng chung cho mọi platform</h3>
+<span class="loc">Editor/Cdn/BuildManifestWriter.cs:61, :107, :123</span>
+<p>Bundle và catalog nằm dưới <code>ServerData/[BuildTarget]/…</code>, nhưng manifest mô tả chúng thì
+nằm ở <code>ServerData/build-manifest.json</code> — không theo platform. Trường <code>platform</code>
+<em>có</em> được ghi (dòng 107) và <strong>không bao giờ được đọc</strong> ở phía C#. Build Android
+rồi build iOS trong cùng workspace: manifest thứ hai đè manifest thứ nhất, và
+<code>DescribePatch</code> diff nội dung iOS với manifest Android, ra một con số patch-size vô nghĩa
+nhưng trông rất hợp lý.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> <code>VerifyOutput</code> — một cái gate — lại đổi active profile và làm bẩn settings asset</h3>
+<span class="loc">Editor/Cdn/CdnBuildCLI.cs:159 · Editor/Cdn/CatalogVerifier.cs:156</span>
+<p>Trên CI nghĩa là working tree bẩn sau một bước lẽ ra chỉ đọc. Và <code>VerifyOutput</code> kiểm
+theo <code>bundleVersion</code> hiện hành cùng settings contract hiện hành, chứ không kiểm theo
+artifact — tức là nó không làm được đúng việc mà chính doc-comment của nó quảng cáo: xác minh một
+thư mục output đã build từ trước.</p>
+</div>
+
+<h2 id="rule">Hệ rule automation — ba lỗi ở đúng đường dùng hằng ngày</h2>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Version filter im lặng nới thành "khớp tất cả"</h3>
+<span class="loc">Editor/Rules/LayoutRuleProcessor.cs:301-306 · Editor/Versioning/SemanticVersion.cs:20-24</span>
+<p><code>SemanticVersion</code> đòi semver 3 thành phần nghiêm ngặt. Nhãn mà provider thực sự ghi ra
+thì không phải vậy:</p>
+<div class="scroll"><table>
+<tr><th>Provider</th><th>Ghi ra</th><th>Parse được?</th></tr>
+<tr><td><code>BuildNumberVersionProvider</code> (Combined)</td><td><code>1.0.0.123</code></td><td class="bad">không — 4 thành phần</td></tr>
+<tr><td><code>BuildNumberVersionProvider</code> (BundleVersion, mặc định)</td><td><code>1.0</code> — mặc định của Unity</td><td class="bad">không</td></tr>
+<tr><td><code>DateVersionProvider</code></td><td><code>20260822</code> …</td><td class="bad">không, cả 6 định dạng</td></tr>
+<tr><td><code>GitCommitVersionProvider</code> (TagOrHash, mặc định)</td><td><code>a1b2c3d</code></td><td class="bad">không</td></tr>
+<tr><td><code>ConstantVersionProvider</code></td><td>bạn tự gõ</td><td class="ok">có, nếu gõ đúng semver</td></tr>
+</table></div>
+<p>Parse fail thì <code>PassesVersionFilter</code> rơi về <code>!ExcludeUnversioned</code>. Với mặc
+định <code>ExcludeUnversioned = false</code> (và template shipped cũng để vậy) kết quả là
+<strong>true</strong>: filter cho qua tất. Log vẫn in <code>Version filter active: [1.0.0,2.0.0)</code>
+rất tự tin, rồi rule set viết lại address/label/group lên những asset bạn tin là đã bị loại.</p>
+<p>Filter này gác cả ba lượt — address (<code>:402</code>), label (<code>:552</code>) và version
+(<code>:688</code>) — nên một nhãn không parse được nới lỏng cả ba.</p>
+</div>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Chống trùng address không nhìn thấy entry đã có sẵn</h3>
+<span class="loc">Editor/Rules/LayoutRuleProcessor.cs:174, :480-500</span>
+<p><code>_addressOwners</code> được <code>Clear()</code> đầu mỗi lần chạy và chỉ chứa asset của
+<em>lần chạy đó</em>. Đường on-import đưa vào đúng một path → một entry trong dictionary → không bao
+giờ va với chính nó. Địa chỉ vẫn được ghi bất kể (<code>:497</code>), <code>result.Success</code> vẫn
+true.</p>
+<p>Kết quả: <code>Assets/UI/Shop/coin.png</code> import vào một project đã có
+<code>Assets/UI/Icons/coin.png</code> — cả hai cùng address <code>coin</code>, một trong hai vĩnh
+viễn không load được ở runtime. Đúng thứ mà doc-comment ở <code>:49-55</code> nói cơ chế này sinh ra
+để chặn. Hai chỗ duy nhất bắt được là Layout Viewer và <code>DetectConflicts</code> CLI — cả hai đều
+thủ công, và đường apply không bao giờ gọi.</p>
+<p><strong>Sửa:</strong> nạp <code>_addressOwners</code> từ catalog hiện có trước khi chạy, đổi lại
+một lượt duyệt <code>_settings.groups</code> mỗi run.</p>
+</div>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Cache của filter không bao giờ bị <code>Setup()</code> xoá</h3>
+<span class="loc">Editor/Filters/AddressFilter.cs:42-49, :80-86</span>
+<p><code>Setup()</code> là hook reset mỗi lần chạy — nó làm mới <code>_settings</code> và regex, và
+<strong>không</strong> đụng vào <code>_addressCache</code>. Nhưng thứ filter đọc (address của entry,
+group cha) lại chính là thứ lần chạy trước vừa ghi. Sau lần Apply đầu tiên trong một phiên editor,
+filter đang trả lời từ ảnh chụp trước lúc chạy, cho tới khi domain reload.</p>
+<p>Cụ thể: <code>Match Mode = NoAddress</code> — cách tự nhiên để nói "chỉ đặt address cho asset chưa
+ai đặt tay" — vẫn khớp những asset đã có address, nên address bạn đặt tay bị chính cái rule lẽ ra
+phải chừa nó ra ghi đè. <code>DependentObjectFilter</code> còn nặng hơn dưới Auto Apply On Import.</p>
+<p><strong>Sửa:</strong> xoá các dictionary memo ở đầu mỗi <code>Setup()</code>
+(<code>_addressCache</code>, <code>_assetGroupCache</code>, <code>_dependencyCache</code>,
+<code>_assetTypeCache</code>).</p>
+</div>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Import rule set hỏng một nửa thì rule bị nới rộng, và CLI vẫn exit 0</h3>
+<span class="loc">Editor/Rules/RuleSerializer.cs:506-540 (label), :570-596 (version)</span>
+<p>Vòng lặp address rule có cờ <code>degraded</code>: filter nào không resolve được thì tắt rule và
+tăng <code>failCount</code>. Vòng label và version <strong>không có cờ đó</strong>. Chúng chỉ
+<code>Debug.LogError</code> rồi đi tiếp, rule được add vào <em>vẫn đang bật</em> với tập AND nhỏ hơn:
+<code>PathFilter("Assets/UI") AND ExtensionFilter(".png")</code> trở thành
+<code>ExtensionFilter(".png")</code>.</p>
+<p><code>successCount++</code> vẫn chạy, <code>return failCount == 0</code> trả true, và
+<code>AddressableCLI.ImportRules</code> in <code>✓ Rules imported successfully</code> rồi exit 0. Lần
+Apply kế tiếp dán label lên mọi asset addressable khớp phần filter còn sót lại.</p>
+<p>Xảy ra thật khi nào: một custom <code>AssetFilterBase</code> bị đổi tên hoặc xoá, hoặc rule set
+được import sang project không có class filter đó.</p>
+</div>
+
+<h2 id="runtime">Runtime</h2>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Play lần thứ hai (tắt Reload Domain): báo đã khởi tạo, nhưng không còn rewriter</h3>
+<span class="loc">Runtime/Cdn/CdnManager.cs:79, :138, :335 · Runtime/Cdn/Services/CdnRequestDecorator.cs:251-257</span>
+<p><code>CdnRequestDecorator</code> có
+<code>[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]</code> đặt
+<code>_activeRewriter = null</code>. <code>CdnManager</code> không có gì tương đương — nó có
+<code>Reset()</code> với doc-comment ghi "cho test và domain reload", <strong>không mang attribute
+nào và không có call site production nào</strong>.</p>
+<p>Nên ở phiên Play thứ hai: <code>IsInitialized</code> vẫn true → <code>InitializeAsync</code>
+return sớm ở dòng 138 → <code>Install()</code> không chạy → rewriter đã bị null.
+<code>CurrentBaseUrl</code> vẫn in ra origin đúng vì nó đọc static còn sống. Tab Runtime Monitor
+cũng báo xanh.</p>
+<p>Người phản biện đính chính một mắt xích: Addressables 2.9.1 tự tạo lại instance khi
+<code>enterPlayModeOptionsEnabled</code>, nên delegate không sống sót — nhưng kết luận không đổi, vì
+phía package vẫn tin là đã init trong khi hook đã mất.</p>
+</div>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Kiểm mạng metered chạy một lần, ngoài vòng retry</h3>
+<span class="loc">Runtime/Cdn/Services/DownloadService.cs:180-192, :249</span>
+<p><code>RunPreflightChecks</code> — nơi duy nhất gọi <code>_network.CanDownload()</code> — nằm
+<em>trước</em> <code>while (true)</code>. Mọi lỗi retryable (<code>Timeout</code>,
+<code>Offline</code>) quay lại vòng lặp mà không kiểm mạng lần nữa.</p>
+<p>Người chơi đi ra khỏi vùng WiFi → transfer fail → 1–4 giây sau attempt kế tiếp chạy trên 4G, và
+call cuối cùng trả về <em>success</em>, không bao giờ ra <code>MeteredNetworkBlocked</code>.
+<code>requireUnmeteredNetwork = true</code> chỉ có hiệu lực ở đúng khoảnh khắc bắt đầu. Cổng
+free-disk có đúng lỗ hổng đó.</p>
+<p>Người phản biện mở rộng thêm: vòng poll 4 Hz bên trong <em>một</em> attempt
+(<code>:336-402</code>) cũng không hỏi lại <code>_network</code>, nên một handoff mà OS nuốt gọn
+không cần retry thì lọt ngay từ attempt đầu.</p>
+</div>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Không có UniTask thì mọi CancellationToken trong tầng CDN là đồ trang trí</h3>
+<span class="loc">Runtime/Cdn/Services/CatalogService.cs:237-241 · 4/10 người rà tìm ra độc lập</span>
+<pre><code>#if UNITASK_PRESENT
+    await handle.ToUniTask(cancellationToken: cancellationToken);
+#else
+    await handle.Task;          // không nối với token nào cả
+#endif</code></pre>
+<p><code>UNITASK_PRESENT</code> đến từ <code>versionDefines</code>, và UniTask không nằm trong
+<code>dependencies</code> — nên <strong>nhánh <code>#else</code> là cấu hình mặc định</strong>. Bảy
+chỗ dùng đúng pattern này: <code>CatalogService.cs:125, :240, :442</code>,
+<code>CacheService.cs:136, :203</code>, <code>DownloadService.cs:124, :456</code>.</p>
+<p>Hệ quả cụ thể nhất: <code>DownloadPolicy.CatalogOperationTimeoutSeconds</code> — cái deadline
+pre.13 thêm vào với CHANGELOG ghi <em>"trả về câu trả lời offline thay vì treo"</em> — không bao giờ
+bắn được. CTS hết giờ, không ai quan sát, nhánh cảnh báo <code>Treating it as offline</code> ở
+<code>:250-261</code> là code chết. Màn hình boot treo đúng như trước khi có nó.</p>
+<p>Đính chính của người phản biện: token <em>vẫn</em> được tôn trọng ở những chỗ package tự poll
+(<code>NetworkPolicy.cs:148</code>, <code>DownloadService.cs:338</code>). Nói đúng phải là: không
+token nào <em>ngắt được một operation Addressables đang chạy</em>.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Hủy download để lại <code>IsDownloading == true</code> vĩnh viễn</h3>
+<span class="loc">Runtime/Cdn/Services/DownloadService.cs:338-343, :354-357</span>
+<p>Đường thất bại ở <code>:416</code> có gọi <code>CdnDownloadMonitor.Complete()</code>. Hai đường
+cancel thì không. Sau khi người chơi bấm hủy, tab Runtime Monitor treo mãi ở
+<code>Downloading 12.00 / 60.00 MB</code> — đúng lời nói dối mà pre.15 vừa dựng monitor lên để dẹp,
+chỉ là hướng ngược lại.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Init lại lần hai giữ nguyên auth provider cũ (thường là null)</h3>
+<span class="loc">Runtime/Cdn/Services/CdnRequestDecorator.cs:82-91</span>
+<p>Comment ở dòng 84-88 mô tả chính xác lớp lỗi này và chữa nó — cho <em>rewriter</em>. Auth provider
+có y hệt khiếm khuyết đó ở ngay dưới màn hình. <code>InitializeAsync</code> lần đầu cài hook rồi fail
+ở bước catalog (offline, host lag — chuyện bình thường), <code>_installed</code> đã true, nên lần
+retry giữ nguyên provider cũ.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> <code>AddressablePreloadConfig</code> báo trùng nhầm cho sub-object, và có thể fail build</h3>
+<span class="loc">Runtime/Configs/AddressablePreloadConfig.cs:41-45, :135-140</span>
+<p><code>GetAddress()</code> trả <code>assetReference.AssetGUID</code>. Hai
+<code>AssetReferenceSprite</code> trỏ vào hai sprite khác nhau <em>trong cùng một atlas</em> — một
+preload list UI hết sức bình thường — cho cùng một GUID, nên <code>Validate()</code> báo "Duplicate
+address". Bật <code>failBuildOnError</code> (mà EDITOR_TOOLS_GUIDE giới thiệu như cách dùng chuẩn)
+thì build player fail.</p>
+<p>Đây đúng là lỗi mà <code>AssetLoader</code> đã giải quyết ở đợt trước bằng
+<code>AssetReferenceCacheAddress</code> — dùng <code>RuntimeKey</code> chứ không phải GUID. Bản vá
+không lan sang file này.</p>
+</div>
+
+<h2 id="editor">Editor tooling</h2>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Runtime Monitor: kết quả của cả ba nút bị xoá bởi <code>Refresh()</code> ở dòng ngay sau</h3>
+<span class="loc">Editor/Cdn/Windows/Tabs/RuntimeMonitorTab.cs:210-221</span>
+<pre><code>210:  _downloadLabel.text = result.IsFailure ? … : "Content is up to date";
+221:  Refresh();     →  ShowDownloadState()  →  SetDownloadIdle("No download in progress")</code></pre>
+<p><code>_downloadLabel</code> là nơi <em>duy nhất</em> tab này báo kết quả của Check / Clean / Clear.
+<code>Refresh()</code> chạy đồng bộ ngay sau khi gán, nên thông báo không tồn tại đủ một frame. Cả ba
+nút trông như không làm gì.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Đồ thị memory của Dashboard chỉ thu thập nếu cửa sổ đã mở sẵn trước khi bấm Play</h3>
+<span class="loc">Editor/Windows/AddressableManagerWindow.cs:886-893</span>
+<p><code>CollectMetrics</code> — nguồn duy nhất sinh sample — chỉ được subscribe ở transition
+<code>EnteredPlayMode</code>. Mở Dashboard <em>sau</em> khi bấm Play, tức là cách gần như mọi người
+tiếp cận nó, thì đồ thị rỗng vĩnh viễn. Và nó không bao giờ được unsubscribe khi đóng cửa sổ.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Layout Viewer kẹt ở "hãy initialize Addressables trước" sau khi bạn đã làm đúng thế</h3>
+<span class="loc">Editor/Windows/LayoutViewerWindow.cs:44-48, :64-70</span>
+<p><code>_settings</code> đọc một lần trong <code>OnEnable</code>, không bao giờ đọc lại. Null check ở
+dòng 64 <code>return</code> <em>trước</em> <code>DrawToolbar()</code> — nên nút Refresh thậm chí
+không được vẽ ra ở đúng trạng thái cần nó. Trên project mới, cách thoát duy nhất là đóng cửa sổ và
+mở lại.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> "Rules applied successfully!" in ra kể cả khi không apply gì</h3>
+<span class="loc">Editor/Inspectors/LayoutRuleDataInspector.cs:303-322</span>
+<p>Rule set fail <code>Validate()</code> thì không apply gì cả, nhưng dialog vẫn mở đầu bằng câu
+"Rules applied successfully!", rồi <code>Processed: 0 assets</code>, và <code>Errors: 3</code> nằm ở
+tận dưới cùng. Người bấm OK ở dòng đầu tiên đi ra với niềm tin ngược hẳn sự thật.</p>
+<p>Kèm theo: <code>Processed: N</code> không phải số asset đã xử lý — nó là bản sao của
+<code>AddressesApplied</code>, nên một rule set chỉ gán label luôn báo <code>Processed: 0</code>.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> "Create Debug Settings" ghi asset vào nơi <code>DebugSettings.Instance</code> không bao giờ đọc</h3>
+<span class="loc">Editor/Tools/ContextMenus.cs:96, :141-156</span>
+<p>Loader tìm ở <code>Resources/AddressableManager/DebugSettings</code>. Menu tạo ghi ra
+<code>Assets/DebugSettings.asset</code>. Vì <code>GenerateUniqueAssetPath</code> không đè file, mỗi
+lần bạn trả lời "có" lại sinh thêm <code>DebugSettings 1.asset</code>,
+<code>DebugSettings 2.asset</code>… và lời mời tạo không bao giờ ngừng hiện ra.</p>
+<p>Cùng file, dòng 122: <code>Window ▸ Addressable Manager ▸ Documentation</code> tìm doc trong
+<code>Assets/</code> — nơi một UPM package không bao giờ nằm — và dialog lỗi bảo người dùng đi kiểm
+đúng cái đường dẫn sai đó.</p>
+</div>
+
+<div class="card c-low">
+<h3><span class="tag t-low">Low</span> Bốn menu path bị đăng ký hai lần</h3>
+<span class="loc">Editor/Tools/AddressableRuleMenuItems.cs:13 · Editor/Windows/LayoutRuleEditorWindow.cs:63 · Editor/Tools/ContextMenus.cs:113</span>
+<p>Cùng một chuỗi menu, hai class khác nhau, cùng priority — Unity không định nghĩa cái nào thắng.
+Trong đó <code>Window ▸ Addressable Manager ▸ Layout Rule Editor</code> có hai handler và chúng
+<em>không</em> mở cùng một cửa sổ. <code>CdnManagerWindow</code> có sẵn một comment cảnh báo chuyện
+này, và chỉ kể tên một trong bốn.</p>
+</div>
+
+<h2 id="onboarding">Cài đặt lần đầu</h2>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Sample "API Examples" không compile được nếu project có UniTask</h3>
+<span class="loc">Samples~/ApiExamples/AddressablesExamples.cs:84 · 2/10 người rà tìm ra độc lập</span>
+<p><code>UNITASK_PRESENT</code> là <code>versionDefine</code> <strong>theo từng asmdef</strong>.
+Sample không có asmdef riêng, nên nó rơi vào <code>Assembly-CSharp</code>, nơi define đó không bao
+giờ tồn tại. Sample vì thế luôn compile nhánh <code>#else</code> (Task), trong khi assembly package —
+có define — trả về <code>UniTask&lt;T&gt;</code>, một struct không có <code>.IsCompleted</code> và
+không có <code>.Result</code>.</p>
+<p>Kết quả: ~12 lỗi CS1061 ở 6 ví dụ, <strong>trong Assembly-CSharp</strong> — tức là toàn bộ script
+của project chết theo cho tới khi xoá thư mục sample.</p>
+<p>Chi tiết đắt nhất: nhánh <code>#if UNITASK_PRESENT</code> <em>có tồn tại</em> ngay bên trên, viết
+cẩn thận kèm comment 4 dòng về việc không được consume hai lần một pooled UniTask promise. Nó là code
+chết. Và sample hàng xóm <code>CdnBoot</code> ghi rõ đúng cái bẫy này ở dòng 43-45 rồi tránh nó bằng
+<code>await</code>.</p>
+<p><code>Tools/check-min-unity-api.sh</code> chỉ compile <code>Runtime/</code> và
+<code>Editor/</code> — <code>grep -c Samples</code> ra 0. Không cổng nào phủ sample.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Ba con số Unity version, không con nào khớp con nào</h3>
+<span class="loc">package.json:5 · CLAUDE.md · ProjectSettings/ProjectVersion.txt</span>
+<div class="scroll"><table>
+<tr><th>Nơi</th><th>Nói</th></tr>
+<tr><td><code>package.json</code></td><td><code>"unity": "2023.1"</code></td></tr>
+<tr><td><code>CLAUDE.md</code> và các doc</td><td>Unity 2022.3+</td></tr>
+<tr><td><code>ProjectVersion.txt</code> + compile gate</td><td>6000.5.7f1</td></tr>
+</table></div>
+<p>Sàn được khai báo chưa bao giờ được compile thử. Cổng duy nhất tồn tại
+(<code>Tools/CompileGate/run.sh</code>) hardcode <code>6000.5.7f1</code>.</p>
+</div>
+
+<div class="card c-low">
+<h3><span class="tag t-low">Low</span> TextMeshPro là hard dependency mà không cấu hình nào cần tới</h3>
+<span class="loc">package.json:39</span>
+<p>Và trên Unity 2023.1+ TMP đã nằm sẵn trong <code>com.unity.ugui</code>, nên phiên bản 3.0.6 mà
+README hứa không phải phiên bản thực sự được cài.</p>
+</div>
+
+<h2 id="gate">Cổng kiểm chứng — thứ cả quy trình đang dựa vào</h2>
+
+<div class="card c-high">
+<h3><span class="tag t-high">High</span> Compile gate báo PASS cho lỗi cross-assembly</h3>
+<span class="loc">Tools/CompileGate/gate.js:246-253</span>
+<pre><code>const newest = srcs.reduce((a, s) =&gt; Math.max(a, fs.statSync(s).mtimeMs), 0);
+if (fs.statSync(outDll).mtimeMs &gt;= newest) { … return outDll; }   // dùng cache</code></pre>
+<p><code>srcs</code> chỉ là file <code>.cs</code> của chính asmdef đó. Mảng <code>deps</code> dựng ở
+<code>:210-216</code> bị bỏ đi trên nhánh này — không mtime dependency nào được hỏi tới.</p>
+<p>Nên: đổi tên một public method trong <code>Runtime/</code> mà <code>Editor/</code> đang gọi, không
+đụng file nào dưới <code>Editor/</code> → <code>AddressableManager</code> build lại và pass,
+<code>AddressableManager.Editor</code> lấy từ cache và in <code>PASS</code>. Unity sẽ báo CS1061.</p>
+<p>Đây đúng là lớp lỗi mà cổng này tồn tại để bắt, và là hình dạng bình thường của một đợt refactor
+chỉ đụng Runtime. <code>run.sh</code> không truyền <code>--clean</code>, và README của nó quảng cáo
+cache là chế độ chạy thường.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Cổng không compile được assembly Tests, và bỏ qua chúng theo cả tên thư mục lẫn tên assembly</h3>
+<span class="loc">Tools/CompileGate/gate.js:127</span>
+<p>Tức là toàn bộ test code nằm ngoài mọi cổng cho tới khi Unity chạy thật.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> <code>check-min-unity-api.sh</code> exit 0 sau khi bỏ qua 3 trong 4 cấu hình</h3>
+<span class="loc">Tools/check-min-unity-api.sh:324</span>
+<p>Và bước CI gọi nó vắng mặt hẳn trong workflow build đầy đủ. Trong đó có cấu hình
+<strong>không-UniTask</strong> — chính là cấu hình mà §Runtime ở trên cho thấy cancellation không
+hoạt động. Không có test nào trong repo chạy được cấu hình đó.</p>
+</div>
+
+<div class="card c-med">
+<h3><span class="tag t-med">Medium</span> Những đường nguy hiểm nhất của package không có test nào</h3>
+<span class="loc">tổng hợp</span>
+<p>Kiểm tra content-state · content diff · settings contract · cổng catalog CI · chuyển profile ·
+apply rule. <code>CdnBuildSnapshotTests</code> thì "xác minh" tiêu chí delta-size của Phase 1
+<em>mà không chạm vào một dòng production code nào</em>. <code>CdnFaultInjectionTests</code> có
+<code>SetUp</code> tự khởi động cái server mà nó tuyên bố là đi kiểm, và 3/5 test có nhánh thành công
+không chứa assertion nào.</p>
+</div>
+
+<h2 id="song-lau">Sống với package qua thời gian</h2>
+
+<ul>
+<li><strong>Provider hạ chữ thường bằng <code>ToLower()</code> nhạy culture</strong>
+(<code>PathAddressProvider.cs:76</code>) — cùng một rule set sinh ra address khác nhau trên máy
+Türkçe. Đây là bug kinh điển của <code>i</code> không dấu chấm.</li>
+<li><strong><code>content_state.bin</code> bị auto-fix của settings contract đặt vào thư mục mà
+<code>.gitignore</code> chuẩn của Unity/Addressables loại trừ</strong>
+(<code>SettingsContract.cs:393</code>) — artifact build duy nhất không thể tái tạo, nằm ngoài git.</li>
+<li><strong>Không gì hiển thị version của package</strong> — không ở runtime, không ở Editor, không
+trong <code>build-manifest.json</code>. Một team báo bug không có cách nào nói họ đang chạy bản nào.</li>
+<li><strong><code>CdnSettings</code> đặt ngoài thư mục <code>Resources</code> lặng lẽ hạ mọi cổng CDN
+phía Editor xuống "local-only" và pass</strong> (<code>CdnBuildModes.cs:23</code>) — vì "không có
+asset" được hiểu là "cố ý tắt CDN".</li>
+<li><strong>Scope ghi 3 dòng <code>Debug.Log</code> mỗi GameObject có scope, trong bản release, không
+có công tắc</strong> (<code>BaseAssetScope.cs:96</code>); <code>DebugSettings.logLevel</code> không
+chặn được gì trong player build.</li>
+<li><strong>Doc shipped trỏ tới file không được ship</strong> — cả hướng dẫn rule automation
+(1353 dòng) nằm ngoài package, chỉ có trong repo.</li>
+<li><strong>README tự mâu thuẫn trong cùng một blockquote</strong> về việc control nào ở tab Settings
+có tác dụng (<code>README.md:1870</code>). <code>CdnSettings.BuildMode</code> — công tắc tắt cả tầng
+CDN — vắng mặt ở cả hai bảng settings.</li>
+</ul>
+
+<h2 id="chua-kiem">Những gì tôi KHÔNG kiểm được</h2>
+
+<ul>
+<li><strong>32 phát hiện chưa qua phản biện.</strong> Chúng có severity thấp hơn và chỉ có một
+nguồn. Danh sách đầy đủ ở bảng dưới, đánh dấu rõ.</li>
+<li><strong>Không có gì được chạy thật.</strong> Ngoài EditMode suite, toàn bộ đợt rà này là đọc mã
+nguồn. Theo đúng ba tầng kiểm chứng của repo, đây mới là tầng 1 và tầng 2 — tầng "chạy thật" chưa
+làm. Những lỗi kiểu <em>API đúng mà vô dụng</em> vẫn có thể còn.</li>
+<li><strong>Đường catalog update vẫn chưa từng chạy end-to-end</strong> — nợ cũ, chưa trả.</li>
+<li><strong>PlayMode suite chưa chạy.</strong> Và có một phát hiện chưa phản biện nói
+<code>Tests/Runtime</code> khai báo all-platform nhưng là code Editor-only, nên nó có thể chưa bao
+giờ chạy được trên device.</li>
+<li><strong>Cấu hình không-UniTask chưa bao giờ được compile hay test</strong> — mà đó lại là cấu
+hình mặc định.</li>
+</ul>
+
+<h2 id="thu-tu">Thứ tự tôi đề nghị</h2>
+
+<ol>
+<li><strong><code>&lt;cdnBase&gt;</code> / <code>&lt;domain&gt;</code></strong> — chặn thẳng kịch bản
+CI/CD bạn đang dựng, và ẩn với bạn vì project của bạn được nâng cấp chứ không cài mới.</li>
+<li><strong>Thanh progress <code>/ 100f</code> + assertion test</strong> — một dòng, và làm suite
+xanh trở lại.</li>
+<li><strong>Ba lỗi rule engine</strong> — version filter, chống trùng address, cache filter. Đây là
+đường code chạy mỗi lần ai đó import một asset.</li>
+<li><strong>Compile gate</strong> — mọi kết luận "gate PASS" từ đây về trước đều yếu hơn ta tưởng.
+Sửa cái này trước khi sửa những cái còn lại, để phần còn lại được kiểm thật.</li>
+<li><strong>Reset static của <code>CdnManager</code>, cancel để lại <code>IsDownloading</code>,
+rebind auth provider</strong> — ba mục nhỏ, cùng một họ với nhau.</li>
+<li><strong>Metered network trong vòng retry</strong> — mục duy nhất tiêu tiền thật của người chơi.</li>
+<li><strong>Sample + asmdef</strong> — ấn tượng đầu tiên của người cài mới.</li>
+<li>Phần còn lại theo bảng.</li>
+</ol>
+
+<h2 id="bang">Bảng đầy đủ — 72 phát hiện</h2>
+<div class="scroll">
+<table>
+<tr><th>#</th><th>Mức</th><th>Trạng thái</th><th>Mảng</th><th>Vấn đề</th><th>Vị trí</th></tr>
+<tr><td>1</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>diagnosability</td><td>Rule import silently widens label and version rules when a filter fails to resolve, and still reports success (exit 0)</td><td><code>Editor/Rules/RuleSerializer.cs:516</code></td></tr>
+<tr><td>2</td><td><span class="tag t-high">high</span></td><td>Partial</td><td>diagnosability</td><td>Without UniTask, every CDN cancellation token is dropped — `CatalogOperationTimeoutSeconds` is inert and the boot hang it was added to fix still happens, silently</td><td><code>Runtime/Cdn/Services/CatalogService.cs:240</code></td></tr>
+<tr><td>3</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>docs-vs-code</td><td>CI host injection is dead: InjectRemoteHostFromEnvironment replaces `&lt;domain&gt;`, but every generated profile now carries `&lt;cdnBase&gt;`</td><td><code>Editor/Cdn/CdnProfileManager.cs:350</code></td></tr>
+<tr><td>4</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>docs-vs-code</td><td>The &quot;API Examples&quot; sample does not compile in any project that has UniTask installed</td><td><code>Samples~/ApiExamples/AddressablesExamples.cs:86</code></td></tr>
+<tr><td>5</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>integration-friction</td><td>CdnProfileManager.InjectRemoteHostFromEnvironment still substitutes `&lt;domain&gt;`, but the profile templates it generates emit `&lt;cdnBase&gt;`</td><td><code>Editor/Cdn/CdnProfileManager.cs:350</code></td></tr>
+<tr><td>6</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>onboarding</td><td>The &quot;API Examples&quot; sample cannot compile in a project that has UniTask installed</td><td><code>Samples~/ApiExamples/AddressablesExamples.cs:84</code></td></tr>
+<tr><td>7</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>rules-workflow</td><td>Version Expression cannot parse the version labels 3 of the 4 shipped version providers write, so the filter silently degrades to &quot;touch everything&quot;</td><td><code>Editor/Rules/LayoutRuleProcessor.cs:306</code></td></tr>
+<tr><td>8</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>rules-workflow</td><td>Duplicate-address detection only sees assets inside the current run, so the on-import and right-click paths can never detect a collision with an existing entry</td><td><code>Editor/Rules/LayoutRuleProcessor.cs:174</code></td></tr>
+<tr><td>9</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>rules-workflow</td><td>Filter result caches are never invalidated by Setup(), so state the rule run itself mutates goes stale for the rest of the editor session</td><td><code>Editor/Filters/AddressFilter.cs:42</code></td></tr>
+<tr><td>10</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>runtime-api</td><td>CdnManager&#x27;s statics survive &quot;Enter Play Mode without Domain Reload&quot; while CdnRequestDecorator&#x27;s are reset — session 2 reports initialised with no URL rewriter</td><td><code>Runtime/Cdn/CdnManager.cs:138</code></td></tr>
+<tr><td>11</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>runtime-cdn</td><td>The metered-network and free-disk pre-flight runs once, outside the retry loop, so a WiFi→cellular handoff mid-download resumes over metered data</td><td><code>Runtime/Cdn/Services/DownloadService.cs:180</code></td></tr>
+<tr><td>12</td><td><span class="tag t-high">high</span></td><td>Partial</td><td>runtime-cdn</td><td>Every CancellationToken in the CDN layer — including the CatalogOperationTimeoutSeconds deadline — is ignored unless UniTask is installed</td><td><code>Runtime/Cdn/Services/CatalogService.cs:240</code></td></tr>
+<tr><td>13</td><td><span class="tag t-high">high</span></td><td>Confirmed</td><td>tests-ci</td><td>Compile gate mtime cache ignores dependency rebuilds, so a Runtime API change that breaks Editor code reports PASS</td><td><code>Tools/CompileGate/gate.js:246</code></td></tr>
+<tr><td>14</td><td><span class="tag t-high">high</span></td><td>Chua phan bien</td><td>tests-ci</td><td>CdnFaultInjectionTests: SetUp starts the server it claims to assert, and three of five tests have a success branch with no assertion</td><td><code>Tests/Runtime/CdnFaultInjectionTests.cs:46</code></td></tr>
+<tr><td>15</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>cdn-build</td><td>One global `ServerData/build-manifest.json` for every platform; `platform` is recorded but never checked in C#</td><td><code>Editor/Cdn/BuildManifestWriter.cs:61</code></td></tr>
+<tr><td>16</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>cdn-build</td><td>`VerifyOutput` cannot do the job its own remark advertises: it blocks on the live bundleVersion and the live settings contract, not on the artifact</td><td><code>Editor/Cdn/CatalogVerifier.cs:156</code></td></tr>
+<tr><td>17</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>cdn-build</td><td>InjectRemoteHostFromEnvironment substitutes `&lt;domain&gt;`, but the generated profiles carry `&lt;cdnBase&gt;` — the documented CI escape hatch is a no-op</td><td><code>Editor/Cdn/CdnProfileManager.cs:350</code></td></tr>
+<tr><td>18</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>cdn-build</td><td>CDN_USAGE_GUIDE §10 states an exit-code and compile-gate contract the CDN CLIs do not honour</td><td><code>Documentation/CDN_USAGE_GUIDE.md:656</code></td></tr>
+<tr><td>19</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>cdn-build</td><td>The reference content-update workflow throws away the previous manifest, so patch cost is never computed on the one build where it matters</td><td><code>.github/workflows/content-update.yml:61</code></td></tr>
+<tr><td>20</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>diagnosability</td><td>A retried `InitializeAsync` keeps the old (usually null) auth token provider — `CdnRequestDecorator.Install` rebinds the rewriter on a repeat install but not `authHeaderProvider`</td><td><code>Runtime/Cdn/Services/CdnRequestDecorator.cs:89</code></td></tr>
+<tr><td>21</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>diagnosability</td><td>&quot;Rules applied successfully!&quot; is shown unconditionally, including for runs that validated nothing and applied nothing</td><td><code>Editor/Inspectors/LayoutRuleDataInspector.cs:303</code></td></tr>
+<tr><td>22</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>diagnosability</td><td>`Window ▸ Addressable Manager ▸ Documentation` looks in `Assets/`, where a UPM package never lives — and the error dialog tells the user to check that same wrong path</td><td><code>Editor/Tools/ContextMenus.cs:122</code></td></tr>
+<tr><td>23</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>diagnosability</td><td>`Processed: N assets` is not a count of assets processed — it is a duplicate of `AddressesApplied`, so a label-only rule set reports &quot;Processed: 0&quot;</td><td><code>Editor/Rules/LayoutRuleProcessor.cs:501</code></td></tr>
+<tr><td>24</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>diagnosability</td><td>README says &quot;All six controls on the Settings tab are live&quot; and then, in the next sentence, that they have no reader — and the three simulation widgets do write to the asset while nothing consumes it</td><td><code>README.md:1870</code></td></tr>
+<tr><td>25</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>docs-vs-code</td><td>Four menu paths are registered twice, so which callback the menu item runs is undefined</td><td><code>Editor/Tools/ContextMenus.cs:113</code></td></tr>
+<tr><td>26</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>editor-ui</td><td>Runtime Monitor: every button&#x27;s result message is erased by the Refresh() call on the next line, so Check/Clean/Clear all look like no-ops</td><td><code>Editor/Cdn/Windows/Tabs/RuntimeMonitorTab.cs:221</code></td></tr>
+<tr><td>27</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>editor-ui</td><td>Dashboard memory graph collects nothing unless the window was already open when Play Mode was entered, and CollectMetrics is never unsubscribed when the window closes</td><td><code>Editor/Windows/AddressableManagerWindow.cs:886</code></td></tr>
+<tr><td>28</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>editor-ui</td><td>Layout Rule Editor &#x27;Refresh Preview&#x27; runs a full Assets/ scan synchronously; its two &#x27;Generating...&#x27; states are unreachable and preview errors go only to the Console</td><td><code>Editor/Windows/LayoutRuleEditorWindow.cs:574</code></td></tr>
+<tr><td>29</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>editor-ui</td><td>Dashboard Performance tab renders a permanently empty &#x27;Memory Usage Over Time&#x27; chart box; the real graph is appended at the bottom of the tab, contradicting the docs</td><td><code>Editor/Windows/AddressableManagerWindow.cs:310</code></td></tr>
+<tr><td>30</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>editor-ui</td><td>Three menu paths are each registered twice, not one - and CdnManagerWindow&#x27;s in-code warning about it names only one</td><td><code>Editor/Tools/AddressableRuleMenuItems.cs:13</code></td></tr>
+<tr><td>31</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>editor-ui</td><td>Local Server tab: a failed Start() reports only &#x27;Server is not running.&#x27; - the actual reason (port in use, access denied) goes to the Console only</td><td><code>Editor/Cdn/Windows/Tabs/LocalServerTab.cs:208</code></td></tr>
+<tr><td>32</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>integration-friction</td><td>&quot;Create Debug Settings&quot; writes the asset to a path DebugSettings.Instance can never load, and the dialog offers to do it again every time</td><td><code>Editor/Tools/ContextMenus.cs:96</code></td></tr>
+<tr><td>33</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>integration-friction</td><td>A CdnSettings asset outside a Resources folder silently downgrades every Editor-side CDN gate to &quot;local-only&quot; and passes</td><td><code>Editor/Cdn/CdnBuildModes.cs:23</code></td></tr>
+<tr><td>34</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>integration-friction</td><td>README&#x27;s Dashboard section contradicts itself in one blockquote about which Settings-tab controls do anything</td><td><code>README.md:1870</code></td></tr>
+<tr><td>35</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>integration-friction</td><td>Both asmdefs hard-reference the UniTask assembly by name while the README calls UniTask optional and not a dependency — and no test in the repo can exercise the without-UniTask configuration</td><td><code>Runtime/AddressableManager.asmdef:5</code></td></tr>
+<tr><td>36</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>onboarding</td><td>Layout Viewer stays permanently stuck on &quot;initialize Addressables first&quot; after the user does exactly that</td><td><code>Editor/Windows/LayoutViewerWindow.cs:46</code></td></tr>
+<tr><td>37</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>onboarding</td><td>Every in-package way to create the DebugSettings asset puts it where DebugSettings.Instance can never load it</td><td><code>Editor/Tools/ContextMenus.cs:96</code></td></tr>
+<tr><td>38</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>rules-workflow</td><td>&quot;Apply All Rules&quot; in the Layout Rule Editor reports an error COUNT but the error text is never shown in the dialog or written to the console</td><td><code>Editor/Windows/LayoutRuleEditorWindow.cs:1015</code></td></tr>
+<tr><td>39</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>rules-workflow</td><td>The import-triggered processor has no play-mode / build / compile guard and no AssetDatabase batching, and posts one settings modification event per created or moved entry</td><td><code>Editor/Automation/AddressableAutoProcessor.cs:28</code></td></tr>
+<tr><td>40</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>rules-workflow</td><td>Applying layout rules is irreversible: no dry-run, no Undo registration, and the run saves to disk immediately</td><td><code>Editor/Rules/LayoutRuleProcessor.cs:146</code></td></tr>
+<tr><td>41</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>rules-workflow</td><td>PathAddressProvider&#x27;s Inspector tooltip gives an example value that is guaranteed to do nothing, contradicting the code and the guide</td><td><code>Editor/Providers/PathAddressProvider.cs:19</code></td></tr>
+<tr><td>42</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>runtime-api</td><td>AddressablePreloadConfig keys entries by AssetGUID, so two sub-object AssetReferences into one asset are reported as duplicates — and can fail the player build</td><td><code>Runtime/Configs/AddressablePreloadConfig.cs:137</code></td></tr>
+<tr><td>43</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>runtime-api</td><td>Every CancellationToken in the CDN API is accepted and ignored unless the optional UniTask package is installed</td><td><code>Runtime/Cdn/Services/DownloadService.cs:124</code></td></tr>
+<tr><td>44</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>runtime-api</td><td>DownloadPolicy.CatalogOperationTimeoutSeconds — the captive-portal guard added in 4.1.0-pre.14 — does nothing without UniTask, so CheckForUpdateAsync can still hang the boot screen forever</td><td><code>Runtime/Cdn/Services/CatalogService.cs:240</code></td></tr>
+<tr><td>45</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-api</td><td>CdnRequestDecorator.Install rebinds the host rewriter on a repeat install but not the auth-token provider or the request timeout</td><td><code>Runtime/Cdn/Services/CdnRequestDecorator.cs:82</code></td></tr>
+<tr><td>46</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-api</td><td>DebugSettings.logLevel cannot suppress anything in a player build, and the scope lifecycle logs unconditionally once per scoped GameObject</td><td><code>Runtime/Configs/DebugSettings.cs:182</code></td></tr>
+<tr><td>47</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-api</td><td>Every scene-scoped load runs a full FindObjectsByType scan including inactive objects; the Facade&#x27;s cache field is written but never read</td><td><code>Runtime/Scopes/SceneAssetScope.cs:160</code></td></tr>
+<tr><td>48</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>runtime-cdn</td><td>The Runtime Monitor download bar divides an already-normalised 0..1 fraction by 100, so it never leaves the left edge</td><td><code>Editor/Cdn/Windows/Tabs/RuntimeMonitorTab.cs:161</code></td></tr>
+<tr><td>49</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>runtime-cdn</td><td>A cancelled download leaves CdnDownloadMonitor.IsDownloading permanently true</td><td><code>Runtime/Cdn/Services/DownloadService.cs:343</code></td></tr>
+<tr><td>50</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-cdn</td><td>CatalogParseFailed and CatalogVersionIncompatible are documented with UI guidance and troubleshooting entries but no code path can ever produce them</td><td><code>Runtime/Cdn/Services/CdnErrorMapper.cs:216</code></td></tr>
+<tr><td>51</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-cdn</td><td>The new CdnDownloadMonitor EditMode test asserts 25f against a 0..1 fraction and cannot pass</td><td><code>Tests/Editor/CdnDownloadMonitorTests.cs:36</code></td></tr>
+<tr><td>52</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-cdn</td><td>HostRewriter matches known origins by bare StartsWith with no path boundary, so a near-miss origin is silently mangled instead of triggering the unknown-origin warning</td><td><code>Runtime/Cdn/Services/HostRewriter.cs:178</code></td></tr>
+<tr><td>53</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>runtime-cdn</td><td>InsufficientDiskSpace is only ever produced by the pre-flight, so a disk that fills during the transfer is misclassified — and the CRC auto-repair may then delete good cached bundles</td><td><code>Runtime/Cdn/Services/DownloadService.cs:267</code></td></tr>
+<tr><td>54</td><td><span class="tag t-med">medium</span></td><td>Confirmed</td><td>tests-ci</td><td>CdnBuildSnapshotTests &quot;verifies&quot; the Phase 1 delta-size exit criterion without touching any production code</td><td><code>Tests/Editor/CdnBuildSnapshotTests.cs:23</code></td></tr>
+<tr><td>55</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>tests-ci</td><td>The compile gate cannot compile the Tests assemblies — it skips them by directory name and by assembly name</td><td><code>Tools/CompileGate/gate.js:127</code></td></tr>
+<tr><td>56</td><td><span class="tag t-med">medium</span></td><td>Partial</td><td>tests-ci</td><td>Phase2CdnBootIntegrationTests&#x27; central &quot;the server was actually asked&quot; assertion depends on which fixture boots CdnManager first</td><td><code>Tests/Runtime/Phase2CdnBootIntegrationTests.cs:113</code></td></tr>
+<tr><td>57</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>tests-ci</td><td>check-min-unity-api.sh exits 0 after skipping three of its four configurations, and the CI step that calls it is absent from the full-build workflow</td><td><code>Tools/check-min-unity-api.sh:324</code></td></tr>
+<tr><td>58</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>tests-ci</td><td>Tests/Runtime is declared as an all-platform assembly but is Editor-only code, so the PlayMode suite can never run in a player or on a device</td><td><code>Tests/Runtime/AddressableManager.Tests.Runtime.asmdef:10</code></td></tr>
+<tr><td>59</td><td><span class="tag t-med">medium</span></td><td>Chua phan bien</td><td>tests-ci</td><td>The most dangerous CDN paths have no test at all: content-state validation, content diff, the settings contract, the CI catalog gate, profile switching, and rule apply</td><td><code>Editor/Cdn/ContentStateManager.cs:114</code></td></tr>
+<tr><td>60</td><td><span class="tag t-low">low</span></td><td>Confirmed</td><td>cdn-build</td><td>A vacuous content-update restriction pass is logged as a real pass; the caveat the code writes is discarded by both consumers</td><td><code>Editor/Cdn/CdnBuildPipeline.cs:229</code></td></tr>
+<tr><td>61</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>cdn-build</td><td>`VerifyOutput` — a gate, not a mutation — switches the project&#x27;s active Addressables profile and dirties the settings asset</td><td><code>Editor/Cdn/CdnBuildCLI.cs:159</code></td></tr>
+<tr><td>62</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>diagnosability</td><td>Nothing surfaces the package version — not at runtime, not in the Editor, not in build-manifest.json</td><td><code>Editor/Cdn/BuildManifest.cs:22</code></td></tr>
+<tr><td>63</td><td><span class="tag t-low">low</span></td><td>Confirmed</td><td>docs-vs-code</td><td>`CdnSettings.BuildMode` — the switch that turns the whole CDN layer off — is missing from both settings tables, and README states the asset has five fields when it has six</td><td><code>README.md:1332</code></td></tr>
+<tr><td>64</td><td><span class="tag t-low">low</span></td><td>Partial</td><td>docs-vs-code</td><td>Shipped docs link to Documentation/*.md files that are not in the published package, and the whole rule-automation guide never ships</td><td><code>Documentation/TROUBLESHOOTING.md:1095</code></td></tr>
+<tr><td>65</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>docs-vs-code</td><td>AddressFilter&#x27;s `Regex` match mode is missing from the mode list one line above the text that tells you to use it</td><td><code>Documentation/ADDRESSABLE_AUTOMATION_GUIDE.md:391</code></td></tr>
+<tr><td>66</td><td><span class="tag t-low">low</span></td><td>Confirmed</td><td>editor-ui</td><td>Layout Viewer caches AddressableAssetSettings in OnEnable and returns before drawing its toolbar, so &#x27;settings not found&#x27; is unrecoverable without closing the window</td><td><code>Editor/Windows/LayoutViewerWindow.cs:64</code></td></tr>
+<tr><td>67</td><td><span class="tag t-low">low</span></td><td>Partial</td><td>editor-ui</td><td>Build tab &#x27;Verify output&#x27; SHA256-hashes every published bundle on the UI thread with no progress bar, no cancel and no warning dialog</td><td><code>Editor/Cdn/Windows/Tabs/BuildTab.cs:290</code></td></tr>
+<tr><td>68</td><td><span class="tag t-low">low</span></td><td>Partial</td><td>integration-friction</td><td>The settings contract&#x27;s auto-fix puts addressables_content_state.bin — the one irreplaceable build artifact — inside a directory the standard Unity/Addressables .gitignore excludes</td><td><code>Editor/Cdn/SettingsContract.cs:393</code></td></tr>
+<tr><td>69</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>integration-friction</td><td>Address and label providers lowercase with culture-sensitive ToLower(), so the same rule set generates different addresses on different machines</td><td><code>Editor/Providers/PathAddressProvider.cs:76</code></td></tr>
+<tr><td>70</td><td><span class="tag t-low">low</span></td><td>Partial</td><td>onboarding</td><td>Scope lifecycle logs unconditionally in release builds — three Debug.Log lines per scoped GameObject, with no switch</td><td><code>Runtime/Scopes/BaseAssetScope.cs:96</code></td></tr>
+<tr><td>71</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>onboarding</td><td>Tests/Runtime is declared for all platforms but references Editor-only assemblies and calls UnityEditor APIs unguarded</td><td><code>Tests/Runtime/AddressableManager.Tests.Runtime.asmdef:14</code></td></tr>
+<tr><td>72</td><td><span class="tag t-low">low</span></td><td>Chua phan bien</td><td>onboarding</td><td>TextMeshPro is a hard dependency that no shipped configuration needs, and the version the README promises is not the one that gets installed</td><td><code>package.json:39</code></td></tr>
+</table>
+</div>
+
+
+<hr>
+<p class="sub">Sinh ra bởi 50 agent đọc song song, 1516 lượt gọi tool, ~4.75M token. Mỗi dòng trong
+bảng đều có file:line trong dữ liệu gốc tại
+<code>subagents/workflows/wf_fae9eb91-29b/journal.jsonl</code>.</p>
+
+</div>
+</body>
+</html>

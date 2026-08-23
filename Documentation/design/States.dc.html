@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    a { color: #6E9FD4; } a:hover { color: #8FB8E4; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 900px; background-color: #383838; color: #D2D2D2; font-size: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+
+  <div>
+    <div style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">States, and the first five minutes</div>
+    <div style="font-size: 11px; color: #9A9A9A; margin-top: 4px; text-wrap: pretty; max-width: 880px;">Interaction states for every control, and the screen a project sees before any of this exists. The empty state is where the current tooling is weakest: Layout Viewer caches its settings once in <span style="font-family: 'JetBrains Mono', monospace;">OnEnable</span> and returns before drawing its own toolbar, so the Refresh button is not on screen in the one state that needs it.</div>
+  </div>
+
+  <div style="display: flex; gap: 14px; flex-grow: 1; min-height: 0;">
+
+    <!-- ───── LEFT: first run ───── -->
+    <div style="width: 480px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 11.5px; font-weight: 600; color: #E0E0E0;">First run — a project with nothing set up</div>
+
+      <div style="border: 1px solid #232323; border-radius: 4px; overflow: hidden; background-color: #383838;">
+        <div style="display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 30px; background-color: #3C3C3C; border-bottom: 1px solid #232323;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9FC0E0" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"></path><path d="M3 7l9 5 9-5"></path><path d="M12 12v10"></path></svg>
+          <span style="font-size: 11.5px; font-weight: 600;">Addressable Manager</span>
+        </div>
+
+        <div style="padding: 22px 24px;">
+          <div style="font-size: 13px; font-weight: 600; color: #E4E4E4;">Three things before content can ship</div>
+          <div style="font-size: 10.5px; color: #8A8A8A; margin-top: 3px;">Each one is reversible. Nothing here touches your assets.</div>
+
+          <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 2px;">
+            <sc-for list="{{setup}}" as="s" hint-placeholder-count="3">
+              <div style="display: flex; align-items: flex-start; gap: 11px; padding: 10px 0;">
+                <div style="width: 20px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; align-self: stretch;">
+                  <div style="{{s.nodeStyle}}">
+                    <sc-if value="{{s.done}}" hint-placeholder-val="{{true}}">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2A2A2A" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{s.num}}" hint-placeholder-val="{{true}}">
+                      <span style="font-size: 10px; font-weight: 700; color: {{s.numTone}};">{{s.num}}</span>
+                    </sc-if>
+                  </div>
+                  <div style="{{s.railStyle}}"></div>
+                </div>
+                <div style="flex-grow: 1; min-width: 0; padding-bottom: 4px;">
+                  <div style="font-size: 11.5px; font-weight: 600; color: {{s.titleTone}};">{{s.title}}</div>
+                  <div style="font-size: 10.5px; color: #8A8A8A; margin-top: 2px; text-wrap: pretty;">{{s.body}}</div>
+                  <sc-if value="{{s.cta}}" hint-placeholder-val="{{true}}">
+                    <div style="{{s.ctaStyle}}">{{s.cta}}</div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: 8px; padding: 9px 11px; background-color: #363636; border: 1px solid #2B2B2B; border-radius: 4px;">
+            <div style="font-size: 10.5px; color: #8A8A8A; text-wrap: pretty;"><span style="color: #B4B4B4; font-weight: 600;">Shipping everything inside the app instead?</span> Set Build Mode to Local-only and steps 2 and 3 disappear rather than sitting here failing.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+        <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">Empty, but not broken</div>
+        <div style="padding: 26px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5A5A5A" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"></path><path d="M2 4h20v4H2z"></path><path d="M10 12h4"></path></svg>
+          <div style="font-size: 11.5px; color: #B4B4B4;">No layout rules yet</div>
+          <div style="font-size: 10.5px; color: #7E7E7E; text-align: center; max-width: 300px; text-wrap: pretty;">Rules give assets their addresses automatically as they are imported, so nobody has to name them by hand.</div>
+          <div style="display: flex; gap: 7px; margin-top: 4px;">
+            <div style="padding: 4px 12px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFFFFF;">Create a rule</div>
+            <div style="padding: 4px 12px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px;">Start from a preset</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── RIGHT: interaction states ───── -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+      <div style="font-size: 11.5px; font-weight: 600; color: #E0E0E0;">Every control, every state</div>
+
+      <sc-for list="{{specs}}" as="sp" hint-placeholder-count="5">
+        <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+          <div style="display: flex; align-items: baseline; gap: 8px; padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+            <span style="font-size: 11px; font-weight: 600;">{{sp.name}}</span>
+            <span style="font-size: 10px; color: #7E7E7E;">{{sp.note}}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 18px; padding: 13px;">
+            <sc-for list="{{sp.variants}}" as="v" hint-placeholder-count="4">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                <div style="{{v.style}}">{{v.label}}</div>
+                <span style="font-size: 9.5px; color: #7E7E7E;">{{v.state}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden;">
+        <div style="padding: 6px 11px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; font-size: 11px; font-weight: 600;">Destructive confirmation</div>
+        <div style="padding: 13px;">
+          <div style="padding: 12px 14px; background-color: #3A3032; border: 1px solid #4A3236; border-radius: 4px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: #F0B5B3;">Clear the bundle cache on this machine?</div>
+            <div style="font-size: 10.5px; color: #A89A98; margin-top: 5px; text-wrap: pretty;">1.8 GB across 347 bundles. The next play session re-downloads everything from https://cdn.acme.com, which takes about 4 minutes on this connection. Bundles currently held by loaded assets are not removed.</div>
+            <div style="display: flex; gap: 7px; margin-top: 11px; justify-content: flex-end;">
+              <div style="padding: 4px 13px; background-color: #585858; border: 1px solid #303030; border-radius: 3px; font-size: 11px;">Cancel</div>
+              <div style="padding: 4px 13px; background-color: #8C3F3F; border: 1px solid #6B2F2F; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFE8E8;">Clear 1.8 GB</div>
+            </div>
+          </div>
+          <div style="font-size: 10px; color: #7E7E7E; margin-top: 9px; text-wrap: pretty;">The confirm button names the size, not "OK". A dialog that only says "Are you sure?" makes the reader guess what they are agreeing to, and this action currently sits one slip of the mouse away from Dashboard in the Window menu.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const V = (label, state, style) => ({ label, state, style });
+    const base = 'padding: 4px 13px; border-radius: 3px; font-size: 11px;';
+
+    return {
+      setup: [
+        { done: true, num: null, numTone: '#2A2A2A', titleTone: '#9A9A9A',
+          title: 'Addressables is initialised', body: 'Found settings at Assets/AddressableAssetsData.',
+          cta: null,
+          nodeStyle: 'width: 20px; height: 20px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background-color: #6FBF73; border: 2px solid #6FBF73;',
+          railStyle: 'width: 2px; flex-grow: 1; min-height: 6px; background-color: #4E6E4E;' },
+        { done: false, num: '2', numTone: '#6E9FD4', titleTone: '#E4E4E4',
+          title: 'Tell it where your CDN lives', body: 'One origin per environment. You can add the rest later.',
+          cta: 'Create CdnSettings',
+          ctaStyle: 'display: inline-block; margin-top: 7px; padding: 4px 12px; background-color: #3A79C4; border: 1px solid #2C5D87; border-radius: 3px; font-size: 11px; font-weight: 600; color: #FFFFFF;',
+          nodeStyle: 'width: 20px; height: 20px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background-color: #3F3F3F; border: 2px solid #6E9FD4;',
+          railStyle: 'width: 2px; flex-grow: 1; min-height: 6px; background-color: #3A3A3A;' },
+        { done: false, num: '3', numTone: '#6E6E6E', titleTone: '#8A8A8A',
+          title: 'Point a profile at it', body: 'Generated for you once step 2 is done.',
+          cta: null,
+          nodeStyle: 'width: 20px; height: 20px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background-color: #3F3F3F; border: 2px solid #565656;',
+          railStyle: 'width: 2px; height: 0;' },
+      ],
+
+      specs: [
+        { name: 'Button', note: 'default action',
+          variants: [
+            V('Re-check', 'rest',     base + ' background-color: #585858; border: 1px solid #303030;'),
+            V('Re-check', 'hover',    base + ' background-color: #666666; border: 1px solid #2A2A2A;'),
+            V('Re-check', 'pressed',  base + ' background-color: #4A4A4A; border: 1px solid #2A2A2A;'),
+            V('Re-check', 'focused',  base + ' background-color: #585858; border: 1px solid #3A79C4; outline: 1px solid #3A79C4;'),
+            V('Re-check', 'disabled', base + ' background-color: #464646; border: 1px solid #303030; color: #757575;'),
+          ]},
+        { name: 'Primary button', note: 'one per screen, and only when the screen has one obvious next move',
+          variants: [
+            V('Apply 14 changes', 'rest',     base + ' background-color: #3A79C4; border: 1px solid #2C5D87; color: #FFFFFF; font-weight: 600;'),
+            V('Apply 14 changes', 'hover',    base + ' background-color: #4B84C4; border: 1px solid #2C5D87; color: #FFFFFF; font-weight: 600;'),
+            V('Apply 14 changes', 'disabled', base + ' background-color: #3E4C5C; border: 1px solid #33414F; color: #7B8794; font-weight: 600;'),
+          ]},
+        { name: 'Destructive button', note: 'never the primary, always behind a named confirmation',
+          variants: [
+            V('Clear cache…', 'rest',  base + ' background-color: #524244; border: 1px solid #3E3032; color: #E0B8B6;'),
+            V('Clear cache…', 'hover', base + ' background-color: #614C4E; border: 1px solid #3E3032; color: #F0C8C6;'),
+          ]},
+        { name: 'List row', note: 'the selected row keeps its status bar',
+          variants: [
+            V('UI Sprites by Filename', 'rest',     'padding: 5px 12px; font-size: 11px; border-left: 3px solid #6FBF73; background-color: #383838;'),
+            V('UI Sprites by Filename', 'hover',    'padding: 5px 12px; font-size: 11px; border-left: 3px solid #6FBF73; background-color: #414141;'),
+            V('UI Sprites by Filename', 'selected', 'padding: 5px 12px; font-size: 11px; border-left: 3px solid #6FBF73; background-color: #2C5D87; color: #FFFFFF;'),
+            V('Legacy characters',      'inactive', 'padding: 5px 12px; font-size: 11px; border-left: 3px solid #F5C24C; background-color: #383838; color: #A8A8A8;'),
+          ]},
+        { name: 'Status dot', note: 'four values, and the fourth is the one that was missing',
+          variants: [
+            V('', 'pass',          'width: 9px; height: 9px; border-radius: 5px; background-color: #6FBF73;'),
+            V('', 'warn',          'width: 9px; height: 9px; border-radius: 5px; background-color: #F5C24C;'),
+            V('', 'fail',          'width: 9px; height: 9px; border-radius: 5px; background-color: #FF6B68;'),
+            V('', 'not measured',  'width: 9px; height: 9px; border-radius: 5px; background-color: #3C3C3C; border: 2px solid #565656;'),
+          ]},
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

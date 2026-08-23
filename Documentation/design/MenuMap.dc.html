@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    a { color: #6E9FD4; } a:hover { color: #8FB8E4; }
+  </style>
+</helmet>
+
+<div style="width: 1060px; height: 700px; background-color: #383838; color: #D2D2D2; font-size: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow: hidden;">
+
+  <div>
+    <div style="font-size: 15px; font-weight: 600;">Menu consolidation</div>
+    <div style="font-size: 11px; color: #9E9E9E; margin-top: 3px; text-wrap: pretty; max-width: 760px;">Twenty-one entry points across four root menus become one root plus the three context menus that genuinely belong where they are. Four of the current entries are registered twice with the same path, and Unity does not define which handler wins.</div>
+  </div>
+
+  <div style="display: flex; gap: 14px; flex-grow: 1; min-height: 0;">
+
+    <!-- BEFORE -->
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #2B2B2B; border-radius: 3px; overflow: hidden;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+        <span style="font-size: 11px; font-weight: 600;">Now</span>
+        <span style="font-size: 10px; color: #FF6B68;">4 roots · 21 items · 4 duplicated</span>
+      </div>
+      <div style="flex-grow: 1; overflow-y: auto; padding: 8px 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;">
+        <sc-for list="{{before}}" as="b" hint-placeholder-count="24">
+          <div style="{{b.style}}">{{b.text}}<sc-if value="{{b.note}}" hint-placeholder-val="{{true}}"><span style="color: #FF6B68; font-family: Inter, sans-serif; font-size: 10px;">  {{b.note}}</span></sc-if></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; flex-shrink: 0;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5E5E5E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+    </div>
+
+    <!-- AFTER -->
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #2B2B2B; border-radius: 3px; overflow: hidden;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B;">
+        <span style="font-size: 11px; font-weight: 600;">Proposed</span>
+        <span style="font-size: 10px; color: #6FBF73;">1 root · 5 items · 3 context menus</span>
+      </div>
+      <div style="flex-grow: 1; overflow-y: auto; padding: 8px 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;">
+        <sc-for list="{{after}}" as="a" hint-placeholder-count="18">
+          <div style="{{a.style}}">{{a.text}}<sc-if value="{{a.note}}" hint-placeholder-val="{{true}}"><span style="color: #7E7E7E; font-family: Inter, sans-serif; font-size: 10px;">  {{a.note}}</span></sc-if></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; flex-shrink: 0;">
+    <div style="padding: 9px 11px; background-color: #3A3A3A; border: 1px solid #2B2B2B; border-radius: 3px;">
+      <div style="font-size: 11px; font-weight: 600;">Everything reachable two ways</div>
+      <div style="font-size: 10px; color: #9E9E9E; margin-top: 3px; text-wrap: pretty;">A menu item and a place inside the window. The menu is the shortcut; the window is the home. Nothing lives only in a menu.</div>
+    </div>
+    <div style="padding: 9px 11px; background-color: #3A3A3A; border: 1px solid #2B2B2B; border-radius: 3px;">
+      <div style="font-size: 11px; font-weight: 600;">Destructive actions leave the menu</div>
+      <div style="font-size: 10px; color: #9E9E9E; margin-top: 3px; text-wrap: pretty;">"Clear All Caches" and "Force Process All Assets" sat one slip away from Dashboard. They move inside, behind the state they affect and a confirmation that names what is lost.</div>
+    </div>
+    <div style="padding: 9px 11px; background-color: #3A3A3A; border: 1px solid #2B2B2B; border-radius: 3px;">
+      <div style="font-size: 11px; font-weight: 600;">Create menus point at real paths</div>
+      <div style="font-size: 10px; color: #9E9E9E; margin-top: 3px; text-wrap: pretty;">"Create Debug Settings" writes to Assets/, and the loader only ever reads Resources/AddressableManager/. It now creates the folder and writes where the loader looks.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const root = 'padding: 3px 12px; color: #E0E0E0; font-weight: 600;';
+    const item = 'padding: 2px 12px 2px 30px; color: #C4C4C4;';
+    const dim  = 'padding: 2px 12px 2px 30px; color: #8A8A8A;';
+    const sub  = 'padding: 2px 12px 2px 46px; color: #C4C4C4;';
+    const gap  = 'height: 9px;';
+    const sep  = 'padding: 1px 12px 1px 30px; color: #5E5E5E;';
+
+    const B = (text, style, note) => ({ text, style, note: note || null });
+
+    return {
+      before: [
+        B('Window ▸ Addressable Manager', root),
+        B('Dashboard                  %&a', item),
+        B('CDN Manager', item),
+        B('Layout Rule Editor', item, 'registered twice'),
+        B('Layout Viewer', item, 'registered twice'),
+        B('Settings', item),
+        B('Clear All Caches', item, 'destructive'),
+        B('Documentation', item, 'broken path'),
+        B('', gap),
+        B('Tools ▸ Addressable Manager', root),
+        B('Batch Address Updater', item),
+        B('Force Process All Assets', item, 'destructive'),
+        B('Repair Groups Missing Schemas', item, 'registered twice'),
+        B('Start Local Content Server', item),
+        B('Stop Local Content Server', item, 'registered twice'),
+        B('Quick Setup ▸', item),
+        B('Create All Scope Objects', sub),
+        B('Create Sample Configs', sub),
+        B('', gap),
+        B('Assets ▸ Addressable Manager', root),
+        B('Create Debug Settings', item, 'unloadable path'),
+        B('Create Pool Config', item),
+        B('Create Preload Config', item),
+        B('Assets ▸ Addressables', root),
+        B('Apply Layout Rules', item),
+        B('', gap),
+        B('GameObject ▸ Addressable Manager', root),
+        B('Add Global / Hierarchy / Scene Scope', dim),
+        B('View in Dashboard', dim),
+      ],
+
+      after: [
+        B('Window ▸ Addressable Manager', root),
+        B('Open                       %&a', item, 'the window'),
+        B('─────────────────', sep),
+        B('Validate Setup', item, 'opens on Validator'),
+        B('Build Content', item, 'opens on Build'),
+        B('Local Server ▸ Start / Stop', item),
+        B('Layout Rules', item, 'opens on Rules'),
+        B('', gap),
+        B('Assets ▸ (right-click)', root),
+        B('Apply Layout Rules', item, 'selection-scoped'),
+        B('Create ▸ Addressable Manager ▸', item),
+        B('Layout Rule Data', sub),
+        B('Debug / Pool / Preload Config', sub),
+        B('', gap),
+        B('GameObject ▸ Addressable Manager', root),
+        B('Add Global / Hierarchy / Scene Scope', dim),
+        B('View in Manager', dim),
+        B('', gap),
+        B('Moved INSIDE the window', root),
+        B('Clear caches → Delivery ▸ Runtime Monitor', dim),
+        B('Reprocess all → Rules ▸ Layout Rules', dim),
+        B('Repair schemas → Setup ▸ Validator (a fix)', dim),
+        B('Batch addresses → Rules ▸ Layout Rules', dim),
+        B('Documentation → the ? in the header', dim),
+        B('Settings → Setup ▸ Profiles', dim),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
