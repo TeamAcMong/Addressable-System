@@ -44,7 +44,7 @@ this page was rewritten to prevent — fix it rather than picking one.
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.1.0-pre.15
+https://github.com/TeamAcMong/Addressable-System.git#4.1.0
 ```
 
 Always pin to a tag. Tracking a branch means a `git pull` can change your API surface. The
@@ -92,8 +92,9 @@ If you are not sure which tier you want,
 
 ## 🚦 Status
 
-`4.1.0-pre.15` is a **pre-release**, and the label is doing real work: this line is far more correct
-than 4.0.x, and far less proven.
+`4.1.0` is the stable release of this line. Dropping the `-pre` label makes exactly one claim:
+the API surface has stopped moving. It does not claim the whole of it has been proven in the field,
+and the bullets below keep those two apart — the last of them is a list of what nobody has run yet.
 
 - **A correctness pass produced `pre.6` through `pre.8`.** An external review verified **66
   defects** across the caches, loaders, API surface, scopes and pooling; `4.1.0-pre.6` ships the
@@ -112,6 +113,13 @@ than 4.0.x, and far less proven.
   batchmode compile gate that `pre.6` gave `AddressableCLI` was extended to `CdnSetupCLI` and both
   `CdnBuildCLI` build entry points, and a new `ci/unity-run.sh` reads the Unity log from outside the
   assembly, because an in-assembly gate cannot fire when the assembly is the thing that is broken.
+- **`4.1.0` closes the line with a full-system review.** Seventy-two findings, twenty-six
+  surviving an adversarial second pass, eleven defects fixed — and almost every one had the same
+  shape: a change applied where it was written and never propagated to its counterpart, so reading
+  the side that changed always looked correct. It also replaces four windows, ten tabs and
+  twenty-one menu items with one `Window > Addressable Manager > Open`, whose left rail is the
+  delivery pipeline rather than a menu: each stage carries its own real health, and the connector is
+  drawn dead below the first stage that is blocked.
 - **The CDN layer has never been validated in the field.** No device matrix, no staging soak, no
   measurement against a real CDN, and the changelog records that the content workflows in
   `.github/workflows/` have never run — nor has `ci/unity-run.sh`. Its automated evidence is ten
@@ -230,7 +238,7 @@ assemblies before anything is committed; and the release path is `deploy.sh`.
 ### How releases are cut
 
 ```bash
-./deploy.sh --semver "4.1.0-pre.15"
+./deploy.sh --semver "4.1.0"
 ```
 
 The script `git subtree split`s `Packages/com.game.addressables` onto a temporary `upm` branch,

@@ -1117,7 +1117,7 @@ If your issue isn't covered here:
 
 ---
 
-**Package version**: 4.1.0-pre.9
+**Package version**: 4.1.0
 
 ---
 
