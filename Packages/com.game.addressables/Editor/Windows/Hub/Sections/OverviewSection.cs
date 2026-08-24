@@ -287,7 +287,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
                 var note = new Label(StageNote(stage, state, worst.ContainsKey(stage)));
                 note.AddToClassList("hub-flow-note");
-                ApplyState(note, state);
+                ApplyText(note, state);
                 cell.Add(note);
 
                 strip.Add(cell);
@@ -428,7 +428,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var big = new Label(value);
             big.AddToClassList("hub-stat-value");
-            ApplyState(big, state);
+            ApplyText(big, state);
             valueRow.Add(big);
 
             var unitLabel = new Label(unit);
@@ -694,14 +694,12 @@ namespace AddressableManager.Editor.Windows.Hub
             return box;
         }
 
-        private static void ApplyState(VisualElement element, HealthState state)
-        {
-            if (element == null) return;
+        /// <summary>Paint a dot, a node or a bar - something whose whole body is the signal.</summary>
+        private static void ApplyState(VisualElement element, HealthState state) =>
+            HubStyle.Fill(element, state);
 
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-        }
+        /// <summary>Paint a label. Colour only, never a background.</summary>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }
