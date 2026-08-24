@@ -4,6 +4,25 @@ using UnityEngine.UIElements;
 namespace AddressableManager.Editor.Windows.Hub
 {
     /// <summary>
+    /// Implemented by a section whose rail entry reads differently from its header.
+    /// </summary>
+    /// <remarks>
+    /// The rail is a column 196px wide holding eleven entries, so its labels have to be short nouns.
+    /// The header has a whole row and can afford the word that actually describes the screen. The
+    /// design uses both for the same section - "Validator" on the rail, "Configuration" above the
+    /// content - and collapsing them to one string means either the rail wraps or the header
+    /// under-describes.
+    ///
+    /// Optional, like <see cref="IHubSectionActions"/>: a section that does not implement it uses its
+    /// <see cref="IHubSection.Title"/> in both places, which is right for the other ten.
+    /// </remarks>
+    public interface IHubRailLabel
+    {
+        /// <summary>Short label for the rail entry.</summary>
+        string RailLabel { get; }
+    }
+
+    /// <summary>
     /// What the shell offers a section that needs to know about the others.
     /// </summary>
     /// <remarks>

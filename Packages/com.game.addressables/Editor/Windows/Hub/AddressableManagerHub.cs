@@ -321,7 +321,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             row.Add(gutter);
 
-            var label = new Label(section.Title);
+            var label = new Label(section is IHubRailLabel rail ? rail.RailLabel : section.Title);
             label.AddToClassList("hub-section-row-label");
             row.Add(label);
 
@@ -504,7 +504,10 @@ namespace AddressableManager.Editor.Windows.Hub
                 if (_stageBadges.TryGetValue(pair.Key, out var badge))
                 {
                     badge.text = badgeByStage.TryGetValue(pair.Key, out var b) ? b : string.Empty;
-                    ApplyState(badge, state);
+
+                    // Text, not a dot. ApplyState here painted the badge a solid amber rectangle
+                    // and then wrote amber text on it.
+                    HubStyle.Text(badge, state);
                 }
             }
 
@@ -550,7 +553,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             _blocker.style.display = DisplayStyle.Flex;
             _blockerTitle.text = $"Pipeline stops at {PipelineStages.Label(blockedStage.Value)}";
-            ApplyState(_blockerTitle, HealthState.Blocked);
+            HubStyle.Text(_blockerTitle, HealthState.Blocked);
             _blockerBody.text = reason;
 
             // Clickable, because this is the one control in the window that names a problem, and a
@@ -592,15 +595,9 @@ namespace AddressableManager.Editor.Windows.Hub
             }
         }
 
-        private static void ApplyState(VisualElement element, HealthState state)
-        {
-            if (element == null) return;
-
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-        }
+        /// <summary>Paint a dot. Text elements go through <see cref="HubStyle.Text"/>.</summary>
+        private static void ApplyState(VisualElement element, HealthState state) =>
+            HubStyle.Fill(element, state);
 
         // ---------------------------------------------------------------- chrome
 

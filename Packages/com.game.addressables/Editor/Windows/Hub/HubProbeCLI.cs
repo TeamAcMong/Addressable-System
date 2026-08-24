@@ -193,6 +193,32 @@ namespace AddressableManager.Editor.Windows.Hub
 
                     section.OnShown();
 
+                    // A hosted CDN tab must arrive with the stylesheet its markup was written
+                    // against. Nothing else notices when it does not: the view builds, every query
+                    // resolves, no exception is thrown - and the screen renders with its shared
+                    // layout classes unstyled, which looks like a rendering glitch rather than a
+                    // missing file. That shipped in 4.1.1 and was found by looking at it.
+                    if (section is CdnTabSection)
+                    {
+                        var shared = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                            CdnTabSection.SharedStyleSheetPath);
+
+                        if (shared == null)
+                        {
+                            Debug.LogError(
+                                $"[HubProbe] {section.Id}: {CdnTabSection.SharedStyleSheetPath} " +
+                                "did not resolve");
+                            failures++;
+                        }
+                        else if (!view.styleSheets.Contains(shared))
+                        {
+                            Debug.LogError(
+                                $"[HubProbe] {section.Id}: view is missing the shared CDN stylesheet, " +
+                                "so its cdn-* layout classes resolve to nothing");
+                            failures++;
+                        }
+                    }
+
                     // Health must be cheap AND must not throw - the rail calls it once a second for
                     // every section, so one that throws would repeat the failure forever and bury
                     // the Console. Call it twice: a probe that only works the first time is a probe

@@ -1,6 +1,128 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.2.0] - 2026-08-24 - The screens the design drew, and the ones it deliberately did not
+
+Read against `Documentation/design/*.dc.html` screen by screen rather than by section list, which is
+what the 4.1.0 check did - and why it reported "matches" for screens that had never been built.
+
+### Added - Conflicts is its own screen
+
+The design puts it on the rail under Author with a red dot; 4.1.0 folded it into Layout Rules. Two
+assets resolving to one address is not a detail of authoring rules: it is the one outcome of the rule
+system that makes an asset unreachable at runtime, and it survives being scrolled past far too easily
+as the last card on a screen about something else.
+
+**Nothing is scanned until asked.** Finding collisions means running the rule set over every eligible
+asset, which is far past what a health probe may cost - the rail calls those once a second for every
+section. So the state is `NotMeasured` until a scan runs, and the screen says so in those words. A
+scan that throws is recorded as unmeasured, never as clean.
+
+### Added - Runtime Monitor rebuilt to the design
+
+Two panels side by side - live state on the left, the transfer on the right - an outcome that stays
+until another action replaces it, and the three verbs along the bottom. The hosted tab read the same
+values in one stacked column, which put the download, the only thing on the screen that changes
+second to second, underneath a six-row table that does not.
+
+The outcome is deliberately static state: all three buttons used to write their result onto a label
+the next refresh overwrote within a frame, on a screen that refreshes once a second, so all three
+appeared to do nothing. An outcome is the only evidence a button worked.
+
+`RuntimeMonitorTab` stays for `CdnManagerWindow` until that window retires.
+
+### Added - the header actions the design specifies
+
+Four of the seven screens had an empty header. The design puts a verb there on every one:
+
+| Screen | Action |
+| :-- | :-- |
+| Overview | `Re-scan everything` |
+| Layout Rules | `Import…` · `Export…` |
+| Profiles | `Open Addressables Profiles` |
+| Asset Lifetime | `Release leaked (N)`, beside a renamed `Snapshot` |
+
+`Re-scan everything` needed `HealthThrottle.InvalidateAll()` to exist. Each section owns its own
+three-second health cache, so without it the button could only redraw the screen it sits on, from the
+same stale answers it was already showing — **a control reporting less than its label, in the header of
+the window built to remove exactly that.**
+
+`Release leaked (N)` counts from a snapshot taken as the button is drawn, so the number on it and the
+rows beneath it come from one reading, and re-reads before acting because play mode can end in
+between. It confirms first and names the scopes: a leaked scope is a bug being reported, not a state
+to silently repair.
+
+### Changed - labels
+
+- The rail and the header can now differ, through the optional `IHubRailLabel`. The design uses
+  `Validator` on a 196px rail and `Configuration` above the content; one string meant either the rail
+  wrapped or the header under-described. Only one section needs it.
+- Validator's subtitle carries the rule count once a run has produced one, and omits it before that
+  rather than printing a figure nobody measured.
+- Asset Lifetime's subtitle says **and what leaked**. Leak detection shipped in 4.1.0; the line
+  describing the screen never caught up.
+- Local Server names its port, from `LocalContentServer.ConfiguredPort` - a new static that reports
+  the port the next start would use, because `ActivePort` is 0 while stopped and would print
+  `localhost:0`.
+
+### Notes - what the design does not specify
+
+Catalog Inspector and Local Server have a rail entry, a title and a subtitle in the design and no
+body. The artboard says why, in its own words: *"Shares the shell and the vocabulary; drawn in the
+build, not in this prototype."* The shipped tabs are that build. They are hosted through the adapter
+and are not a gap against the design.
+
+## [4.1.2] - 2026-08-24 - A hosted tab arrived without its stylesheet, and state classes painted labels solid
+
+Reported from a screenshot of the Catalog Inspector, which was rendering its header text on top of
+its own rows.
+
+### Fixed - the three hosted CDN tabs lost their layout entirely
+
+Each CDN tab loads only its *own* stylesheet. The classes its UXML shares with the other five —
+`cdn-tab-page`, `cdn-preview-summary`, `cdn-preview-state`, `cdn-actions-row`, `cdn-btn` — live in
+`CdnManagerWindow.uss`, which that window adds to its root once for all of them. The hub hosts three
+of those tabs through an adapter and never brought the sheet.
+
+Nothing was null, nothing threw, every query resolved. What was lost was `flex-shrink: 0` on the
+summary and state blocks: the list's `flex-grow` squeezed them to nothing and their text rendered on
+top of the rows below, because `overflow` is visible by default. **It reads as a rendering glitch
+rather than as a missing file**, which is why it survived the screen being opened and looked at.
+
+`HubProbeCLI` now asserts the sheet is attached to every hosted tab. Verified in the other direction:
+with the attach disabled it reports all three as failures.
+
+### Fixed - `hub-state--*` painted labels as solid blocks
+
+Those classes set a background colour, a border colour and a text colour together, because they were
+written for the 8×8 dots on the rail, which have to be filled. Applied to a `Label` the background
+half makes a solid rectangle — and the class sets the text to the **same** colour, so the text
+disappears into it. The rail's stage badge shipped as a solid amber block where a word should be.
+
+Every section that ever coloured a label had already met this and worked around it locally: five
+copies of "apply the class, then clear `style.backgroundColor`", one of which also cleared
+`borderTopColor` and not the other three borders, plus a sixth workaround written into the USS. Six
+workarounds for one missing distinction.
+
+There are two families now — `hub-state--*` fills, `hub-text--*` colours — and all six workarounds
+are gone.
+
+### Fixed - three things did not fit at the window's own minimum size
+
+`minSize` is 620×420, which leaves a 424px content column.
+
+- The two-pane split in Layout Rules had a fixed 280px left pane that refused to shrink, leaving the
+  dry-run panel **136px**. The two panes exist to be read against each other. Both now wrap.
+- Four stat cards across 424px is 99px each — narrower than the figures they exist to show. They
+  wrap to two rows.
+- The header's Profile / Target / Mode chips were the only content-sized items on that row and the
+  only ones that could not shrink, so a build target named `StandaloneWindows64` pushed them past the
+  right edge. **A chip that has fallen off the window still reports its value**: the reader sees no
+  Profile chip and concludes there is no profile. The title yields first now, then the search chip.
+
+Flow labels and notes clip with an ellipsis rather than overrunning their cell, and the summary strip
+wraps.
+
 ## [4.1.1] - 2026-08-24 - Every already-addressed asset reported itself as a duplicate
 
 ### Fixed - duplicate-address detection accused assets of colliding with themselves

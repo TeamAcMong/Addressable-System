@@ -19,7 +19,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// Deliberately not a dashboard of everything: it answers where the pipeline stops and hands
     /// off. Anything needing its own controls belongs in the section that owns it.
     /// </remarks>
-    public sealed class OverviewSection : IHubSection, IHubHostAware
+    public sealed class OverviewSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         private IHubHost _host;
         private VisualElement _body;
@@ -58,6 +58,26 @@ namespace AddressableManager.Editor.Windows.Hub
         public void OnShown() => Rebuild();
 
         // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Overview reads every other section's health, and those answers are cached for three
+        /// seconds so the rail can poll them once a second without cost. That cache is exactly what
+        /// someone pressing this wants gone: they changed something outside Unity and want the screen
+        /// to look again, not to be told what it thought three seconds ago.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var rescan = new Button(() =>
+            {
+                HealthThrottle.InvalidateAll();
+                Rebuild();
+            })
+            { text = "Re-scan everything" };
+
+            rescan.AddToClassList("hub-btn");
+            container.Add(rescan);
+        }
 
         private void Rebuild()
         {
@@ -287,7 +307,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
                 var note = new Label(StageNote(stage, state, worst.ContainsKey(stage)));
                 note.AddToClassList("hub-flow-note");
-                ApplyState(note, state);
+                ApplyText(note, state);
                 cell.Add(note);
 
                 strip.Add(cell);
@@ -428,7 +448,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var big = new Label(value);
             big.AddToClassList("hub-stat-value");
-            ApplyState(big, state);
+            ApplyText(big, state);
             valueRow.Add(big);
 
             var unitLabel = new Label(unit);
@@ -694,14 +714,12 @@ namespace AddressableManager.Editor.Windows.Hub
             return box;
         }
 
-        private static void ApplyState(VisualElement element, HealthState state)
-        {
-            if (element == null) return;
+        /// <summary>Paint a dot, a node or a bar - something whose whole body is the signal.</summary>
+        private static void ApplyState(VisualElement element, HealthState state) =>
+            HubStyle.Fill(element, state);
 
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-        }
+        /// <summary>Paint a label. Colour only, never a background.</summary>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }

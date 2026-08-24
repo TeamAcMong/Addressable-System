@@ -55,10 +55,27 @@ namespace AddressableManager.Editor.Windows.Hub
         public string Id => HubSections.Ids.Validator;
 
         /// <inheritdoc />
-        public string Title => "Validator";
+        public string Title => "Configuration";
 
         /// <inheritdoc />
-        public string Subtitle => "Every contract rule, grouped by what it costs you";
+        /// <remarks>The rail says what the screen IS; the header says what it covers.</remarks>
+        public string RailLabel => "Validator";
+
+        /// <inheritdoc />
+        public string Subtitle => _lastRuleCount > 0
+            ? $"{_lastRuleCount} contract rules · grouped by what they cost you"
+            : "Contract rules · grouped by what they cost you";
+
+        /// <summary>
+        /// How many rules the last evaluation covered, so the subtitle can say it.
+        /// </summary>
+        /// <remarks>
+        /// Cached rather than computed in the getter: <c>BuildRules()</c> walks the settings asset and
+        /// every group, and the subtitle is read on every navigation. A number that is one run stale is
+        /// worth more than a scan per click - and before the first run the subtitle simply omits it
+        /// rather than printing a figure nobody measured.
+        /// </remarks>
+        private static int _lastRuleCount;
 
         /// <inheritdoc />
         public PipelineStage Stage => PipelineStage.Configure;
@@ -251,7 +268,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var label = new Label(title);
             label.AddToClassList("hub-card-title");
-            ApplyState(label, state);
+            ApplyText(label, state);
             header.Add(label);
 
             var count = new Label(rules.Count == 1 ? "1 rule" : $"{rules.Count} rules");
@@ -486,7 +503,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var title = new Label("Nothing has been checked");
             title.AddToClassList("hub-card-title");
-            ApplyState(title, HealthState.NotMeasured);
+            ApplyText(title, HealthState.NotMeasured);
             box.Add(title);
 
             var body = new Label(
@@ -538,6 +555,8 @@ namespace AddressableManager.Editor.Windows.Hub
             var result = new List<SettingsRuleEvaluation>();
             foreach (var rule in SettingsContract.BuildRules())
                 result.Add(rule.Evaluate());
+
+            _lastRuleCount = result.Count;
             return result;
         }
 
@@ -562,14 +581,12 @@ namespace AddressableManager.Editor.Windows.Hub
             return evaluation.Rule.IsWarningOnly ? Verdict.CostsLater : Verdict.FailsGate;
         }
 
-        private static void ApplyState(VisualElement element, HealthState state)
-        {
-            if (element == null) return;
+        /// <summary>Paint a dot, a node or a bar - something whose whole body is the signal.</summary>
+        private static void ApplyState(VisualElement element, HealthState state) =>
+            HubStyle.Fill(element, state);
 
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-        }
+        /// <summary>Paint a label. Colour only, never a background.</summary>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }

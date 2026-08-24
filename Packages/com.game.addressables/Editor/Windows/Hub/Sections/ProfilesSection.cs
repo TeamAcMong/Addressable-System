@@ -25,7 +25,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// field it writes is the origin, because that is the field CI must set and the one the injector
     /// exists for.
     /// </remarks>
-    public sealed class ProfilesSection : IHubSection, IHubHostAware
+    public sealed class ProfilesSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         /// <summary>One profile's conformance, all three checks read together.</summary>
         private readonly struct Row
@@ -178,6 +178,23 @@ namespace AddressableManager.Editor.Windows.Hub
         }
 
         // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// This screen deliberately edits exactly one field - the origin - because Addressables owns
+        /// these values and a second editor for them is how two sources of truth start. Everything
+        /// else belongs in Addressables' own window, so the header links to it rather than growing a
+        /// copy of it.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var open = new Button(() =>
+                EditorApplication.ExecuteMenuItem("Window/Asset Management/Addressables/Profiles"))
+            { text = "Open Addressables Profiles" };
+
+            open.AddToClassList("hub-btn");
+            container.Add(open);
+        }
 
         private void Rebuild()
         {
@@ -624,11 +641,13 @@ namespace AddressableManager.Editor.Windows.Hub
         }
 
         /// <summary>State colour on text, without the filled background a dot wants.</summary>
-        private static void ApplyText(VisualElement element, HealthState state)
-        {
-            ApplyState(element, state);
-            element.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0));
-            element.style.borderTopColor = new StyleColor(new Color(0, 0, 0, 0));
-        }
+        /// <summary>Colour a label by health state.</summary>
+        /// <remarks>
+        /// Delegates. This used to apply the dot classes and then clear style.backgroundColor inline
+        /// to undo the half of them that does not belong on text - five sections carried a copy of
+        /// that, and the copies had already drifted. HubStyle has the distinction instead.
+        /// </remarks>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }

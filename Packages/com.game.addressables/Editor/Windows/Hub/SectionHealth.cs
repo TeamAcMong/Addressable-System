@@ -127,6 +127,29 @@ namespace AddressableManager.Editor.Windows.Hub
             "hub-state--ok", "hub-state--warn", "hub-state--blocked", "hub-state--unmeasured",
         };
 
+        /// <summary>The USS modifier class for a state on an element made of TEXT.</summary>
+        /// <remarks>
+        /// A separate family from <see cref="StyleClassFor"/> because the two jobs need opposite
+        /// things from a background: a dot is its background, a label is destroyed by one. See
+        /// <c>HubStyle</c> for which to use where.
+        /// </remarks>
+        public static string TextClassFor(HealthState state)
+        {
+            switch (state)
+            {
+                case HealthState.Ok:          return "hub-text--ok";
+                case HealthState.Warning:     return "hub-text--warn";
+                case HealthState.Blocked:     return "hub-text--blocked";
+                default:                      return "hub-text--unmeasured";
+            }
+        }
+
+        /// <summary>All text modifier classes.</summary>
+        public static readonly string[] AllTextClasses =
+        {
+            "hub-text--ok", "hub-text--warn", "hub-text--blocked", "hub-text--unmeasured",
+        };
+
         /// <inheritdoc />
         public bool Equals(SectionHealth other) =>
             State == other.State && Badge == other.Badge && Reason == other.Reason;

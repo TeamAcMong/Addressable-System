@@ -34,6 +34,9 @@ namespace AddressableManager.Editor.Windows.Hub
             /// <summary>Layout rules, with a dry run in front of the apply.</summary>
             public const string Rules = "rules";
 
+            /// <summary>Two assets resolving to one address. Its own screen, as the design has it.</summary>
+            public const string Conflicts = "conflicts";
+
             /// <summary>Local content server.</summary>
             public const string LocalServer = "local-server";
 
@@ -156,6 +159,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 new ValidatorSection(),
                 new ProfilesSection(),
                 new RulesSection(),
+                new ConflictsSection(),
 
                 new UpdatePreviewSection(),
 
@@ -175,18 +179,14 @@ namespace AddressableManager.Editor.Windows.Hub
                 new CdnTabSection(
                     Ids.LocalServer,
                     "Local Server",
-                    "Serve ServerData/ on localhost, and watch what asks for it",
+                    $"Serve ServerData/ on localhost:{Cdn.LocalContentServer.ConfiguredPort}",
                     PipelineStage.Publish,
                     new LocalServerTab(),
                     Probes.LocalServer),
 
-                new CdnTabSection(
-                    Ids.RuntimeMonitor,
-                    "Runtime Monitor",
-                    "What the running player is doing",
-                    PipelineStage.Run,
-                    new RuntimeMonitorTab(),
-                    Probes.RuntimeMonitor),
+                // Built to the design rather than hosted: two panels, an outcome that stays, and the
+                // three verbs along the bottom. RuntimeMonitorTab stays for CdnManagerWindow.
+                new RuntimeMonitorSection(),
 
                 new AssetLifetimeSection(),
             };

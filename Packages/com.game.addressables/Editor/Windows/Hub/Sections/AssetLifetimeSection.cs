@@ -43,7 +43,7 @@ namespace AddressableManager.Editor.Windows.Hub
         public string Title => "Asset Lifetime";
 
         /// <inheritdoc />
-        public string Subtitle => "What is loaded, and which scope is holding it";
+        public string Subtitle => "What is loaded, which scope holds it, and what leaked";
 
         /// <inheritdoc />
         public PipelineStage Stage => PipelineStage.Run;
@@ -81,13 +81,73 @@ namespace AddressableManager.Editor.Windows.Hub
             return SectionHealth.Ok($"{assets} held");
         }
 
-        /// <summary>A snapshot is this screen's only verb, and it belongs where it stays reachable.</summary>
+        /// <summary>Look again, and let go of what nobody is holding.</summary>
         public void PopulateHeaderActions(VisualElement container)
         {
-            var snapshot = new Button(Rebuild) { text = "Take a snapshot" };
+            var snapshot = new Button(Rebuild) { text = "Snapshot" };
             snapshot.AddToClassList("hub-btn");
             snapshot.tooltip = "Re-reads every live scope. The list is a moment in time, not a live view.";
             container.Add(snapshot);
+
+            // Counted from a snapshot taken here, so the number on the button and the rows under it
+            // come from one reading. Absent when there is nothing to release: an action offering to fix
+            // zero things reads as an action that did not work.
+            int leaked = 0;
+            foreach (var scope in ReadScopes())
+                if (scope.Info.IsLeaked) leaked++;
+
+            if (leaked == 0) return;
+
+            var release = new Button(() => ReleaseLeaked(leaked))
+            {
+                text = leaked == 1 ? "Release leaked (1)" : "Release leaked (" + leaked + ")",
+            };
+            release.AddToClassList("hub-btn");
+            release.tooltip =
+                "Clears every scope whose owner is gone. Assets held only by those scopes are freed.";
+            container.Add(release);
+        }
+
+        /// <summary>Clear every scope whose owner has been destroyed.</summary>
+        /// <remarks>
+        /// Confirmed first, and the dialog names the scopes rather than saying "some". This frees assets
+        /// that something still running may be reading through a handle it took out before its owner
+        /// died. A leaked scope is a bug being reported, not a state to silently repair.
+        ///
+        /// The list is re-read inside rather than captured when the button was drawn: play mode can end
+        /// between the two, taking every scope with it.
+        /// </remarks>
+        private void ReleaseLeaked(int expected)
+        {
+            var leaked = new List<string>();
+            foreach (var scope in ReadScopes())
+                if (scope.Info.IsLeaked) leaked.Add(scope.Id);
+
+            if (leaked.Count == 0)
+            {
+                EditorUtility.DisplayDialog(
+                    "Nothing to release",
+                    "There were " + expected + " leaked scope(s) when this screen was drawn, and none " +
+                    "now. Play mode probably ended.",
+                    "OK");
+                Rebuild();
+                return;
+            }
+
+            bool go = EditorUtility.DisplayDialog(
+                "Release leaked scopes",
+                "Clear " + leaked.Count + " scope(s) whose owner has been destroyed?\n\n" +
+                string.Join("\n", leaked) +
+                "\n\nAssets held only by these scopes are released. A handle taken out of one " +
+                "before its owner died becomes invalid.",
+                "Release", "Cancel");
+
+            if (!go) return;
+
+            foreach (string id in leaked)
+                ScopeManager.Instance.ClearScope(id);
+
+            Rebuild();
         }
 
         /// <inheritdoc />
@@ -470,13 +530,13 @@ namespace AddressableManager.Editor.Windows.Hub
             return box;
         }
 
-        private static void ApplyText(VisualElement element, HealthState state)
-        {
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-            element.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0));
-        }
+        /// <summary>Colour a label by health state.</summary>
+        /// <remarks>
+        /// Delegates. This used to apply the dot classes and then clear style.backgroundColor inline
+        /// to undo the half of them that does not belong on text - five sections carried a copy of
+        /// that, and the copies had already drifted. HubStyle has the distinction instead.
+        /// </remarks>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }
