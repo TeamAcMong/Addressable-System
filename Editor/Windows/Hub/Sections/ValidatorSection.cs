@@ -529,7 +529,7 @@ namespace AddressableManager.Editor.Windows.Hub
         private static VisualElement BuildManualFixNote()
         {
             return Note(
-                "Why some rules have no Fix button. An automatic fix is offered only where one answer " +
+                "Why some issues have no Fix button. An auto-fix is only offered where one answer " +
                 "is unambiguously right. settings.RemoteOriginIsKnown has two — add the origin to " +
                 "CdnSettings, or build against a different profile — and they mean different things, " +
                 "so the tool refuses to guess. A rule that writes a field another rule writes back is " +

@@ -195,7 +195,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var head = new VisualElement();
             head.AddToClassList("hub-card-header");
-            var title = new Label("What this build would produce");
+            var title = new Label("What would be produced");
             title.AddToClassList("hub-card-title");
             head.Add(title);
             card.Add(head);

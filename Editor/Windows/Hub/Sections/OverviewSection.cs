@@ -606,13 +606,27 @@ namespace AddressableManager.Editor.Windows.Hub
             var head = new VisualElement();
             head.AddToClassList("hub-card-header");
 
-            var title = new Label("Recent, on this machine");
+            var title = new Label("Recent");
             title.AddToClassList("hub-card-title");
             head.Add(title);
 
-            var note = new Label("kept under Library/ — local, and safe to delete");
+            var note = new Label("this machine only — kept under Library/, safe to delete");
             note.AddToClassList("hub-card-count");
             head.Add(note);
+
+            var spacer = new VisualElement();
+            spacer.style.flexGrow = 1;
+            head.Add(spacer);
+
+            // The design puts a link here, and it is not decoration: this card shows six entries out
+            // of a file that holds far more, and with no way to reach the rest the screen quietly
+            // decides for the reader that older entries do not matter.
+            var full = new Label("Full history");
+            full.AddToClassList("hub-card-count");
+            full.AddToClassList("hub-link");
+            full.tooltip = HubHistory.FilePath;
+            full.RegisterCallback<ClickEvent>(_ => HubHistory.Reveal());
+            head.Add(full);
 
             card.Add(head);
 

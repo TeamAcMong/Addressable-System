@@ -925,6 +925,16 @@
     color: var(--unity-colors-window-background);
 }
 
+/* A clickable word inside a header. Tinted, never underlined - USS has no text-decoration. */
+.hub-link {
+    color: var(--unity-colors-link-text);
+    margin-left: 10px;
+}
+
+.hub-link:hover {
+    opacity: 0.75;
+}
+
 /* ---------- runtime monitor: key/value rows, progress, outcome ---------- */
 
 .hub-kv {
