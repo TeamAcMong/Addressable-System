@@ -769,7 +769,22 @@ namespace AddressableManager.Editor.Rules
                     }
                 }
 
-                if (_addressOwners.TryGetValue(address, out var firstOwner))
+                // An asset re-claiming the address it already holds is not a collision. SeedExistingAddresses
+                // records EVERY entry in the project, including the ones taking part in this very run, so
+                // without this comparison every already-addressed asset collides with itself the moment it
+                // is re-imported - which is exactly what Seed's own documentation says it does not do: it
+                // exists to catch an entry that is NOT part of this run.
+                //
+                // The check reads correctly when you only look at a first run over fresh assets, because
+                // the seed has nothing to say about them. It fails on the second run, and on every run
+                // after that, because a stable address provider produces the same address again. One
+                // reporting project saw 3591 of these against 0 real collisions - which is the real cost:
+                // a warning that fires for something that never happens drowns the one that matters.
+                //
+                // Comparing the owner here rather than filtering the seed is deliberate. It is also correct
+                // when the same path appears twice in one batch, which a seed-side filter would not be.
+                if (_addressOwners.TryGetValue(address, out var firstOwner)
+                    && !string.Equals(firstOwner, assetPath, StringComparison.Ordinal))
                 {
                     // Reported, not silently skipped: which of the two assets "should" own the address
                     // is a human call, and writing it anyway at least keeps the run's behaviour

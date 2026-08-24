@@ -1,6 +1,62 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.1] - 2026-08-24 - Every already-addressed asset reported itself as a duplicate
+
+### Fixed - duplicate-address detection accused assets of colliding with themselves
+
+`4.1.0` taught `LayoutRuleProcessor` to seed every address already in the project before a run, so a
+collision with an entry *outside* the batch became visible - the on-import path processes one asset
+per call and could not otherwise see anything to collide with. The seed does not exclude the entries
+taking part in the run, and the ownership check did not either. So an asset that already held the
+address the rule generates was reported as colliding with itself:
+
+```
+Duplicate address 'tribal2-06': generated for both
+'Assets/IconMatch/Art/GameIcons/tribal2-06.png' and
+'Assets/IconMatch/Art/GameIcons/tribal2-06.png'
+```
+
+Both paths in that sentence are the same path. A reporting project measured **3591 collisions across
+3591 assets, every one of them self-against-self, against zero real collisions** - 3723 lines in a
+single `Editor.log` after one bulk re-import.
+
+Nothing was corrupted: the address is written regardless, deliberately, so behaviour is unchanged for
+anyone already depending on it. What was destroyed is the warning's usefulness. This check exists to
+catch two *different* assets claiming one address, which makes one of them unreachable at runtime -
+and a check that fires 3591 times for something that never happened buries the one time it matters.
+
+The defect reads as correct on a first run over fresh assets, because the seed knows nothing about
+them. It only appears on the second run - and a stable address provider makes every subsequent run a
+second run, so it reproduces forever once it starts.
+
+`ApplyAddressRule` now compares the recorded owner against the asset being processed, ordinally. Real
+collisions are untouched: a second asset arriving at an address someone else holds still has
+`firstOwner != assetPath` and is still reported, as data and as prose.
+
+Comparing at the check rather than filtering the seed is deliberate - it is also correct when the same
+path appears twice in one batch, which a seed-side filter would not be.
+
+`SkipExisting = true` suppresses the noise by returning before the check, but it also stops rules from
+moving entries between groups, which is a real workflow (ship-in-build ↔ CDN). It is not a workaround.
+
+### Added - `LayoutRuleCollisionTests`
+
+Three EditMode tests, none of which write. `AssetKeepingItsOwnAddress_IsNotACollision` is the
+regression guard, and it was verified by reverting the fix and watching it fail with the reported
+symptom. `TwoAssetsClaimingOneAddress_IsStillACollision` is the half that must not have been narrowed
+away. Both also assert that the structured `Collisions` list and the prose `Errors` agree in each
+direction, since they are written at the same site and can drift.
+
+The first asserts `SkipExisting` is off, so it cannot pass by never reaching the check under test.
+
+A third test sweeps 200 assets and asserts no collision anywhere names one asset twice. It is
+documented in the file as **not** the regression guard: run against the unfixed processor it passes,
+because it reproduces the defect only where an asset's existing address equals its own file name, and
+in this project none do.
+
+Thanks to the Icon Match team, who diagnosed this to the line and proposed the fix.
+
 ## [4.1.0] - 2026-08-23 - One Editor window, and eleven fixes where the patch had landed on one side of a pair
 
 The stable release of the 4.1 line. Coming from `4.0.1`, this entry is the last increment, not the
