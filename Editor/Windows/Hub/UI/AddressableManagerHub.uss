@@ -32,6 +32,19 @@
     font-size: 12px;
     -unity-font-style: bold;
     color: var(--unity-colors-default-text);
+
+    /*
+     * Yields first, and twice as fast as the search chip. Everything on this row is fixed-size except
+     * the chips, whose width is the build target's name - "StandaloneWindows64" is 60% wider than
+     * "Android". At minSize that pushed the chips past the right edge, and a chip that has fallen off
+     * the window still reports its value: the reader sees no Profile chip and concludes there is no
+     * profile, rather than that it did not fit.
+     */
+    flex-shrink: 2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .hub-header-spacer {
@@ -298,6 +311,29 @@
 }
 
 /*
+ * The same four states on TEXT. Colour only - no background, no border. Painting a label with the
+ * dot classes above makes it a solid block whose text is the same colour as the block it sits on.
+ * The opacities match hub-state--ok and hub-state--unmeasured so nothing else shifts.
+ */
+.hub-text--ok {
+    color: var(--unity-colors-default-text);
+    opacity: 0.55;
+}
+
+.hub-text--warn {
+    color: var(--unity-colors-warning-text);
+}
+
+.hub-text--blocked {
+    color: var(--unity-colors-error-text);
+}
+
+.hub-text--unmeasured {
+    color: var(--unity-colors-default-text);
+    opacity: 0.4;
+}
+
+/*
  * ---------- shared section vocabulary ----------
  *
  * The shell's stylesheet is added to the window root, so every section rendered under
@@ -416,6 +452,7 @@
 
 .hub-summary {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     flex-shrink: 0;
     padding: 5px 8px;
@@ -430,6 +467,7 @@
     flex-direction: row;
     align-items: center;
     margin-right: 14px;
+    margin-bottom: 1px;
 }
 
 .hub-summary-dot {
@@ -513,27 +551,42 @@
     -unity-font-style: bold;
     margin-top: 6px;
     color: var(--unity-colors-default-text);
+
+    /* Five cells share the content column; at minSize each is 84px. Clip, do not overrun. */
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .hub-flow-note {
     font-size: 10px;
     margin-top: 1px;
-    background-color: rgba(0, 0, 0, 0);
-    border-color: rgba(0, 0, 0, 0);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ---------- overview: stat cards ---------- */
 
+/*
+ * Wraps. At the window's minimum width the content column is 424px, so four cards across is 99px
+ * each - narrower than the headline figures they exist to show. Two rows of two is legible; four
+ * clipped numbers are not.
+ */
 .hub-stats {
     flex-direction: row;
+    flex-wrap: wrap;
     flex-shrink: 0;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
 }
 
 .hub-stat {
     flex-grow: 1;
-    flex-basis: 0;
-    min-width: 0;
+    flex-basis: 132px;
+    min-width: 132px;
+    margin-bottom: 6px;
     margin-right: 6px;
     padding: 7px 9px;
     border-width: 1px;
@@ -874,21 +927,31 @@
 
 /* ---------- two-pane split ---------- */
 
+/*
+ * Wraps to stacked panes rather than crushing one of them. The left pane was a fixed 280px that
+ * refused to shrink, and the content column is 424px at the window's minimum - which left the dry-run
+ * panel 136px wide. The two panes exist to be read against each other; one of them squeezed to a
+ * column of broken words is worse than the two of them stacked.
+ */
 .hub-split {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: flex-start;
 }
 
 .hub-split-left {
-    width: 280px;
-    flex-shrink: 0;
+    flex-grow: 1;
+    flex-basis: 280px;
+    flex-shrink: 1;
+    min-width: 240px;
     margin-right: 8px;
 }
 
 .hub-split-right {
     flex-grow: 1;
     flex-shrink: 1;
-    min-width: 0;
+    flex-basis: 300px;
+    min-width: 260px;
 }
 
 /* ---------- header search affordance ---------- */
@@ -898,7 +961,8 @@
     align-items: center;
     margin-left: 14px;
     padding: 1px 6px;
-    min-width: 150px;
+    flex-shrink: 1;
+    min-width: 0;
     border-width: 1px;
     border-radius: 3px;
     border-color: var(--unity-colors-window-border);

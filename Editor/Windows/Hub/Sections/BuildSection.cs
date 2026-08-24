@@ -529,13 +529,13 @@ namespace AddressableManager.Editor.Windows.Hub
             return box;
         }
 
-        private static void ApplyText(VisualElement element, HealthState state)
-        {
-            foreach (var cls in SectionHealth.AllStyleClasses)
-                element.RemoveFromClassList(cls);
-
-            element.AddToClassList(SectionHealth.StyleClassFor(state));
-            element.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0));
-        }
+        /// <summary>Colour a label by health state.</summary>
+        /// <remarks>
+        /// Delegates. This used to apply the dot classes and then clear style.backgroundColor inline
+        /// to undo the half of them that does not belong on text - five sections carried a copy of
+        /// that, and the copies had already drifted. HubStyle has the distinction instead.
+        /// </remarks>
+        private static void ApplyText(VisualElement element, HealthState state) =>
+            HubStyle.Text(element, state);
     }
 }
