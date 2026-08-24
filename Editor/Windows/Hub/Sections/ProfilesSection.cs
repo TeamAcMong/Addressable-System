@@ -25,7 +25,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// field it writes is the origin, because that is the field CI must set and the one the injector
     /// exists for.
     /// </remarks>
-    public sealed class ProfilesSection : IHubSection, IHubHostAware
+    public sealed class ProfilesSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         /// <summary>One profile's conformance, all three checks read together.</summary>
         private readonly struct Row
@@ -178,6 +178,23 @@ namespace AddressableManager.Editor.Windows.Hub
         }
 
         // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// This screen deliberately edits exactly one field - the origin - because Addressables owns
+        /// these values and a second editor for them is how two sources of truth start. Everything
+        /// else belongs in Addressables' own window, so the header links to it rather than growing a
+        /// copy of it.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var open = new Button(() =>
+                EditorApplication.ExecuteMenuItem("Window/Asset Management/Addressables/Profiles"))
+            { text = "Open Addressables Profiles" };
+
+            open.AddToClassList("hub-btn");
+            container.Add(open);
+        }
 
         private void Rebuild()
         {

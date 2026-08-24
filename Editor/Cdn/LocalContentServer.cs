@@ -38,6 +38,15 @@ namespace AddressableManager.Editor.Cdn
         public event EventHandler<RequestEventArgs> RequestReceived;
         public bool IsRunning => _isRunning;
         public int ActivePort => _currentPort;
+
+        /// <summary>The port the server will use, whether or not it is running.</summary>
+        /// <remarks>
+        /// <see cref="ActivePort"/> is 0 until a server starts, so anything that names the port in
+        /// text - a section subtitle, a hint - would print "localhost:0" while stopped. This reads the
+        /// port the next start would use, which is what a reader wants to know before starting it.
+        /// </remarks>
+        public static int ConfiguredPort =>
+            SessionState.GetInt(PortKey, 8080);
         public string ServerDataPath => _serverDataPath;
 
         public LocalContentServer()

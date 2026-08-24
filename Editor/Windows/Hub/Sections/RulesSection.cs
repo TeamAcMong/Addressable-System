@@ -22,7 +22,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// run that will not happen: a second "what would occur" implementation is exactly how a preview
     /// drifts from the thing it previews.
     /// </remarks>
-    public sealed class RulesSection : IHubSection, IHubHostAware
+    public sealed class RulesSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         /// <summary>
         /// Three seconds between rule-set lookups.
@@ -114,6 +114,78 @@ namespace AddressableManager.Editor.Windows.Hub
         }
 
         // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Disabled rather than hidden when there is no rule set. A control that vanishes leaves the
+        /// reader wondering whether the feature exists at all; a disabled one with a tooltip says what
+        /// is missing and how to get it.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var data = FindRuleData();
+
+            var import = new Button(() => ImportRules(data)) { text = "Import\u2026" };
+            import.AddToClassList("hub-btn");
+            import.SetEnabled(data != null);
+            import.tooltip = data != null
+                ? "Merge rules from a JSON file into this rule set."
+                : "No LayoutRuleData asset in the project to import into.";
+            container.Add(import);
+
+            var export = new Button(() => ExportRules(data)) { text = "Export\u2026" };
+            export.AddToClassList("hub-btn");
+            export.SetEnabled(data != null);
+            export.tooltip = data != null
+                ? "Write this rule set to a JSON file."
+                : "No LayoutRuleData asset in the project to export.";
+            container.Add(export);
+        }
+
+        /// <summary>Merge a JSON rule file into the project's rule set.</summary>
+        /// <remarks>
+        /// Merge, never replace. Replacing would silently discard every rule the file does not mention,
+        /// and a file picker gives the reader no way to see that list before it goes.
+        /// </remarks>
+        private void ImportRules(LayoutRuleData data)
+        {
+            if (data == null) return;
+
+            string path = EditorUtility.OpenFilePanel("Import layout rules", Application.dataPath, "json");
+            if (string.IsNullOrEmpty(path)) return;
+
+            if (!RuleSerializer.ImportFromJson(data, path, mergeMode: true))
+            {
+                EditorUtility.DisplayDialog(
+                    "Import failed",
+                    "Nothing was imported from:\n\n" + path +
+                    "\n\nThe Console has the reason.",
+                    "OK");
+                return;
+            }
+
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
+            Rebuild();
+        }
+
+        private void ExportRules(LayoutRuleData data)
+        {
+            if (data == null) return;
+
+            string path = EditorUtility.SaveFilePanel(
+                "Export layout rules", Application.dataPath, data.name + ".json", "json");
+            if (string.IsNullOrEmpty(path)) return;
+
+            if (!RuleSerializer.ExportToJson(data, path))
+            {
+                EditorUtility.DisplayDialog(
+                    "Export failed",
+                    "Nothing was written to:\n\n" + path +
+                    "\n\nThe Console has the reason.",
+                    "OK");
+            }
+        }
 
         private void Rebuild()
         {
@@ -392,7 +464,7 @@ namespace AddressableManager.Editor.Windows.Hub
         /// collide and then has to go and find them by hand, on the screen that already knows exactly
         /// where they are.
         /// </remarks>
-        private static VisualElement BuildCollisionCard(LayoutRuleProcessor.AddressCollision collision)
+        internal static VisualElement BuildCollisionCard(LayoutRuleProcessor.AddressCollision collision)
         {
             var card = new VisualElement();
             card.AddToClassList("hub-card");
@@ -659,7 +731,7 @@ namespace AddressableManager.Editor.Windows.Hub
             return row;
         }
 
-        private static LayoutRuleData FindRuleData()
+        internal static LayoutRuleData FindRuleData()
         {
             var guids = AssetDatabase.FindAssets("t:LayoutRuleData");
             foreach (var guid in guids)
