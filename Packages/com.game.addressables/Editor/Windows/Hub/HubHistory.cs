@@ -63,7 +63,29 @@ namespace AddressableManager.Editor.Windows.Hub
         private const int MaxEntries = 40;
 
         private static string Directory => Path.Combine("Library", "com.game.addressables");
-        private static string FilePath => Path.Combine(Directory, "history.json");
+        /// <summary>Where the log lives. Public so a screen can offer to open it.</summary>
+        /// <remarks>
+        /// Under Library/, so it is per-machine and disposable - which the screens that show it say
+        /// out loud. A history that looks authoritative while being local to one developer is worse
+        /// than none, because someone would eventually answer "what happened to the build" with it.
+        /// </remarks>
+        internal static string FilePath => Path.Combine(Directory, "history.json");
+
+        /// <summary>Show the log file in the OS file browser, or say why it is not there.</summary>
+        internal static void Reveal()
+        {
+            if (!Exists)
+            {
+                UnityEditor.EditorUtility.DisplayDialog(
+                    "No history yet",
+                    "Nothing has been recorded on this machine yet. The log is written the first time " +
+                    "a build, an apply or a catalog check runs from this window.",
+                    "OK");
+                return;
+            }
+
+            UnityEditor.EditorUtility.RevealInFinder(FilePath);
+        }
 
         /// <summary>Record an event. Never throws — a failed write must not take an action down with it.</summary>
         /// <remarks>

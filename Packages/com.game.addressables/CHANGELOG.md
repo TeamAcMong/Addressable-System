@@ -1,6 +1,50 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.2.1] - 2026-08-24 - The screens matched the design in structure and not in a single sentence
+
+Every earlier conformance check compared **section lists, titles and header actions**. Those matched,
+so every check reported a match — while the sentences actually printed on the screens had never been
+compared to anything. Extracting the design's literal on-screen text and diffing it against the
+strings in the sections found ten differences on screens that had already passed three reviews.
+
+### Fixed - wording, taken from the design rather than paraphrased
+
+| Screen | Was | Design |
+| :-- | :-- | :-- |
+| Layout Rules | `Show both` | `Ping both` |
+| Update Preview | `Changed since the live release` | `Changed since the last publish` |
+| Build | `What this build would produce` | `What would be produced` |
+| Validator | "Why some **rules** have no Fix button" | "Why some **issues** have no Fix button" |
+| Overview | `Recent, on this machine` | `Recent`, with the machine caveat moved beside it |
+
+### Added - blocks the design has and the build did not
+
+- **Overview: `Full history`.** The card shows six entries from a file that holds far more. Without a
+  way to reach the rest, the screen was quietly deciding for the reader that older entries do not
+  matter. Opens the log in the OS file browser, and says so rather than doing nothing when nothing has
+  been recorded yet.
+- **Asset Lifetime leads with the leak.** *"N handles outlived the object that took them"*, with the
+  design's own explanation of why that costs a session's memory. A count of live scopes is a fact; a
+  handle that outlived its owner is a bug, and it was sitting behind four cards of arithmetic. Absent
+  entirely when nothing has leaked — a headline reading "0 leaked" every session teaches people to
+  skip past the place the real one appears.
+- **`Live handles by owning scope`,** with the sample time stamped beside it. Every row under it is a
+  sample rather than a live reading, and a list that does not say when it was taken gets read as
+  current however old it is.
+- **`Not a memory profiler.`** Unity's is better at bytes; this screen answers the one question it
+  cannot — which scope is still holding this, and who took the reference.
+
+### Notes
+
+The stat cards on Overview and Asset Lifetime are **not** in the design; they are kept deliberately
+and the design's blocks were added around them.
+
+What will not converge, and why: USS has no `gap`, no `text-wrap`, no inline SVG, and repo invariant 5
+requires `--unity-colors-*` rather than the design's hex values. Spacing, iconography and exact colour
+therefore differ by construction. That accounts for how the screens look — it never accounted for the
+ten sentences above.
+
 ## [4.2.0] - 2026-08-24 - The screens the design drew, and the ones it deliberately did not
 
 Read against `Documentation/design/*.dc.html` screen by screen rather than by section list, which is

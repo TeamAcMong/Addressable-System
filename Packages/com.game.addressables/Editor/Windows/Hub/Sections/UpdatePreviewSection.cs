@@ -198,7 +198,7 @@ namespace AddressableManager.Editor.Windows.Hub
             var head = new VisualElement();
             head.AddToClassList("hub-card-header");
 
-            var title = new Label("Changed since the live release");
+            var title = new Label("Changed since the last publish");
             title.AddToClassList("hub-card-title");
             head.Add(title);
 

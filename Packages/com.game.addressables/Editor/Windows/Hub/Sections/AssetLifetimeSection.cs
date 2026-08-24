@@ -176,7 +176,9 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var scopes = ReadScopes();
 
+            _body.Add(BuildLeakHeadline(scopes));
             _body.Add(BuildSummary(scopes));
+            _body.Add(BuildListHeading());
 
             if (scopes.Count == 0)
             {
@@ -485,9 +487,89 @@ namespace AddressableManager.Editor.Windows.Hub
             return box;
         }
 
+        /// <summary>
+        /// The design leads this screen with the leak, not with the totals.
+        /// </summary>
+        /// <remarks>
+        /// A count of live scopes is a fact; a handle that outlived its owner is a bug, and putting it
+        /// behind four cards of arithmetic makes the reader go and find it. Absent entirely when
+        /// nothing has leaked - a headline reading "0 leaked" every session teaches people to skip
+        /// past the place the real one will appear.
+        /// </remarks>
+        private static VisualElement BuildLeakHeadline(List<ScopeRow> scopes)
+        {
+            int handles = 0;
+            foreach (var scope in scopes)
+                if (scope.Info.IsLeaked) handles += scope.Assets.Count;
+
+            if (handles == 0) return new VisualElement();
+
+            var card = new VisualElement();
+            card.AddToClassList("hub-card");
+
+            var head = new VisualElement();
+            head.AddToClassList("hub-card-header");
+
+            var title = new Label(handles == 1
+                ? "1 handle outlived the object that took it"
+                : handles + " handles outlived the object that took them");
+            title.AddToClassList("hub-card-title");
+            ApplyText(title, HealthState.Warning);
+            head.Add(title);
+            card.Add(head);
+
+            var body = new Label(
+                "Their owning GameObject is destroyed and the reference count never reached zero, so " +
+                "the bundle behind each one stays resident for the rest of the session. Unity's " +
+                "profiler can show you the memory; only this package knows who was supposed to give " +
+                "it back.");
+
+            body.AddToClassList("hub-note-text");
+            body.style.paddingLeft = 9;
+            body.style.paddingRight = 9;
+            body.style.paddingTop = 6;
+            body.style.paddingBottom = 8;
+            card.Add(body);
+
+            return card;
+        }
+
+        /// <summary>The heading over the scope list, stamped with when the sample was taken.</summary>
+        /// <remarks>
+        /// The stamp is the point. Every row below it is a sample rather than a live reading, and a
+        /// list that does not say when it was taken gets read as current however old it is.
+        /// </remarks>
+        private static VisualElement BuildListHeading()
+        {
+            var row = new VisualElement();
+            row.AddToClassList("hub-card-header");
+            row.style.marginTop = 4;
+
+            var title = new Label("Live handles by owning scope");
+            title.AddToClassList("hub-card-title");
+            row.Add(title);
+
+            var spacer = new VisualElement();
+            spacer.style.flexGrow = 1;
+            row.Add(spacer);
+
+            var stamp = new Label(
+                "sampled " + System.DateTime.Now.ToString("HH:mm:ss") +
+                (EditorApplication.isPlaying ? " \u00b7 play mode" : " \u00b7 edit mode"));
+
+            stamp.AddToClassList("hub-card-count");
+            row.Add(stamp);
+
+            return row;
+        }
+
         private static VisualElement BuildLimitsNote()
         {
             return Note(
+                "Not a memory profiler. Unity's is better at bytes; this answers the one "
+                + "question it cannot: which scope is still holding this, and who took the "
+                + "reference. Sizes are the bundle's, shown so a leak can be ranked - not to "
+                + "be added up against the Profiler's numbers." + "\n\n" +
                 "A leak here means the object that created a scope is gone while its loader still " +
                 "holds assets. Both halves matter: a dead owner holding nothing is untidy, a live " +
                 "owner holding a lot is a game doing its job.\n\n" +
