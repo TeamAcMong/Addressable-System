@@ -498,7 +498,7 @@ namespace AddressableManager.Editor.Windows.Hub
             actions.style.flexDirection = FlexDirection.Row;
             actions.style.marginTop = 8;
 
-            var ping = new Button(() => PingBoth(collision)) { text = "Show both" };
+            var ping = new Button(() => PingBoth(collision)) { text = "Ping both" };
             ping.AddToClassList("hub-btn");
             ping.style.marginLeft = 0;
             ping.tooltip = "Selects both assets in the Project window.";
