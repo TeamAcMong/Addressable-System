@@ -1,6 +1,57 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.1.2] - 2026-08-24 - A hosted tab arrived without its stylesheet, and state classes painted labels solid
+
+Reported from a screenshot of the Catalog Inspector, which was rendering its header text on top of
+its own rows.
+
+### Fixed - the three hosted CDN tabs lost their layout entirely
+
+Each CDN tab loads only its *own* stylesheet. The classes its UXML shares with the other five —
+`cdn-tab-page`, `cdn-preview-summary`, `cdn-preview-state`, `cdn-actions-row`, `cdn-btn` — live in
+`CdnManagerWindow.uss`, which that window adds to its root once for all of them. The hub hosts three
+of those tabs through an adapter and never brought the sheet.
+
+Nothing was null, nothing threw, every query resolved. What was lost was `flex-shrink: 0` on the
+summary and state blocks: the list's `flex-grow` squeezed them to nothing and their text rendered on
+top of the rows below, because `overflow` is visible by default. **It reads as a rendering glitch
+rather than as a missing file**, which is why it survived the screen being opened and looked at.
+
+`HubProbeCLI` now asserts the sheet is attached to every hosted tab. Verified in the other direction:
+with the attach disabled it reports all three as failures.
+
+### Fixed - `hub-state--*` painted labels as solid blocks
+
+Those classes set a background colour, a border colour and a text colour together, because they were
+written for the 8×8 dots on the rail, which have to be filled. Applied to a `Label` the background
+half makes a solid rectangle — and the class sets the text to the **same** colour, so the text
+disappears into it. The rail's stage badge shipped as a solid amber block where a word should be.
+
+Every section that ever coloured a label had already met this and worked around it locally: five
+copies of "apply the class, then clear `style.backgroundColor`", one of which also cleared
+`borderTopColor` and not the other three borders, plus a sixth workaround written into the USS. Six
+workarounds for one missing distinction.
+
+There are two families now — `hub-state--*` fills, `hub-text--*` colours — and all six workarounds
+are gone.
+
+### Fixed - three things did not fit at the window's own minimum size
+
+`minSize` is 620×420, which leaves a 424px content column.
+
+- The two-pane split in Layout Rules had a fixed 280px left pane that refused to shrink, leaving the
+  dry-run panel **136px**. The two panes exist to be read against each other. Both now wrap.
+- Four stat cards across 424px is 99px each — narrower than the figures they exist to show. They
+  wrap to two rows.
+- The header's Profile / Target / Mode chips were the only content-sized items on that row and the
+  only ones that could not shrink, so a build target named `StandaloneWindows64` pushed them past the
+  right edge. **A chip that has fallen off the window still reports its value**: the reader sees no
+  Profile chip and concludes there is no profile. The title yields first now, then the search chip.
+
+Flow labels and notes clip with an ellipsis rather than overrunning their cell, and the summary strip
+wraps.
+
 ## [4.1.1] - 2026-08-24 - Every already-addressed asset reported itself as a duplicate
 
 ### Fixed - duplicate-address detection accused assets of colliding with themselves
