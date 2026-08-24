@@ -321,7 +321,7 @@ namespace AddressableManager.Editor.Windows.Hub
 
             row.Add(gutter);
 
-            var label = new Label(section.Title);
+            var label = new Label(section is IHubRailLabel rail ? rail.RailLabel : section.Title);
             label.AddToClassList("hub-section-row-label");
             row.Add(label);
 

@@ -30,6 +30,19 @@ namespace AddressableManager.Editor.Windows.Hub
         private SectionHealth _last;
         private double _nextAt;
         private bool _hasValue;
+        private int _generation;
+
+        /// <summary>
+        /// Bumped by <see cref="InvalidateAll"/>. Every throttle compares against it and recomputes
+        /// once when it has moved.
+        /// </summary>
+        /// <remarks>
+        /// A counter rather than a list of live throttles: sections are rebuilt on every navigation,
+        /// so a registry would need each one to unregister itself on teardown, and a throttle that
+        /// outlived its section would keep a dead section's probe alive. A number nobody has to
+        /// deregister from cannot leak.
+        /// </remarks>
+        private static int _globalGeneration;
 
         /// <summary>Create a throttle. Three seconds is slow enough to be free and fast enough to feel live.</summary>
         public HealthThrottle(double seconds = 3.0)
@@ -41,6 +54,12 @@ namespace AddressableManager.Editor.Windows.Hub
         public SectionHealth Get(Func<SectionHealth> compute)
         {
             double now = EditorApplication.timeSinceStartup;
+
+            if (_generation != _globalGeneration)
+            {
+                _generation = _globalGeneration;
+                _hasValue = false;
+            }
 
             if (_hasValue && now < _nextAt)
                 return _last;
@@ -69,5 +88,16 @@ namespace AddressableManager.Editor.Windows.Hub
             _hasValue = false;
             _nextAt = 0;
         }
+
+        /// <summary>
+        /// Force every throttle in the window to recompute once.
+        /// </summary>
+        /// <remarks>
+        /// Exists so "Re-scan everything" can mean it. Each section owns its own throttle, so without
+        /// this the button could only redraw the screen it sits on - from the same three-second-old
+        /// answers it was already showing. A control that reports less than its label is the defect
+        /// this window was built to remove; it must not be in the window's own header.
+        /// </remarks>
+        public static void InvalidateAll() => _globalGeneration++;
     }
 }

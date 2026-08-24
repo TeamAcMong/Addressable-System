@@ -19,7 +19,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// Deliberately not a dashboard of everything: it answers where the pipeline stops and hands
     /// off. Anything needing its own controls belongs in the section that owns it.
     /// </remarks>
-    public sealed class OverviewSection : IHubSection, IHubHostAware
+    public sealed class OverviewSection : IHubSection, IHubHostAware, IHubSectionActions
     {
         private IHubHost _host;
         private VisualElement _body;
@@ -58,6 +58,26 @@ namespace AddressableManager.Editor.Windows.Hub
         public void OnShown() => Rebuild();
 
         // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Overview reads every other section's health, and those answers are cached for three
+        /// seconds so the rail can poll them once a second without cost. That cache is exactly what
+        /// someone pressing this wants gone: they changed something outside Unity and want the screen
+        /// to look again, not to be told what it thought three seconds ago.
+        /// </remarks>
+        public void PopulateHeaderActions(VisualElement container)
+        {
+            var rescan = new Button(() =>
+            {
+                HealthThrottle.InvalidateAll();
+                Rebuild();
+            })
+            { text = "Re-scan everything" };
+
+            rescan.AddToClassList("hub-btn");
+            container.Add(rescan);
+        }
 
         private void Rebuild()
         {

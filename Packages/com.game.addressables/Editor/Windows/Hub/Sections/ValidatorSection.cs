@@ -55,10 +55,27 @@ namespace AddressableManager.Editor.Windows.Hub
         public string Id => HubSections.Ids.Validator;
 
         /// <inheritdoc />
-        public string Title => "Validator";
+        public string Title => "Configuration";
 
         /// <inheritdoc />
-        public string Subtitle => "Every contract rule, grouped by what it costs you";
+        /// <remarks>The rail says what the screen IS; the header says what it covers.</remarks>
+        public string RailLabel => "Validator";
+
+        /// <inheritdoc />
+        public string Subtitle => _lastRuleCount > 0
+            ? $"{_lastRuleCount} contract rules · grouped by what they cost you"
+            : "Contract rules · grouped by what they cost you";
+
+        /// <summary>
+        /// How many rules the last evaluation covered, so the subtitle can say it.
+        /// </summary>
+        /// <remarks>
+        /// Cached rather than computed in the getter: <c>BuildRules()</c> walks the settings asset and
+        /// every group, and the subtitle is read on every navigation. A number that is one run stale is
+        /// worth more than a scan per click - and before the first run the subtitle simply omits it
+        /// rather than printing a figure nobody measured.
+        /// </remarks>
+        private static int _lastRuleCount;
 
         /// <inheritdoc />
         public PipelineStage Stage => PipelineStage.Configure;
@@ -538,6 +555,8 @@ namespace AddressableManager.Editor.Windows.Hub
             var result = new List<SettingsRuleEvaluation>();
             foreach (var rule in SettingsContract.BuildRules())
                 result.Add(rule.Evaluate());
+
+            _lastRuleCount = result.Count;
             return result;
         }
 
