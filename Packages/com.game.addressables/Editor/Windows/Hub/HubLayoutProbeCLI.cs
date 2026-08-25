@@ -39,6 +39,30 @@ namespace AddressableManager.Editor.Windows.Hub
         /// Entry point:
         /// <c>-executeMethod AddressableManager.Editor.Windows.Hub.HubLayoutProbeCLI.ProbeLayout</c>
         /// </summary>
+        /// <summary>
+        /// Menu entry: run the same measurement inside a live Editor, where the screens have real
+        /// content in them.
+        /// </summary>
+        /// <remarks>
+        /// Batchmode can drive the layout engine but not fill it: no catalog is loaded, no play session
+        /// exists, no scope holds anything, so every section is measured close to empty. The rows that
+        /// break are the ones holding a 90-character asset path or a base URL, and only a real Editor
+        /// has those. This is that run - it reports and returns rather than exiting.
+        /// </remarks>
+        [MenuItem("Window/Addressable Manager/Check layout at every size", priority = 400)]
+        public static void CheckLayoutFromMenu()
+        {
+            int problems = RunChecks();
+
+            if (problems == 0)
+            {
+                Debug.Log("[HubLayout] SUCCESS: nothing is drawn outside the space it was given");
+                return;
+            }
+
+            Debug.LogError($"[HubLayout] {problems} element(s) overflow their parent - details above");
+        }
+
         public static void ProbeLayout()
         {
             if (EditorUtility.scriptCompilationFailed)
@@ -48,7 +72,26 @@ namespace AddressableManager.Editor.Windows.Hub
                 return;
             }
 
+            int problems = RunChecks();
+
+            if (problems > 0)
+            {
+                Debug.LogError($"[HubLayout] FAILURE: {problems} element(s) overflow their parent");
+                EditorApplication.Exit(1);
+                return;
+            }
+
+            Debug.Log("[HubLayout] SUCCESS: nothing is drawn outside the space it was given");
+            EditorApplication.Exit(0);
+        }
+
+        /// <summary>Measure every section at every size. Returns how many elements overflow.</summary>
+        private static int RunChecks()
+        {
+            var restore = EditorWindow.HasOpenInstances<AddressableManagerHub>();
+
             var window = EditorWindow.GetWindow<AddressableManagerHub>();
+            var originalPosition = window.position;
             window.minSize = new Vector2(620, 420);
 
             // A sweep, not one size. Overflow is worst at the minimum, but a container that wraps has
@@ -75,8 +118,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 Debug.LogError(
                     "[HubLayout] FAILURE: the nowrap/overflow check did not flag a label deliberately " +
                     "given text far wider than its box, so its zero findings mean nothing.");
-                EditorApplication.Exit(1);
-                return;
+                return 1;
             }
 
             Debug.Log("[HubLayout] self-check: the nowrap/overflow checker fires when it should");
@@ -86,16 +128,18 @@ namespace AddressableManager.Editor.Windows.Hub
             foreach (var size in sizes)
                 problems += MeasureAt(window, root, size);
 
-            if (problems > 0)
-            {
-                Debug.LogError($"[HubLayout] FAILURE: {problems} element(s) overflow their parent");
-                EditorApplication.Exit(1);
-                return;
-            }
+            Debug.Log($"[HubLayout] measured {sizes.Length} sizes x 11 sections");
 
-            Debug.Log($"[HubLayout] SUCCESS: {sizes.Length} sizes x 11 sections, nothing drawn outside " +
-                      "the space it was given");
-            EditorApplication.Exit(0);
+            // Put the window back the way it was found. This runs in a live Editor now, where the
+            // window is something the user has arranged.
+            window.position = originalPosition;
+            root.style.width = StyleKeyword.Null;
+            root.style.height = StyleKeyword.Null;
+            ForceLayout(root.panel);
+
+            if (!restore) window.Close();
+
+            return problems;
         }
 
         /// <summary>Lay the window out at one size and walk every section.</summary>

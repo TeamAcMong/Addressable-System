@@ -34,10 +34,32 @@ That one was real: at 620x420 the header's search affordance shrinks to 109px, a
 contents cannot shrink has not been made responsive, it has been made to overflow more quietly. The
 prompt now yields with an ellipsis; the shortcut does not yield at all.
 
+### Changed - the hub moved to `Ctrl+Alt+M`
+
+The Unity-MCP package registers `Window/AI Game Developer — MCP %&a`, which is `Ctrl+Alt+A` — the
+hub's chord. Unity accepts two menu items claiming one chord **without defining which of them runs**,
+and that is the exact defect 4.1.0 removed from this package, where three items claimed this chord
+between them. Being right first is not a reason to keep a collision: the other window has no second
+way in, while the hub has a menu entry and `Ctrl+K` once open.
+
+The claim also had to be corrected in five documents, three of which still told the reader the
+**Dashboard** answers this chord — which stopped being true in 4.1.0. `README.md`'s menu table was
+still the pre-4.1.0 one, missing Open, Validate Setup, Profiles and Build Content entirely.
+
+### Added - the probe runs from a live Editor
+
+`Window > Addressable Manager > Check layout at every size` runs the same measurement without
+`EditorApplication.Exit`, restores the window's position afterwards, and closes it again if it was not
+already open — it runs in an Editor somebody is using.
+
+That is the run that matters: this measurement was first taken against the real project through the
+Unity-MCP bridge, and it is the first time the numbers came from screens with content in them rather
+than from batchmode's empty ones.
+
 ### Notes
 
-What the probe still cannot see: batchmode has no catalog loaded, no play session and no scope holding
-anything, so every section is measured close to empty. Long real data - a 90-character asset path, a
+What the batchmode probe still cannot see: it has no catalog loaded, no play session and no scope
+holding anything, so every section is measured close to empty. Long real data - a 90-character asset path, a
 base URL, a build target called `StandaloneWindows64` - is exactly what breaks these rows, and the
 content-independent check exists for that reason, but it has not yet met real content.
 

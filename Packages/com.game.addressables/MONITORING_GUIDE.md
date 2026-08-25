@@ -7,7 +7,7 @@ The Addressable Manager Dashboard tracks every asset load, every release and eve
 ## Quick start
 
 1. Enter Play Mode.
-2. Open **Window → Addressable Manager → Dashboard** (shortcut: `Ctrl+Alt+A` / `Cmd+Alt+A`). This is the only keyboard shortcut the package registers.
+2. Open **Window → Addressable Manager → Dashboard**. It has no shortcut of its own; `Ctrl+Alt+M` (`Cmd+Alt+M`) opens the hub, which is the only keyboard shortcut the package registers.
 3. Load anything — `Assets.Load<T>(…)`, `scope.Loader.LoadAssetAsync<T>(…)`, `Assets.Spawn(…)` — and watch it appear.
 
 Optional: drop a `MonitoringHelper` component on any scene GameObject (Add Component → Addressable Manager → Monitoring Helper). It's purely a discoverable indicator — monitoring runs whether or not it's there. Its two serialized fields (`enableMonitoring`, default on; `verboseLogging`, default off) only decide whether it logs a line in `Awake`; turning `enableMonitoring` off does **not** stop the Dashboard from tracking.

@@ -25,7 +25,7 @@ still open and still work, but the hub reaches all of them:
 
 | Tool | Purpose | Shortcut |
 |------|---------|----------|
-| **Addressable Manager (hub)** | Ten sections on a rail that *is* the delivery pipeline; each stage carries its own health, and the first blocked one is named and clickable | `Ctrl+Alt+A` |
+| **Addressable Manager (hub)** | Ten sections on a rail that *is* the delivery pipeline; each stage carries its own health, and the first blocked one is named and clickable | `Ctrl+Alt+M` |
 | Dashboard | Real-time monitoring and performance | - |
 | Layout Rule Editor | Create and manage automation rules | - |
 | Layout Viewer | Inspect the addressable layout and its conflicts | - |
@@ -38,7 +38,7 @@ Debug settings are a ScriptableObject (`Assets > Create > Addressable Manager > 
 ## Addressable Manager Dashboard
 
 **Path**: `Window > Addressable Manager > Dashboard`
-**Shortcut**: none since 4.1.0 — `Ctrl+Alt+A` now opens the hub
+**Shortcut**: none since 4.1.0 — `Ctrl+Alt+M` opens the hub (it was `Ctrl+Alt+A` until 4.2.2)
 **Minimum size**: 800×600
 
 The dashboard provides real-time monitoring of addressable assets during play mode. Monitoring is Editor-only — `EditorAssetMonitor` lives in the Editor assembly, and the tracker is cleared when you exit Play Mode.
@@ -387,7 +387,7 @@ Every path below is backed by a `[MenuItem]` or `[CreateAssetMenu]` in the packa
 
 ```
 Window > Addressable Manager >
-├─ Open (Ctrl+Alt+A)
+├─ Open (Ctrl+Alt+M)
 ├─ Validate Setup
 ├─ Profiles
 ├─ Build Content
@@ -480,11 +480,12 @@ Two entries: `Addressable Manager/Monitoring Helper` and `Addressable Manager/Pr
 
 | Shortcut | Action | Context |
 |----------|--------|---------|
-| `Ctrl+Alt+A` | Open the Addressable Manager hub | Global |
+| `Ctrl+Alt+M` | Open the Addressable Manager hub | Global |
 | `Ctrl+K` | Search sections | Hub window only |
 
-`Ctrl+Alt+A` is the only `[MenuItem]` shortcut in the package; before 4.1.0 it opened the Dashboard,
-and three menu items claimed it at once. `Ctrl+K` is a key handler on the hub window rather than a
+`Ctrl+Alt+M` is the only `[MenuItem]` shortcut in the package. Before 4.1.0 the chord was
+`Ctrl+Alt+A` and three menu items claimed it at once; it moved off that chord in 4.2.2 because the
+Unity-MCP package claims it too. `Ctrl+K` is a key handler on the hub window rather than a
 menu shortcut, so it fires only while that window has focus. The Rule Editor and Layout Viewer
 register none — use their toolbar buttons.
 

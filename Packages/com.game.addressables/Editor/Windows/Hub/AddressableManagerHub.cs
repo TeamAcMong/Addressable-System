@@ -88,7 +88,15 @@ namespace AddressableManager.Editor.Windows.Hub
         private double _nextHealthRefresh;
 
         /// <summary>Open the window, restoring whichever section was last shown.</summary>
-        [MenuItem("Window/Addressable Manager/Open %&a", priority = 100)]
+        /// <remarks>
+        /// Ctrl+Alt+M, not Ctrl+Alt+A. The Unity-MCP package registers
+        /// <c>Window/AI Game Developer — MCP %&amp;a</c>, and Unity accepts two menu items claiming one
+        /// chord without defining which of them runs - which is the exact defect 4.1.0 removed from
+        /// this package, where three items claimed this chord between them. Being right first is not
+        /// a reason to keep a collision: the other window has no second way in, and this one has both
+        /// a menu entry and Ctrl+K once it is open.
+        /// </remarks>
+        [MenuItem("Window/Addressable Manager/Open %&m", priority = 100)]
         public static void Open() => Open(null);
 
         /// <summary>

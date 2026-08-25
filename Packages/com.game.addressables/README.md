@@ -1853,8 +1853,9 @@ Also available: `Advanced.LoadWithResult<T>(loader, address)`,
 
 ### Dashboard
 
-**Window ▸ Addressable Manager ▸ Dashboard**, or **Ctrl+Alt+A** (**Cmd+Alt+A** on macOS). That is the
-only keyboard shortcut in the package.
+**Window ▸ Addressable Manager ▸ Dashboard**. It binds no shortcut: the chord went to the hub in
+4.1.0, and the hub moved to **Ctrl+Alt+M** (**Cmd+Alt+M** on macOS) in 4.2.2 to stop colliding with
+the Unity-MCP package. That is the only keyboard shortcut this package registers.
 
 Four tabs — **Active Assets**, **Performance**, **Scopes**, **Settings** — plus a one-row CDN status
 strip above them showing environment, app version, cache size and network state, polled once a
@@ -2095,7 +2096,7 @@ project. Three of its seven conflict types (`CircularDependency`, `MissingRefere
 
 | Menu | Item |
 | :-- | :-- |
-| **Window ▸ Addressable Manager** | Dashboard (`Ctrl+Alt+A`) · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches |
+| **Window ▸ Addressable Manager** | Open (`Ctrl+Alt+M`) · Validate Setup · Profiles · Build Content · Dashboard · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches |
 | **Tools ▸ Addressable Manager** | Force Process All Assets · Batch Address Updater · Repair Groups Missing Schemas · Start / Stop Local Content Server · Quick Setup ▸ Create All Scope Objects · Quick Setup ▸ Create Sample Configs |
 | **GameObject ▸ Addressable Manager** | Add Global Scope · Add Scene Scope · Add Hierarchy Scope · View in Dashboard |
 | **Assets ▸ Addressable Manager** | Create Preload Config ⚠️ · Create Pool Config ⚠️ · Create Debug Settings |

@@ -6,7 +6,7 @@ Companion to the [README](README.md) and [MONITORING_GUIDE](MONITORING_GUIDE.md)
 
 | Action | Where |
 |---|---|
-| Start anywhere — see what is blocking content | **Window → Addressable Manager → Open** (`Ctrl+Alt+A`) |
+| Start anywhere — see what is blocking content | **Window → Addressable Manager → Open** (`Ctrl+Alt+M`) |
 | Open the Dashboard | **Window → Addressable Manager → Dashboard** |
 | Drop scope objects into a scene | **Tools → Addressable Manager → Quick Setup → Create All Scope Objects** |
 | Create a config asset | **Assets → Create → Addressable Manager → …** |
@@ -17,7 +17,7 @@ Asset loading is auto-monitored. Anything that goes through `AssetLoader.LoadAss
 
 ## The Addressable Manager hub
 
-**Window → Addressable Manager → Open** (`Ctrl+Alt+A`). Added in 4.1.0. One window in place of the
+**Window → Addressable Manager → Open** (`Ctrl+Alt+M`). Added in 4.1.0. One window in place of the
 four below, reached through a left rail.
 
 **The rail is not a menu.** It is the delivery pipeline — Configure, Author, Build, Publish, Run —
@@ -60,7 +60,7 @@ old tabs stay in `CdnManagerWindow` until that window retires. Nothing you had b
 ## Dashboard window
 
 **Window → Addressable Manager → Dashboard.** Window title "Addressable Manager", minimum size
-800×600. This no longer binds `Ctrl+Alt+A` — the hub does.
+800×600. It binds no shortcut — the hub holds the package's only one.
 
 A one-line **CDN status strip** sits above the tabs: environment id, app version, cache size and network state while playing (`not in play mode` / `not initialised` otherwise), plus a **CDN Manager** button that opens that window. It polls once per second while the Dashboard is open.
 
@@ -291,13 +291,15 @@ Every menu path below is registered by this package; nothing else is.
 **Assets → Addressable Manager →** Create Preload Config · Create Pool Config · Create Debug Settings
 **Assets → Addressables →** Apply Layout Rules *(enabled when something is selected)*
 **Assets → Create → Addressable Manager →** Layout Rule Data · Composite Layout Rule Data · Preload Configuration · Pool Configuration · Debug Settings · CDN Settings · Filters → … · Providers → …
-**Window → Addressable Manager →** Open (`Ctrl+Alt+A`) · Validate Setup · Profiles · Build Content · Dashboard · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches
+**Window → Addressable Manager →** Open (`Ctrl+Alt+M`) · Validate Setup · Profiles · Build Content · Dashboard · Layout Rule Editor · Layout Viewer · CDN Manager · Documentation · Settings · Clear All Caches
 **Tools → Addressable Manager →** Force Process All Assets · Batch Address Updater · Repair Groups Missing Schemas · Start Local Content Server · Stop Local Content Server
 **Tools → Addressable Manager → Quick Setup →** Create All Scope Objects · Create Sample Configs
 
-`Ctrl+Alt+A` opens the **hub**, and it is the only `[MenuItem]` shortcut the package registers.
-Before 4.1.0 it opened the Dashboard — and three separate menu items claimed the same chord, which
-Unity accepts without defining which one wins. `Ctrl+K` inside the hub is a key handler on that
+`Ctrl+Alt+M` opens the **hub**, and it is the only `[MenuItem]` shortcut the package registers.
+Before 4.1.0 the package used `Ctrl+Alt+A` for the Dashboard — and three separate menu items claimed
+that chord, which Unity accepts without defining which one wins. It moved to `Ctrl+Alt+M` in 4.2.2
+for the same reason in reverse: the Unity-MCP package claims `Ctrl+Alt+A` for its own window, and a
+collision is no better for having been there first. `Ctrl+K` inside the hub is a key handler on that
 window rather than a menu shortcut, so it works only while the hub has focus.
 
 Two of these do less than their names suggest:
@@ -538,7 +540,7 @@ public void ClearAllLevels()
 | Progress bar text fields red in inspector | TMP isn't installed and you assigned a `TextMeshProUGUI` reference. Either install TMP (asmdef will define `TMP_PRESENT`) or assign a `UnityEngine.UI.Text` instead. |
 | Config validation fails on build | Re-run the inspector's **Validate All Addresses**, fix invalid `AssetReference` rows, then enable `Fail Build On Error`. |
 | Editing PoolConfig logs a warning every time | Working as intended — the asset is not wired into anything. Create pools in code instead. |
-| Can't find the Dashboard | `Window → Addressable Manager → Dashboard` or `Ctrl+Alt+A`. |
+| Can't find the Dashboard | `Window → Addressable Manager → Dashboard`. It has no shortcut; `Ctrl+Alt+M` opens the hub instead. |
 
 ## See also
 
