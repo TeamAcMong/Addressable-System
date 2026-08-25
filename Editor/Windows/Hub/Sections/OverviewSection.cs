@@ -288,6 +288,23 @@ namespace AddressableManager.Editor.Windows.Hub
                 var node = new VisualElement();
                 node.AddToClassList("hub-flow-node");
                 ApplyState(node, state);
+
+                // A glyph inside the node, as the design has it, cut out of the fill in the window's
+                // own background colour. The dot's colour already carries the state - and carries it
+                // to nobody who cannot separate amber from green, and to nobody reading a screenshot
+                // in grey. Redundant encoding is the point: shape says the same thing colour does.
+                string glyph = state == HealthState.Blocked ? "\u2715"
+                             : state == HealthState.Ok ? "\u2713"
+                             : null;
+
+                if (glyph != null)
+                {
+                    var mark = new Label(glyph);
+                    mark.AddToClassList("hub-flow-node-mark");
+                    mark.pickingMode = PickingMode.Ignore;
+                    node.Add(mark);
+                }
+
                 nodeRow.Add(node);
 
                 bool blocksHere = state == HealthState.Blocked;

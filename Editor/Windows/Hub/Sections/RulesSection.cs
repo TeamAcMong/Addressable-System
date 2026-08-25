@@ -369,8 +369,21 @@ namespace AddressableManager.Editor.Windows.Hub
 
             var actions = new VisualElement();
             actions.style.flexDirection = FlexDirection.Row;
-            actions.style.justifyContent = Justify.FlexEnd;
+            actions.style.alignItems = Align.Center;
             actions.style.marginTop = 8;
+
+            // The design puts this beside the button, and it is the sentence that makes the button
+            // safe to press: Apply looks destructive and reads as irreversible, so a reader who does
+            // not already know about the undo either does not press it or presses it and then cannot
+            // find the way back. Saying where the writes land is the other half - "the Addressables
+            // settings asset" is what they would have to revert by hand if the undo were missed.
+            var caution = new Label(
+                "Applying writes to the Addressables settings asset. Ctrl+Z undoes the whole run.");
+            caution.AddToClassList("hub-note-text");
+            caution.style.flexGrow = 1;
+            caution.style.flexShrink = 1;
+            caution.style.minWidth = 0;
+            actions.Add(caution);
 
             var preview = new Button(RunPreview) { text = _preview == null ? "Preview" : "Re-run preview" };
             preview.AddToClassList("hub-btn");
