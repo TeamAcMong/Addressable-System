@@ -361,6 +361,15 @@ namespace AddressableManager.Editor.Windows.Hub
             body.style.paddingTop = 7;
             body.style.paddingBottom = 8;
 
+            // The design shows the environment variable as a line you can copy, not as prose about
+            // one. Someone wiring a build agent needs the literal text; a sentence naming CDN_HOST
+            // makes them go and look up the spelling of the thing the sentence just mentioned.
+            var cli = new Label("or:  CDN_HOST=<your-host>  before the build");
+            cli.AddToClassList("hub-rule-id");
+            cli.style.marginTop = 4;
+            cli.tooltip = "Set this in the build environment and the profile stays templated.";
+            _body.Add(cli);
+
             var blurb = new Label(
                 "Set it here, or leave it templated and let CI inject it with CDN_HOST. Both are " +
                 "normal; a release build must not go out with the placeholder either way. Writing it " +
