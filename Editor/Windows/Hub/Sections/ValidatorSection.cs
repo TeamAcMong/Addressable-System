@@ -29,7 +29,7 @@ namespace AddressableManager.Editor.Windows.Hub
     /// They are detected by the marker <c>CdnBuildModes.NotApplicable</c> that the contract already
     /// puts at the front of their current-value display, and shown in their own group as unmeasured.
     /// </remarks>
-    public sealed class ValidatorSection : IHubSection, IHubSectionActions
+    public sealed class ValidatorSection : IHubSection, IHubSectionActions, IHubRailLabel
     {
         /// <summary>How a rule is grouped, in the order the groups are shown.</summary>
         private enum Verdict
