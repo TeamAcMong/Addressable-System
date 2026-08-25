@@ -1035,6 +1035,7 @@
     padding: 1px 6px;
     flex-shrink: 1;
     min-width: 0;
+    overflow: hidden;
     border-width: 1px;
     border-radius: 3px;
     border-color: var(--unity-colors-window-border);
@@ -1045,9 +1046,20 @@
     background-color: var(--unity-colors-highlight-background-hover);
 }
 
+/*
+ * The prompt yields; the shortcut does not. Giving the chip flex-shrink was only half the fix - the
+ * box shrank and its text did not, so "Ctrl K" was drawn 15px outside a chip that had made room by
+ * getting smaller. A shrinkable box whose contents cannot shrink has not been made responsive, it
+ * has been made to overflow more quietly.
+ */
 .hub-header-search-text {
     font-size: 11px;
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--unity-colors-default-text);
     opacity: 0.5;
 }

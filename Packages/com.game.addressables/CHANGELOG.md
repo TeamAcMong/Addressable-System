@@ -1,6 +1,68 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.2.2] - 2026-08-25 - The responsive checks were opinion; now they are measurements
+
+Reported as "the UI still has responsive bugs". It did, and nothing in the package could have told
+you: every check up to here read the **stylesheet**, and the defect that shipped was in an element the
+stylesheet says nothing about.
+
+### Added - `HubLayoutProbeCLI`, which opens the window and measures it
+
+Five window sizes from the legal minimum to 1440x820, every one of the eleven sections at each,
+walking the whole visual tree and reporting any element drawn outside its parent. **55 combinations.**
+
+Three things make it worth trusting:
+
+- **It refuses to pass on an unlaid-out tree.** UI Toolkit does not run layout in batchmode, so the
+  first version measured `NaN` everywhere - which satisfies every comparison. It now drives the
+  panel's layout pass directly and fails loudly if the root still has no size. A green built on
+  measuring nothing is the most convincing false green this repository could produce.
+- **It proves its own text check fires** before reporting that the check found nothing. Batchmode
+  draws these screens nearly empty, so no string is longer than its box; a checker that cannot fire
+  reporting zero findings is not a clean bill of health. The probe plants a label 400 characters wide
+  in a 60px row, confirms it is flagged, and removes it.
+- **The first run's eight findings were seven parts ruler.** `contentRect` is expressed in the
+  parent's space with its origin pushed in by padding and border; `layout` is measured from the outer
+  edge. Comparing one against the other reported every child of a padded row as overflowing by
+  exactly the padding. Corrected to compare against `contentRect.xMax`, and the eight became one.
+
+### Fixed - the search chip shrank and its contents did not
+
+That one was real: at 620x420 the header's search affordance shrinks to 109px, and `Ctrl K` was drawn
+**15px outside it**. Giving the chip `flex-shrink` in 4.1.2 was half a fix - a shrinkable box whose
+contents cannot shrink has not been made responsive, it has been made to overflow more quietly. The
+prompt now yields with an ellipsis; the shortcut does not yield at all.
+
+### Changed - the hub moved to `Ctrl+Alt+M`
+
+The Unity-MCP package registers `Window/AI Game Developer — MCP %&a`, which is `Ctrl+Alt+A` — the
+hub's chord. Unity accepts two menu items claiming one chord **without defining which of them runs**,
+and that is the exact defect 4.1.0 removed from this package, where three items claimed this chord
+between them. Being right first is not a reason to keep a collision: the other window has no second
+way in, while the hub has a menu entry and `Ctrl+K` once open.
+
+The claim also had to be corrected in five documents, three of which still told the reader the
+**Dashboard** answers this chord — which stopped being true in 4.1.0. `README.md`'s menu table was
+still the pre-4.1.0 one, missing Open, Validate Setup, Profiles and Build Content entirely.
+
+### Added - the probe runs from a live Editor
+
+`Window > Addressable Manager > Check layout at every size` runs the same measurement without
+`EditorApplication.Exit`, restores the window's position afterwards, and closes it again if it was not
+already open — it runs in an Editor somebody is using.
+
+That is the run that matters: this measurement was first taken against the real project through the
+Unity-MCP bridge, and it is the first time the numbers came from screens with content in them rather
+than from batchmode's empty ones.
+
+### Notes
+
+What the batchmode probe still cannot see: it has no catalog loaded, no play session and no scope
+holding anything, so every section is measured close to empty. Long real data - a 90-character asset path, a
+base URL, a build target called `StandaloneWindows64` - is exactly what breaks these rows, and the
+content-independent check exists for that reason, but it has not yet met real content.
+
 ## [4.2.1] - 2026-08-24 - The screens matched the design in structure and not in a single sentence
 
 Every earlier conformance check compared **section lists, titles and header actions**. Those matched,
