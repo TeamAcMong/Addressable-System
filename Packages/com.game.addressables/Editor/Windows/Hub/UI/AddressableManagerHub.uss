@@ -546,6 +546,18 @@
     flex-shrink: 0;
 }
 
+/*
+ * The tick / cross inside a pipeline node. Painted in the window background so it reads as a hole in
+ * the filled dot rather than a second colour competing with the state.
+ */
+.hub-flow-node-mark {
+    font-size: 8px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    flex-grow: 1;
+    color: var(--unity-colors-window-background);
+}
+
 .hub-flow-label {
     font-size: 11px;
     -unity-font-style: bold;

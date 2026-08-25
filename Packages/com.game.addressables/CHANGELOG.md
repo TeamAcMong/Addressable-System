@@ -1,6 +1,47 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.2.3] - 2026-08-25 - Three things the design has, found by testing every sentence instead of a chosen few
+
+The previous conformance passes checked a **hand-picked list** of the design's strings. This one
+extracts every literal the design puts on screen and tests all of them, so the answer stops depending
+on which ones occurred to me. Twenty-two came back unmatched; nineteen were the mockup's fake data -
+`14 groups · 2.4 GB total`, `cdn.acme.com`, `catalog 1.4.1 → 1.4.2` - which this build computes rather
+than prints, and two more were the checker's own false alarms, where the shipped sentence carries a
+substituted value the literal comparison could not see.
+
+Three were real.
+
+### Added - the pipeline nodes carry a mark, not only a colour
+
+The design draws a tick inside a stage that is done and a cross inside one that is blocked, cut out
+of the fill. This build had the coloured dot and no glyph - which carries the state to nobody who
+cannot separate amber from green, and to nobody reading a screenshot in grey. Shape now says what
+colour says.
+
+### Added - Apply says that it is undoable, and where it writes
+
+`Applying writes to the Addressables settings asset. Ctrl+Z undoes the whole run.`
+
+The design puts that beside the button, and it is the sentence that makes the button safe to press.
+Apply reads as irreversible, so a reader who does not already know about the undo either does not
+press it, or presses it and cannot find the way back. Naming the file is the other half: it is what
+they would have to revert by hand if the undo were missed.
+
+### Added - the environment variable as a line you can copy
+
+`or:  CDN_HOST=<your-host>  before the build`
+
+The screen already explained in prose that CI can inject the host. Someone wiring a build agent needs
+the literal text; a sentence *naming* `CDN_HOST` makes them go and look up the spelling of the thing
+the sentence just mentioned.
+
+### Notes
+
+Not fixed, and not a defect: the stat cards on Overview and Asset Lifetime are additions this build
+keeps deliberately, and Catalog Inspector and Local Server have no body in the design at all - the
+artboard says so in its own words.
+
 ## [4.2.2] - 2026-08-25 - The responsive checks were opinion; now they are measurements
 
 Reported as "the UI still has responsive bugs". It did, and nothing in the package could have told
