@@ -146,6 +146,20 @@ namespace AddressableManager.Editor.Windows.Hub
                     failures++;
                 }
 
+                // A section carrying a RailLabel property without declaring IHubRailLabel compiles
+                // perfectly and does nothing: the rail tests `is IHubRailLabel`, the test fails, and
+                // the label falls back to Title. ValidatorSection shipped that way in 4.2.0 and
+                // survived three releases, because a property nobody reads is invisible to the
+                // compiler, to this probe as it was, and to every test.
+                var railLabel = section.GetType().GetProperty("RailLabel");
+                if (railLabel != null && !(section is IHubRailLabel))
+                {
+                    Debug.LogError(
+                        $"[HubProbe] section '{section.Id}' declares a RailLabel property but does not " +
+                        "implement IHubRailLabel, so the rail ignores it and shows Title instead");
+                    failures++;
+                }
+
                 if (Array.IndexOf(PipelineStages.All, section.Stage) < 0)
                 {
                     Debug.LogError($"[HubProbe] section '{section.Id}' has stage {section.Stage}, " +

@@ -44,7 +44,7 @@ this page was rewritten to prevent — fix it rather than picking one.
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.2.3
+https://github.com/TeamAcMong/Addressable-System.git#4.2.4
 ```
 
 Always pin to a tag. Tracking a branch means a `git pull` can change your API surface. The
@@ -92,7 +92,7 @@ If you are not sure which tier you want,
 
 ## 🚦 Status
 
-`4.2.3` is the current release of this line, and `4.1.0` was where the `-pre` label came off.
+`4.2.4` is the current release of this line, and `4.1.0` was where the `-pre` label came off.
 Dropping it made exactly one claim:
 the API surface has stopped moving. It does not claim the whole of it has been proven in the field,
 and the bullets below keep those two apart — the last of them is a list of what nobody has run yet.
@@ -239,7 +239,7 @@ assemblies before anything is committed; and the release path is `deploy.sh`.
 ### How releases are cut
 
 ```bash
-./deploy.sh --semver "4.2.3"
+./deploy.sh --semver "4.2.4"
 ```
 
 The script `git subtree split`s `Packages/com.game.addressables` onto a temporary `upm` branch,

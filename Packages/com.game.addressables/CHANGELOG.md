@@ -1,6 +1,39 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.2.4] - 2026-08-25 - The rail label shipped as a property nobody read, and only looking at it found that out
+
+`ValidatorSection` carried `public string RailLabel => "Validator";` and **did not declare
+`IHubRailLabel`**. The rail tests `section is IHubRailLabel`, the test failed, and the rail fell back
+to `Title` - so it read **Configuration** where the design says Validator.
+
+It shipped in 4.2.0 and survived 4.2.1, 4.2.2 and 4.2.3.
+
+**Nothing could have caught it.** The property is valid C#, so the compiler is content. `HubProbeCLI`
+checked ids, stages, subtitles and health, none of which this touches. No test asserted a rail label.
+Every string check passed, because the string *was there* - in a member the rail never reads. A
+property nobody reads is dead code wearing the shape of a feature, which is the defect this window
+exists to remove, and it was in the window.
+
+It was found by taking a screenshot of the running Editor and reading the rail.
+
+### Fixed
+
+`ValidatorSection` implements `IHubRailLabel`.
+
+### Added - the probe now catches this class of defect
+
+A section that declares a `RailLabel` property without implementing the interface is reported by
+name. Reflection rather than a compile-time check, because the whole failure is that the compiler
+has no opinion here.
+
+### Notes
+
+The screenshot was taken through the Unity-MCP bridge with `InternalEditorUtility.ReadScreenPixel`.
+That reads the **desktop**, not a window: two earlier attempts captured other applications entirely,
+because Windows refuses to let a background process pull itself to the front. It only worked once the
+hub was a floating window and the Editor was already in front.
+
 ## [4.2.3] - 2026-08-25 - Three things the design has, found by testing every sentence instead of a chosen few
 
 The previous conformance passes checked a **hand-picked list** of the design's strings. This one
