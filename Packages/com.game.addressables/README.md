@@ -157,7 +157,7 @@ Honest state of each area, because a README that hides this costs more than one 
 Package Manager → **Add package from git URL**, pinned to a tag:
 
 ```text
-https://github.com/TeamAcMong/Addressable-System.git#4.4.0
+https://github.com/TeamAcMong/Addressable-System.git#4.4.1
 ```
 
 Or in `Packages/manifest.json`:
@@ -165,7 +165,7 @@ Or in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.4.0"
+    "com.game.addressables": "https://github.com/TeamAcMong/Addressable-System.git#4.4.1"
   }
 }
 ```

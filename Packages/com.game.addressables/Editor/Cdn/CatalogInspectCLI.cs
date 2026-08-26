@@ -31,6 +31,8 @@ namespace AddressableManager.Editor.Cdn
     {
         public static void Inspect()
         {
+            if (!BatchmodeGate.MayExit("CatalogInspect")) return;
+
             // Invariant: a CLI must not report on an assembly that did not build. Unity exits 0 from
             // -executeMethod when compilation failed and the method never ran, so this gate is the
             // only thing standing between a broken build and a green pipeline step.

@@ -36,6 +36,8 @@ namespace AddressableManager.Editor.Cdn
         /// <summary>Full content build — task 1.1.</summary>
         public static void BuildContent()
         {
+            if (!BatchmodeGate.MayExit("CdnBuildCLI")) return;
+
             var args = ParseCommandLineArgs();
             string profileName = GetArg(args, "cdnProfile", "Local");
 
@@ -80,6 +82,8 @@ namespace AddressableManager.Editor.Cdn
         /// <summary>Delta content update — task 1.2.</summary>
         public static void BuildContentUpdate()
         {
+            if (!BatchmodeGate.MayExit("CdnBuildCLI")) return;
+
             var args = ParseCommandLineArgs();
             string profileName = GetArg(args, "cdnProfile", "Local");
             string contentStateOverride = GetArg(args, "contentStatePath", null);
@@ -133,6 +137,8 @@ namespace AddressableManager.Editor.Cdn
         /// </remarks>
         public static void VerifyOutput()
         {
+            if (!BatchmodeGate.MayExit("CdnBuildCLI")) return;
+
             var args = ParseCommandLineArgs();
             string profileName = GetArg(args, "cdnProfile", "Local");
 
