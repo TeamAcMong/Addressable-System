@@ -7,6 +7,8 @@ using UnityEngine;
 using AddressableManager.Editor.Rules;
 using AddressableManager.Editor.Versioning;
 
+using AddressableManager.Editor.Cdn;
+
 namespace AddressableManager.Editor.CLI
 {
     /// <summary>
@@ -62,6 +64,8 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void ApplyRules()
         {
+            if (!BatchmodeGate.MayExit("AddressableCLI")) return;
+
             // Gate: do not report on an assembly that did not build
             if (EditorUtility.scriptCompilationFailed)
             {
@@ -185,6 +189,8 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void ValidateLayoutRules()
         {
+            if (!BatchmodeGate.MayExit("AddressableCLI")) return;
+
             // Gate: do not report on an assembly that did not build
             if (EditorUtility.scriptCompilationFailed)
             {
@@ -271,6 +277,8 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void SetVersionExpression()
         {
+            if (!BatchmodeGate.MayExit("AddressableCLI")) return;
+
             // Gate: do not report on an assembly that did not build
             if (EditorUtility.scriptCompilationFailed)
             {
@@ -343,6 +351,8 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void DetectConflicts()
         {
+            if (!BatchmodeGate.MayExit("AddressableCLI")) return;
+
             // Gate: do not report on an assembly that did not build
             if (EditorUtility.scriptCompilationFailed)
             {
@@ -398,6 +408,8 @@ namespace AddressableManager.Editor.CLI
         /// </summary>
         public static void ImportRules()
         {
+            if (!BatchmodeGate.MayExit("AddressableCLI")) return;
+
             // Gate: do not report on an assembly that did not build
             if (EditorUtility.scriptCompilationFailed)
             {

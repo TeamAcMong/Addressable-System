@@ -159,11 +159,11 @@ namespace AddressableManager.Editor.Cdn.Windows
             row.style.flexWrap = Wrap.Wrap;
             row.style.marginTop = 6;
 
-            row.Add(Action("Create test asset", CdnTestContentCLI.CreateRemoteTestContent,
+            row.Add(Action("Create test asset", CdnTestContentCLI.CreateRemoteTestContentCore,
                 "One TextAsset with a known string, in the remote group. The integration tests " +
                 "assert that exact string arrived over HTTP."));
 
-            row.Add(Action("Generate corpus", CdnTestContentCLI.GenerateTestCorpus,
+            row.Add(Action("Generate corpus", CdnTestContentCLI.GenerateTestCorpusCore,
                 "A larger spread of assets across groups — enough for a download to take long " +
                 "enough to watch."));
 
@@ -171,19 +171,45 @@ namespace AddressableManager.Editor.Cdn.Windows
             return box;
         }
 
-        private static Button Action(string text, Action onClick, string tooltip)
+        /// <summary>
+        /// A button over a batchmode routine, reporting the exit code it would have quit with.
+        /// </summary>
+        /// <remarks>
+        /// Takes the WORK, never the CLI entry point of the same name. Those end in
+        /// <c>EditorApplication.Exit</c>, so wiring a button straight to one closes the Editor - which
+        /// is what 4.4.0 shipped, and what a reader experiences as a crash, because nothing announces
+        /// an Editor exiting on purpose.
+        ///
+        /// The code is shown rather than swallowed: these write to the Addressables settings, and a
+        /// run that stopped half way leaves the project in a state worth being told about. Silence
+        /// after pressing a button that changes the project is the failure mode.
+        /// </remarks>
+        private static Button Action(string text, Func<int> work, string tooltip)
         {
             var button = new Button(() =>
             {
                 try
                 {
-                    onClick();
+                    int code = work();
+
+                    if (code == 0)
+                    {
+                        Debug.Log($"[LocalServer] {text}: done.");
+                        return;
+                    }
+
+                    Debug.LogError($"[LocalServer] {text} stopped with code {code}. The Console above " +
+                                   "has the step it stopped on.");
+
+                    EditorUtility.DisplayDialog(
+                        text,
+                        $"Stopped with code {code}. The Console has the step it stopped on. " +
+                        "Nothing further was written.",
+                        "OK");
                 }
                 catch (Exception ex)
                 {
-                    // These write to the Addressables settings. A failure half-way through leaves the
-                    // project in a state the reader needs told about, not a silent no-op.
-                    Debug.LogError($"[LocalServer] {text} failed: {ex.Message}");
+                    Debug.LogError($"[LocalServer] {text} threw: {ex}");
                     EditorUtility.DisplayDialog(text, ex.Message, "OK");
                 }
             })

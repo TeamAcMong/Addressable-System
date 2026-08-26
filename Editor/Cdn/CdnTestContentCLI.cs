@@ -60,7 +60,47 @@ namespace AddressableManager.Editor.Cdn
         ///   1 = verification failed (group/entry exists but not properly configured)
         ///   2 = exception during execution
         /// </summary>
+
+        /// <summary>
+        /// Batchmode entry point. Runs the work, then ends the Editor with its exit code.
+        /// </summary>
+        /// <remarks>
+        /// The exit lives here and NOT in the work, so the same work can be run from a button. It
+        /// used to live inside: pressing "Create test asset" on the Local Server screen closed Unity,
+        /// and read as a crash because nothing in the Editor announces its own exit.
+        ///
+        /// The guard is belt as well as braces. Even reached from a live session by an automation
+        /// bridge or a stray -executeMethod, this refuses rather than taking the window down.
+        /// </remarks>
         public static void CreateRemoteTestContent()
+        {
+            int code = CreateRemoteTestContentCore();
+
+            if (!Application.isBatchMode)
+            {
+                Log($"Finished with code {code}. Not exiting - this is not batchmode.");
+                return;
+            }
+
+            EditorApplication.Exit(code);
+        }
+
+        /// <summary>Batchmode entry point for the corpus. See <see cref="CreateRemoteTestContent"/>.</summary>
+        public static void GenerateTestCorpus()
+        {
+            int code = GenerateTestCorpusCore();
+
+            if (!Application.isBatchMode)
+            {
+                Log($"Finished with code {code}. Not exiting - this is not batchmode.");
+                return;
+            }
+
+            EditorApplication.Exit(code);
+        }
+
+        internal static int CreateRemoteTestContentCore()
+
         {
             try
             {
@@ -72,8 +112,7 @@ namespace AddressableManager.Editor.Cdn
                 if (settings == null)
                 {
                     LogError("No AddressableAssetSettings found. Run CdnSetupCLI first.");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
 
                 Log("Step 1: Creating test content...");
@@ -81,8 +120,7 @@ namespace AddressableManager.Editor.Cdn
                 if (testAsset == null)
                 {
                     LogError("Failed to create or retrieve test asset");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 Log($"✓ Test asset ready at {TestAssetPath}");
                 Log("");
@@ -92,8 +130,7 @@ namespace AddressableManager.Editor.Cdn
                 if (group == null)
                 {
                     LogError("Failed to create or retrieve Remote Test group");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 Log($"✓ Group '{RemoteTestGroupName}' ready");
                 Log("");
@@ -108,8 +145,7 @@ namespace AddressableManager.Editor.Cdn
                 if (entry == null)
                 {
                     LogError("Failed to add test asset to group");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 Log($"✓ Entry '{TestAssetAddress}' ready");
                 Log("");
@@ -130,8 +166,7 @@ namespace AddressableManager.Editor.Cdn
                 if (!VerifyConfiguration(settings, group, entry, testAsset))
                 {
                     LogError("Verification failed - configuration is incomplete or incorrect");
-                    EditorApplication.Exit(1);
-                    return;
+                    return 1;
                 }
                 Log("✓ All verifications passed");
                 Log("");
@@ -144,13 +179,13 @@ namespace AddressableManager.Editor.Cdn
                 Log("");
                 Log("The test asset is now available for download from the remote server when using the Local profile.");
 
-                EditorApplication.Exit(0);
+                return 0;
             }
             catch (Exception ex)
             {
                 LogError($"Exception during test content creation: {ex.Message}");
                 LogError($"Stack trace: {ex.StackTrace}");
-                EditorApplication.Exit(2);
+                return 2;
             }
         }
 
@@ -460,7 +495,7 @@ namespace AddressableManager.Editor.Cdn
         ///   1 = verification failed
         ///   2 = exception during execution
         /// </summary>
-        public static void GenerateTestCorpus()
+        internal static int GenerateTestCorpusCore()
         {
             try
             {
@@ -471,8 +506,7 @@ namespace AddressableManager.Editor.Cdn
                 if (settings == null)
                 {
                     LogError("No AddressableAssetSettings found. Run CdnSetupCLI first.");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
 
                 Log("Step 1: Creating the shared payload texture (~2 MB, incompressible)...");
@@ -480,8 +514,7 @@ namespace AddressableManager.Editor.Cdn
                 if (sharedTexture == null)
                 {
                     LogError("Failed to create or retrieve the shared texture");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 Log($"✓ Shared texture ready at {GetSharedTexturePath()}");
                 Log("");
@@ -515,8 +548,7 @@ namespace AddressableManager.Editor.Cdn
                 if (materialA == null || assetA == null)
                 {
                     LogError($"Failed to create assets for {groupAName}");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 groupAssets[groupAName] = new List<(string, UnityEngine.Object)>
                 {
@@ -534,8 +566,7 @@ namespace AddressableManager.Editor.Cdn
                 if (materialB == null || assetB == null)
                 {
                     LogError($"Failed to create assets for {groupBName}");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 groupAssets[groupBName] = new List<(string, UnityEngine.Object)>
                 {
@@ -553,8 +584,7 @@ namespace AddressableManager.Editor.Cdn
                 if (assetC == null)
                 {
                     LogError($"Failed to create assets for {groupCName}");
-                    EditorApplication.Exit(2);
-                    return;
+                    return 2;
                 }
                 groupAssets[groupCName] = new List<(string, UnityEngine.Object)>
                 {
@@ -582,8 +612,7 @@ namespace AddressableManager.Editor.Cdn
                         if (entry == null)
                         {
                             LogError($"Failed to add asset to {groupName}");
-                            EditorApplication.Exit(2);
-                            return;
+                            return 2;
                         }
                         // Store with group prefix for unique tracking
                         string key = $"{groupName}:{address}";
@@ -615,8 +644,7 @@ namespace AddressableManager.Editor.Cdn
                 if (!VerifyCorpusConfiguration(settings, groups, allEntries))
                 {
                     LogError("Verification failed - corpus is incomplete or incorrect");
-                    EditorApplication.Exit(1);
-                    return;
+                    return 1;
                 }
                 Log("✓ All type-safety checks passed");
                 Log("");
@@ -642,13 +670,13 @@ namespace AddressableManager.Editor.Cdn
                 Log($"     against the target: a ~2 MB change should stay under 2.5 MB");
                 Log("");
 
-                EditorApplication.Exit(0);
+                return 0;
             }
             catch (Exception ex)
             {
                 LogError($"Exception during corpus generation: {ex.Message}");
                 LogError($"Stack trace: {ex.StackTrace}");
-                EditorApplication.Exit(2);
+                return 2;
             }
         }
 

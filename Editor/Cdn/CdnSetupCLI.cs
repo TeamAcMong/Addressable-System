@@ -37,6 +37,8 @@ namespace AddressableManager.Editor.Cdn
         /// </summary>
         public static void ApplyPhaseZeroSetup()
         {
+            if (!BatchmodeGate.MayExit("CdnSetupCLI")) return;
+
             var args = ParseCommandLineArgs();
             string profileName = GetArg(args, "profile", "Local");
 
