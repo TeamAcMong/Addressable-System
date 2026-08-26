@@ -50,6 +50,9 @@ namespace AddressableManager.Editor.Windows.Hub
             public const string Catalog = "catalog";
 
             /// <summary>What the running player is doing.</summary>
+            /// <summary>Which bundles the device has already downloaded.</summary>
+            public const string Cache = "cache";
+
             public const string RuntimeMonitor = "runtime-monitor";
 
             /// <summary>What is loaded, and which scope is holding it.</summary>
@@ -187,6 +190,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 // Built to the design rather than hosted: two panels, an outcome that stays, and the
                 // three verbs along the bottom. RuntimeMonitorTab stays for CdnManagerWindow.
                 new RuntimeMonitorSection(),
+                new CacheSection(),
 
                 new AssetLifetimeSection(),
             };

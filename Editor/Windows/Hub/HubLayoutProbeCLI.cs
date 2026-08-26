@@ -65,6 +65,21 @@ namespace AddressableManager.Editor.Windows.Hub
 
         public static void ProbeLayout()
         {
+            // Refuse to run outside batchmode. Both exit paths below call EditorApplication.Exit,
+            // which in a live Editor closes the window the person is working in - without the
+            // prompt that Quit gives, so unsaved scene changes go with it. This entry point was
+            // invoked from a live session through an automation bridge and did exactly that.
+            //
+            // A CLI entry point that is destructive when called the wrong way must say no, not
+            // rely on nobody calling it that way.
+            if (!Application.isBatchMode)
+            {
+                Debug.LogError(
+                    "[HubLayout] This is a batchmode entry point and it exits the Editor when it finishes. " +
+                    "Use Window > Addressable Manager > Check layout at every size instead.");
+                return;
+            }
+
             if (EditorUtility.scriptCompilationFailed)
             {
                 Debug.LogError("[HubLayout] FAILURE: script compilation failed");
@@ -128,7 +143,7 @@ namespace AddressableManager.Editor.Windows.Hub
             foreach (var size in sizes)
                 problems += MeasureAt(window, root, size);
 
-            Debug.Log($"[HubLayout] measured {sizes.Length} sizes x 11 sections");
+            Debug.Log($"[HubLayout] measured {sizes.Length} sizes x {HubSections.Create().Count} sections");
 
             // Put the window back the way it was found. This runs in a live Editor now, where the
             // window is something the user has arranged.
@@ -179,9 +194,11 @@ namespace AddressableManager.Editor.Windows.Hub
             // developer already has open - which is the screen least likely to be broken.
             int problems = 0;
             int fitted = 0;
+            int total = 0;
 
             foreach (var section in HubSections.Create())
             {
+                total++;
                 window.Navigate(section.Id);
 
                 for (int i = 0; i < 3; i++)
@@ -197,7 +214,7 @@ namespace AddressableManager.Editor.Windows.Hub
                 if (problems == before) fitted++;
             }
 
-            Debug.Log($"[HubLayout] {size.x:F0}x{size.y:F0}: {fitted}/11 sections fit");
+            Debug.Log($"[HubLayout] {size.x:F0}x{size.y:F0}: {fitted}/{total} sections fit");
 
             return problems;
         }

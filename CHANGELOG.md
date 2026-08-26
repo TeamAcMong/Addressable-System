@@ -1,6 +1,73 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.3.0] - 2026-08-25 - Which bundles the device actually has, and two screens that were showing less than they knew
+
+### Added - `Downloaded Content`, and `CacheInventory` underneath it
+
+The tool could report how much the cache held and nothing about what was in it: a total in bytes on
+the Runtime Monitor, and no way to ask which bundles those bytes were.
+
+`CacheInventory.Snapshot()` reads the loaded catalog, asks the cache about every bundle in it, and
+returns a `LoadResult<CacheInventoryReport>`. Three facts shaped it, all read out of Addressables
+2.9.1 rather than assumed:
+
+- **The cache cannot be enumerated.** `Caching` answers whether a bundle *you can name* is present;
+  `Caching.GetAllCachePaths` lists directories, not contents. So an inventory can only cover the
+  loaded catalog — and what an older catalog left behind is reported as `UnaccountedBytes` rather
+  than quietly omitted. **That figure is what `Clean obsolete` deletes**, and no other view shows it.
+- **The cache key is `AssetBundleRequestOptions.BundleName` plus the hash, not the file name.**
+  Addressables builds `new CachedAssetBundle(m_Options.BundleName, hash)` at every call site.
+  `CatalogReader` deliberately keys on the *file* name because its question is whether a file exists
+  on a CDN. Two questions, two keys — and using the CDN key here would have reported every bundle as
+  missing, which reads as a broken screen rather than a wrong lookup.
+- **Local bundles are never cached.** They ship inside the player, so absent from the cache is the
+  right answer for them. "Not downloaded yet" and "never will be" are different facts and get
+  different groups.
+
+The screen groups by what the answer means, sizes its split bar by **bytes rather than count** — "340
+bundles" is a number, "2.0 GB over a phone connection" is a decision — and offers `Evict` per cached
+bundle, confirmed, naming the bundle and how many addresses resolve through it.
+
+### Fixed - Asset Lifetime refreshed once and never again
+
+Reported: *"phải tắt tab rồi bật lại mới update UI đúng"*. Exactly right, and the cause was one line:
+`OnShown() => Rebuild();` with no poll. Closing the tab and reopening it "fixed" it because the shell
+rebuilds a section on every navigation, which made a missing refresh look like a quirk of the window.
+
+Its header button could not have kept up either. `Release leaked (N)` is drawn during navigation and
+only then, so the count would have gone stale while the body underneath refreshed correctly — **half a
+screen updating is worse than none of it**, because the half that stopped still looks authoritative.
+`IHubHost.RefreshHeaderActions()` exists for that, and is called only when the number changes: a
+button rebuilt every second is a button that vanishes under a cursor on its way to clicking it.
+
+### Fixed - Layout Rules showed one rule set out of however many the project has
+
+Reported: *"rõ ràng tôi có nhiều layout nhưng show thì nó show có 1"*. Not a defect in the rule
+engine — a defect in this window. `FindRuleData()` returned the first asset `AssetDatabase.FindAssets`
+happened to yield and ignored the rest, and **`FindAssets` promises no order**, so the screen was not
+merely incomplete: which rule set you saw could change between sessions.
+
+Rule sets are not alternatives to each other — every one of them runs. There is a picker now when
+there is more than one, the list is sorted by path so the answer repeats, and the choice survives the
+session. **Conflicts scans all of them**, because two rule sets can address the same asset and a scan
+of one would call that clean while the build fails.
+
+### Fixed - a one-second poll threw away the reader's place
+
+Both polling screens refilled their `ScrollView` every tick, resetting the scroll offset — so a list
+long enough to need scrolling could not be read while the poll ran. They now rebuild only when the
+answer moved, and restore the offset when it does.
+
+### Fixed - the batchmode probes closed a live Editor
+
+`HubProbeCLI.ProbeHub` and `HubLayoutProbeCLI.ProbeLayout` end in `EditorApplication.Exit`. Invoked
+from a live session through an automation bridge, that closes the window someone is working in —
+without the prompt `Quit` gives, so unsaved scene changes go with it. **It did exactly that during
+this work.** Both now refuse to run outside batchmode and name the menu item instead. A CLI entry
+point that is destructive when called the wrong way has to say no, not rely on nobody calling it
+that way.
+
 ## [4.2.4] - 2026-08-25 - The rail label shipped as a property nobody read, and only looking at it found that out
 
 `ValidatorSection` carried `public string RailLabel => "Validator";` and **did not declare

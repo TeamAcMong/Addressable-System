@@ -34,6 +34,21 @@ namespace AddressableManager.Editor.Windows.Hub
             // Gate on compilation before anything else. Unity runs -executeMethod against a stale
             // assembly and still exits 0 when compilation failed, so without this the probe would
             // report on code that is not the code in the working tree.
+            // Refuse to run outside batchmode. Both exit paths below call EditorApplication.Exit,
+            // which in a live Editor closes the window the person is working in - without the
+            // prompt that Quit gives, so unsaved scene changes go with it. This entry point was
+            // invoked from a live session through an automation bridge and did exactly that.
+            //
+            // A CLI entry point that is destructive when called the wrong way must say no, not
+            // rely on nobody calling it that way.
+            if (!Application.isBatchMode)
+            {
+                Debug.LogError(
+                    "[HubProbe] This is a batchmode entry point and it exits the Editor when it finishes. " +
+                    "Nothing was checked.");
+                return;
+            }
+
             if (EditorUtility.scriptCompilationFailed)
             {
                 Debug.LogError("[HubProbe] FAILURE: script compilation failed");
