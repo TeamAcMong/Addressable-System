@@ -352,6 +352,33 @@ namespace AddressableManager.Editor.Windows.Hub
         /// <inheritdoc />
         public void Navigate(string sectionId) => ShowSection(sectionId);
 
+        /// <inheritdoc />
+        public void RefreshHeaderActions()
+        {
+            var section = _sections.Find(s => string.Equals(s.Id, _activeSectionId, StringComparison.Ordinal));
+            if (section != null) PopulateHeaderActionsFor(section);
+        }
+
+        /// <summary>Fill the header's action area, or hide it when the section offers nothing.</summary>
+        /// <remarks>
+        /// Hiding an empty container rather than leaving it: the header's action area was queried,
+        /// cleared on every navigation and never added to by anything, which drew an empty box
+        /// forever.
+        /// </remarks>
+        private void PopulateHeaderActionsFor(IHubSection section)
+        {
+            if (_sectionActions == null) return;
+
+            _sectionActions.Clear();
+
+            if (section is IHubSectionActions withActions)
+                withActions.PopulateHeaderActions(_sectionActions);
+
+            _sectionActions.style.display = _sectionActions.childCount > 0
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
         // ---------------------------------------------------------------- navigation
 
         private void ShowSection(string sectionId)
@@ -383,14 +410,7 @@ namespace AddressableManager.Editor.Windows.Hub
             _sectionSubtitle.text = section.Subtitle;
             // Fill it, or hide it. Leaving an empty container on screen is how this window ended
             // up with a permanently blank action area in the first place.
-            _sectionActions.Clear();
-
-            if (section is IHubSectionActions withActions)
-                withActions.PopulateHeaderActions(_sectionActions);
-
-            _sectionActions.style.display = _sectionActions.childCount > 0
-                ? DisplayStyle.Flex
-                : DisplayStyle.None;
+            PopulateHeaderActionsFor(section);
 
             _sectionBody.Clear();
 

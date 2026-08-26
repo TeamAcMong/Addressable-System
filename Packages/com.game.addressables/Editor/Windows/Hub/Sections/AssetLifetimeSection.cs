@@ -32,9 +32,22 @@ namespace AddressableManager.Editor.Windows.Hub
     /// <c>IsAlive</c> and nothing else), so this reports leaks at scope granularity rather than
     /// naming which holder failed to release. That is the useful half.
     /// </remarks>
-    public sealed class AssetLifetimeSection : IHubSection, IHubSectionActions
+    public sealed class AssetLifetimeSection : IHubSection, IHubSectionActions, IHubHostAware
     {
         private VisualElement _body;
+        private IHubHost _host;
+        private IVisualElementScheduledItem _poll;
+        private bool _wasPlaying;
+        private string _lastSignature;
+
+        /// <summary>Last leaked count the header was drawn with, so it is rebuilt only on a change.</summary>
+        private int _lastLeakedShown = -1;
+
+        /// <summary>
+        /// One second. The same cadence as the Runtime Monitor, and for the same reason: fast enough
+        /// to feel live, slow enough that walking every scope's asset list is not a per-frame cost.
+        /// </summary>
+        private const long PollMilliseconds = 1000;
 
         /// <inheritdoc />
         public string Id => HubSections.Ids.AssetLifetime;
@@ -159,14 +172,119 @@ namespace AddressableManager.Editor.Windows.Hub
         }
 
         /// <inheritdoc />
-        public void OnShown() => Rebuild();
+        /// <inheritdoc />
+        public void Bind(IHubHost host) => _host = host;
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// This screen used to refresh once, when it was opened, and never again - so a scope taken
+        /// during play mode appeared only if you left the screen and came back. Closing the tab and
+        /// reopening it "fixed" it because the shell rebuilds a section on every navigation, which
+        /// made the omission look like a quirk of the window rather than a missing refresh.
+        ///
+        /// It is still a sample, not a live view - the heading says when it was taken - but it is
+        /// sampled repeatedly now instead of once. The schedule lives on the view, so it dies with
+        /// the view; one registered on the window would outlive the section and keep reading a
+        /// screen nobody is looking at.
+        /// </remarks>
+        public void OnShown()
+        {
+            Rebuild();
+
+            _poll = _body.schedule.Execute(Tick).Every(PollMilliseconds);
+            _body.RegisterCallback<DetachFromPanelEvent>(_ => _poll?.Pause(), TrickleDown.TrickleDown);
+        }
+
+        /// <summary>One sample. Cheap when there is nothing to look at.</summary>
+        private void Tick()
+        {
+            if (_body == null || _body.panel == null) return;
+
+            // Outside play mode nothing can change: no scope is created, none is released, and the
+            // body already says so. Rebuilding the same sentence once a second costs allocations
+            // for a screen that cannot have moved.
+            if (!EditorApplication.isPlaying)
+            {
+                if (!_wasPlaying) return;
+                _wasPlaying = false;
+                Rebuild();
+                RefreshLeakedButton(0);
+                return;
+            }
+
+            _wasPlaying = true;
+
+            var scopes = ReadScopes();
+
+            // Rebuild only when the answer moved. A tick that redraws an unchanged screen costs a
+            // whole UI tree in garbage and, worse, resets the scroll offset - so a scope list long
+            // enough to need scrolling could not be read at all while the poll was running.
+            string signature = Signature(scopes);
+            if (signature != _lastSignature)
+            {
+                _lastSignature = signature;
+                Rebuild();
+            }
+
+            int leaked = 0;
+            foreach (var scope in scopes)
+                if (scope.Info.IsLeaked) leaked++;
+
+            RefreshLeakedButton(leaked);
+        }
+
+        /// <summary>
+        /// Rebuild the header only when the number on the button has actually changed.
+        /// </summary>
+        /// <remarks>
+        /// Rebuilding it every tick would destroy and recreate a button once a second, under a
+        /// cursor that may be travelling towards it. A control that vanishes as it is clicked is a
+        /// worse defect than the stale count this fixes.
+        /// </remarks>
+        private void RefreshLeakedButton(int leaked)
+        {
+            if (leaked == _lastLeakedShown) return;
+
+            _lastLeakedShown = leaked;
+            _host?.RefreshHeaderActions();
+        }
 
         // ------------------------------------------------------------------
+
+        /// <summary>
+        /// What the screen is showing, reduced to a string. Two ticks with the same signature draw
+        /// the same pixels.
+        /// </summary>
+        /// <remarks>
+        /// Counts and ids only - deliberately not asset paths. The point is to be cheaper than the
+        /// rebuild it avoids, and a signature that walks every path would cost more than redrawing.
+        /// A change this misses is a change of nothing visible.
+        /// </remarks>
+        private static string Signature(List<ScopeRow> scopes)
+        {
+            var sb = new System.Text.StringBuilder(scopes.Count * 24);
+
+            foreach (var scope in scopes)
+            {
+                sb.Append(scope.Id).Append(':')
+                  .Append(scope.Assets.Count).Append(':')
+                  .Append(scope.Dead).Append(':')
+                  .Append(scope.Info.IsLeaked ? '1' : '0').Append(';');
+            }
+
+            return sb.ToString();
+        }
 
         private void Rebuild()
         {
             if (_body == null) return;
+
+            // Keep the reader's place across a refresh they did not ask for.
+            var scroll = _body as ScrollView;
+            var offset = scroll != null ? scroll.scrollOffset : Vector2.zero;
+
             _body.Clear();
+            if (scroll != null) scroll.schedule.Execute(() => scroll.scrollOffset = offset);
 
             if (!EditorApplication.isPlaying)
             {

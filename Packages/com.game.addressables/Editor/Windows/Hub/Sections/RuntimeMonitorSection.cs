@@ -119,7 +119,13 @@ namespace AddressableManager.Editor.Windows.Hub
         {
             if (_body == null || _body.panel == null) return;
 
+            // Same reason as Asset Lifetime: this refills its ScrollView on a one-second poll, and
+            // a rebuild that does not restore the offset makes anything below the fold unreadable.
+            var scroll = _body as ScrollView;
+            var offset = scroll != null ? scroll.scrollOffset : Vector2.zero;
+
             _body.Clear();
+            if (scroll != null) scroll.schedule.Execute(() => scroll.scrollOffset = offset);
 
             var panels = new VisualElement();
             panels.AddToClassList("hub-split");
