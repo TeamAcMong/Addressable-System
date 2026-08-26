@@ -1,6 +1,45 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.4.1] - 2026-08-26 - "Create test asset" closed the Editor, and eleven more entry points could have
+
+Reported as a crash. It was not a crash — it was `EditorApplication.Exit(0)`, reached from a button.
+
+`CdnTestContentCLI.CreateRemoteTestContent` is a batchmode entry point: it ends the Editor to report
+its status, which is exactly right for a CLI. **4.4.0 wired a button straight to it.** Nothing in
+Unity announces itself exiting on purpose, so it reads as a crash — and `Exit` does not offer to save,
+so anything unsaved went with it.
+
+**This is the second time in three releases**, and the first one was two commits earlier: `ProbeHub`
+closed a live session, was guarded, and the guard was not carried to the seven other files that call
+`Exit`. Fixing one instance of a pattern and not looking for the rest is the defect the 4.1.0 release
+exists to describe, committed inside the release that describes it.
+
+### Fixed - the work is separated from the exit
+
+`CreateRemoteTestContentCore` and `GenerateTestCorpusCore` do the work and **return** an exit code.
+The public entry points call them and then exit, and only in batchmode. The buttons call the work.
+
+The code is reported rather than swallowed: these write to the Addressables settings, and a run that
+stopped half way leaves the project in a state worth being told about. Silence after pressing a
+button that changes the project is its own defect.
+
+### Added - `BatchmodeGate`, and all nine entry points now use it
+
+Every `public static void` reachable by `-executeMethod` refuses to exit outside batchmode and says
+why. One helper rather than nine copies, because nine copies is how one of them ends up different.
+
+Guarded: `CatalogInspectCLI`, `CdnBuildCLI` (3), `CdnSetupCLI`, `CdnTabProbeCLI`, `AddressableCLI`
+(5), plus the two already done. CI is unaffected — in batchmode the gate returns true.
+
+**Verified by running a guarded entry point from a live Editor through the automation bridge**: the
+Editor survived and logged the refusal. Before this it would have closed.
+
+Checked that no guarded method is called from anywhere else in the package first: the apparent
+callers were same-named methods on other types — `LayoutRuleProcessor.ApplyRules` is an instance
+method, `RuleConflictDetector.DetectConflicts` is a different type, `LayoutRuleEditorWindow.ImportRules`
+is private. A guard on a method the UI depends on would have traded a crash for a dead button.
+
 ## [4.4.0] - 2026-08-26 - The local server can be made to fail on purpose, from a button
 
 ### Added - `Test content` and `Make it fail` on the Local Server screen

@@ -22,6 +22,8 @@ namespace AddressableManager.Editor.Cdn
     {
         public static void ProbeTabs()
         {
+            if (!BatchmodeGate.MayExit("CdnTabProbe")) return;
+
             if (EditorUtility.scriptCompilationFailed)
             {
                 Debug.LogError("[CdnTabProbe] FAILURE: script compilation failed");
