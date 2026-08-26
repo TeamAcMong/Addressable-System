@@ -35,6 +35,7 @@ const ORDER = [
   'States.dc.html',
   'Components.dc.html',
   'MenuMap.dc.html',
+  'Reachability.dc.html',
 ]
 
 // ---------------------------------------------------------------- read

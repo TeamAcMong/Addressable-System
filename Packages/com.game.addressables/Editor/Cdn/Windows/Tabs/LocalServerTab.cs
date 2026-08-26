@@ -80,6 +80,8 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
         private Label _logCountLabel;
         private Button _clearLogButton;
 
+        private LocalServerTestSetup _testSetup;
+
         public VisualElement CreateView()
         {
             var visualTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
@@ -119,6 +121,12 @@ namespace AddressableManager.Editor.Cdn.Windows.Tabs
 
             _serverToggle.RegisterValueChangedCallback(OnServerToggleChanged);
             _clearLogButton.clicked += ClearLog;
+
+            // The controls that make this server fail on purpose, and create content to fail
+            // against. Appended in code rather than declared in the UXML so CdnManagerWindow gets
+            // them too without a second markup file to keep in step.
+            _testSetup = new LocalServerTestSetup();
+            root.Add(_testSetup.Build());
 
             ConfigureLogList();
 

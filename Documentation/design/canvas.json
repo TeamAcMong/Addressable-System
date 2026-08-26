@@ -16,7 +16,7 @@
       "y": 0,
       "w": 1280,
       "h": 880,
-      "title": "Addressable Manager — prototype",
+      "title": "Addressable Manager \u2014 prototype",
       "page": "page-1"
     },
     {
@@ -63,6 +63,15 @@
       "h": 700,
       "title": "Menu consolidation",
       "page": "page-2"
+    },
+    {
+      "file": "Reachability.dc.html",
+      "x": 4100,
+      "y": 0,
+      "w": 1000,
+      "h": 1180,
+      "title": "Reachability \u2014 can we reach the CDN",
+      "page": "page-1"
     }
   ],
   "annotations": [
@@ -79,7 +88,7 @@
       "x": 1400,
       "y": 880,
       "w": 470,
-      "text": "Closed — see Decisions & build order:\n· Diagnostics: cut Assets + Performance, re-aim Scopes as Asset Lifetime.\n· Profiles: conformance view, not a second editor.\n· Ctrl+K: yes, built last.",
+      "text": "Closed \u2014 see Decisions & build order:\n\u00b7 Diagnostics: cut Assets + Performance, re-aim Scopes as Asset Lifetime.\n\u00b7 Profiles: conformance view, not a second editor.\n\u00b7 Ctrl+K: yes, built last.",
       "page": "page-1"
     },
     {
@@ -87,8 +96,16 @@
       "x": 0,
       "y": -130,
       "w": 500,
-      "text": "Colours resolve from --unity-colors-* so the window follows the Editor skin. Spacing, radii and the 150px key column are lifted from the package's existing USS. USS has no grid, no ::before, no box-shadow, no rem and no media queries — nothing here needs them.",
+      "text": "Colours resolve from --unity-colors-* so the window follows the Editor skin. Spacing, radii and the 150px key column are lifted from the package's existing USS. USS has no grid, no ::before, no box-shadow, no rem and no media queries \u2014 nothing here needs them.",
       "page": "page-2"
+    },
+    {
+      "id": "reach-note",
+      "x": 4100,
+      "y": -190,
+      "w": 500,
+      "text": "Proposed. Goes on Catalog Inspector, which already holds the local half of the comparison.\n\nThe design decision is the number of outcomes: four, not two. \"Up to date\" and \"could not ask\" are opposites that look identical on a screen with one tick and one cross, and a 401 is a fifth thing again - the CDN answered, and said no.",
+      "page": "page-1"
     }
   ],
   "launch": {

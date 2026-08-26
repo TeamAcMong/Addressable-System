@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</helmet>
+
+<div style="background-color: #383838; color: #D2D2D2; padding: 26px 30px 34px 30px; min-height: 100%;">
+
+  <div style="margin-bottom: 22px;">
+    <div style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Can we reach the CDN, and is it newer?</div>
+    <div style="font-size: 12px; color: #9E9490; margin-top: 7px; max-width: 860px; text-wrap: pretty;">
+      Today this question can only be asked from <b>play mode</b>, through <span class="mono">CdnManager.CheckForUpdateAsync</span>,
+      after the game has initialised the CDN layer &mdash; so testing a piece of <i>infrastructure</i> requires running the <i>game</i>.
+      The Editor assembly has never made an outbound request; the only thing that asks a CDN anything is
+      <span class="mono">ci/verify-urls.sh</span>, which is curl in a shell nobody can press from inside Unity.
+      This block goes on <b>Catalog Inspector</b>, the one screen that already holds the local half of the comparison.
+    </div>
+  </div>
+
+  <!-- ── the point of the design ────────────────────────────────────────── -->
+  <div style="display: flex; gap: 9px; padding: 11px 13px; background-color: #3A3A34; border: 1px solid #4A4A3F; border-radius: 4px; margin-bottom: 24px;">
+    <div style="width: 8px; height: 8px; border-radius: 4px; background-color: #F5C24C; flex-shrink: 0; margin-top: 5px;"></div>
+    <div style="flex-grow: 1; min-width: 0;">
+      <div style="font-size: 13px; color: #DCD8C8; font-weight: 600;">Four outcomes, not two</div>
+      <div style="font-size: 11.5px; color: #9E9A85; margin-top: 3px; text-wrap: pretty;">
+        &ldquo;Up to date&rdquo; and &ldquo;could not ask&rdquo; look identical on a screen that only has a green tick and a red cross,
+        and they are opposites: one means the content is current, the other means nobody knows.
+        The runtime already carries this distinction as <span class="mono">WasOfflineFallback</span> &mdash; the Editor must not throw it away.
+        <b>A refused request is a fifth thing again</b>: the CDN answered, and said no.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── the states ─────────────────────────────────────────────────────── -->
+  <sc-for list="{{states}}" as="s" hint-placeholder-count="5">
+    <div style="margin-bottom: 20px;">
+
+      <div style="display: flex; align-items: baseline; gap: 9px; margin-bottom: 7px;">
+        <div style="width: 8px; height: 8px; border-radius: 4px; background-color: {{s.tone}};"></div>
+        <span style="font-size: 13px; font-weight: 600; color: #E4E4E4;">{{s.name}}</span>
+        <span style="font-size: 11px; color: #7E7E7E;">{{s.when}}</span>
+      </div>
+
+      <!-- the block as it appears inside Catalog Inspector -->
+      <div style="border: 1px solid #2B2B2B; border-radius: 4px; overflow: hidden; max-width: 900px;">
+        <div style="padding: 6px 12px; background-color: #3C3C3C; border-bottom: 1px solid #2B2B2B; display: flex; align-items: center;">
+          <span style="font-size: 11.5px; font-weight: 600; flex-grow: 1;">Reachability</span>
+          <span style="font-size: 10px; color: #7E7E7E;">{{s.stamp}}</span>
+        </div>
+
+        <div style="padding: 11px 12px 12px 12px;">
+          <div style="display: flex; align-items: flex-start; gap: 9px;">
+            <div style="width: 8px; height: 8px; border-radius: 4px; background-color: {{s.tone}}; flex-shrink: 0; margin-top: 5px;"></div>
+            <div style="flex-grow: 1; min-width: 0;">
+              <div style="font-size: 12.5px; color: {{s.ink}};">{{s.headline}}</div>
+              <div style="font-size: 11px; color: #8A8A8A; margin-top: 3px; text-wrap: pretty;">{{s.detail}}</div>
+            </div>
+          </div>
+
+          <sc-if value="{{s.rows}}" hint-placeholder-val="{{true}}">
+            <div style="margin-top: 10px; border-top: 1px solid #2B2B2B; padding-top: 9px;">
+              <sc-for list="{{s.rows}}" as="r" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; padding: 3px 0;">
+                  <span style="width: 120px; flex-shrink: 0; font-size: 10.5px; color: #8A8A8A;">{{r.k}}</span>
+                  <span class="mono" style="flex-grow: 1; min-width: 0; font-size: 10.5px; color: {{r.tone}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{r.v}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <div style="display: flex; align-items: center; margin-top: 11px;">
+            <span style="flex-grow: 1; font-size: 10px; color: #7E7E7E; text-wrap: pretty;">{{s.foot}}</span>
+            <sc-for list="{{s.actions}}" as="a" hint-placeholder-count="2">
+              <div class="btn" style="flex-shrink: 0; margin-left: 8px; padding: 3px 11px; background-color: {{a.bg}}; border: 1px solid #303030; border-radius: 3px; font-size: 10.5px; color: {{a.fg}}; cursor: pointer;">{{a.label}}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-for>
+
+  <!-- ── what it costs ──────────────────────────────────────────────────── -->
+  <div style="margin-top: 26px; padding-top: 18px; border-top: 1px solid #2B2B2B; max-width: 900px;">
+    <div style="font-size: 13px; font-weight: 600; color: #E4E4E4; margin-bottom: 9px;">Three things this is the first of, and each needs a rule</div>
+    <sc-for list="{{costs}}" as="c" hint-placeholder-count="3">
+      <div style="display: flex; gap: 9px; padding: 7px 0;">
+        <div style="width: 5px; height: 5px; border-radius: 3px; background-color: #6E6E6E; flex-shrink: 0; margin-top: 6px;"></div>
+        <div>
+          <div style="font-size: 11.5px; color: #DCDCDC;">{{c.what}}</div>
+          <div style="font-size: 10.5px; color: #8A8A8A; margin-top: 2px; text-wrap: pretty;">{{c.rule}}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const OK = '#6FBF73', WARN = '#F5C24C', ERR = '#FF6B68', IDLE = '#6E6E6E';
+    const btn  = '#585858', btnP = '#3A79C4', btnD = '#524244';
+
+    return {
+      states: [
+        {
+          name: 'Never asked', when: 'the state it opens in', tone: IDLE, ink: '#B4B4B4',
+          stamp: 'not checked',
+          headline: 'Nothing has asked the CDN yet',
+          detail: 'This does not run on its own. It makes an outbound request from the Editor, which is a thing the reader should choose rather than discover.',
+          rows: null,
+          foot: 'HEAD on one bundle URL, GET on the catalog hash. Nothing is downloaded.',
+          actions: [ { label: 'Check the CDN', bg: btnP, fg: '#FFFFFF' } ],
+        },
+        {
+          name: 'Reached, and current', when: 'the boring answer, and the one worth trusting', tone: OK, ink: '#C8DCC8',
+          stamp: 'checked 14:22:07 · 0.4s',
+          headline: 'The CDN has the same catalog this build produced',
+          detail: 'The remote hash matches the local one, so a returning player downloads nothing.',
+          rows: [
+            { k: 'Origin',       v: 'https://cdn.acme.com/StandaloneWindows64', tone: '#C8C8C8' },
+            { k: 'Catalog hash', v: '9de2c41f… — identical',                    tone: '#7DC183' },
+            { k: 'Bundle probe', v: '200 · cache-control: max-age=31536000',    tone: '#7DC183' },
+          ],
+          foot: 'The header matters as much as the status: a bundle served without a long max-age is re-downloaded by every player on every launch.',
+          actions: [ { label: 'Re-check', bg: btn, fg: '#D2D2D2' } ],
+        },
+        {
+          name: 'Reached, and newer', when: 'someone published after this build', tone: WARN, ink: '#DCD8C8',
+          stamp: 'checked 14:24:51 · 0.5s',
+          headline: 'The CDN is serving a catalog this build did not produce',
+          detail: 'Not automatically wrong — it is right after a colleague publishes. It is wrong if you were about to publish over it.',
+          rows: [
+            { k: 'Local hash',  v: '9de2c41f…', tone: '#C8C8C8' },
+            { k: 'Remote hash', v: '41ba07e9… — differs', tone: '#F5C24C' },
+            { k: 'Remote age',  v: 'Last-Modified 11 minutes ago', tone: '#C8C8C8' },
+          ],
+          foot: 'Age is shown because "differs" alone cannot tell a fresh publish from a stale one you are about to overwrite.',
+          actions: [ { label: 'Open Catalog Inspector', bg: btn, fg: '#D2D2D2' }, { label: 'Re-check', bg: btn, fg: '#D2D2D2' } ],
+        },
+        {
+          name: 'Could not ask', when: 'offline, DNS, timeout — never confused with "current"', tone: IDLE, ink: '#B4B4B4',
+          stamp: 'attempted 14:31:02 · timed out at 10s',
+          headline: 'The request never reached the CDN',
+          detail: 'Nothing was learned. This is deliberately NOT drawn in green, and deliberately not in red: the content may be perfectly current, and it may not.',
+          rows: [
+            { k: 'Origin',  v: 'https://cdn.acme.com/StandaloneWindows64', tone: '#C8C8C8' },
+            { k: 'Failure', v: 'Name resolution failed after 10.0s',        tone: '#9E9E9E' },
+          ],
+          foot: 'Same distinction the runtime carries as WasOfflineFallback. Telling a player their game is current when nobody asked is the failure this exists to stop.',
+          actions: [ { label: 'Retry', bg: btn, fg: '#D2D2D2' } ],
+        },
+        {
+          name: 'Refused', when: 'the CDN answered, and said no', tone: ERR, ink: '#E0B8B6',
+          stamp: 'checked 14:33:40 · 0.2s',
+          headline: '401 — the CDN wants credentials this check did not send',
+          detail: 'A fifth outcome, not a variant of offline. The host is up and reachable; the request was rejected. Folding this into "could not reach" would send someone to debug their network over an auth header.',
+          rows: [
+            { k: 'Status',  v: '401 Unauthorized', tone: '#FF6B68' },
+            { k: 'Sent',    v: 'no Authorization header', tone: '#C8C8C8' },
+            { k: 'Runtime', v: 'CdnRequestDecorator supplies one in play mode', tone: '#C8C8C8' },
+          ],
+          foot: 'The Editor check does not carry the runtime auth provider. Whether it should is the one open question on this design.',
+          actions: [ { label: 'Send auth header', bg: btnD, fg: '#E0B8B6' }, { label: 'Re-check', bg: btn, fg: '#D2D2D2' } ],
+        },
+      ],
+
+      costs: [
+        {
+          what: 'The first outbound request the Editor assembly has ever made.',
+          rule: 'Timeout, cancellable, and never on a timer. A tool that quietly talks to a network is a tool nobody can reason about — this asks only when asked.',
+        },
+        {
+          what: 'HEAD on a bundle, GET on the hash file. Nothing is downloaded.',
+          rule: 'A check that pulls content changes the thing it measures: it would warm the CDN edge and make the next real measurement look faster than it is.',
+        },
+        {
+          what: 'It answers for THIS machine, not for a player.',
+          rule: 'A dev box can sit behind a VPN or a corporate proxy that a phone on 4G does not. The screen says so rather than letting the reader generalise from one green tick.',
+        },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
