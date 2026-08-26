@@ -1,6 +1,50 @@
 # Changelog
 
 All notable changes to this package will be documented in this file.
+## [4.4.0] - 2026-08-26 - The local server can be made to fail on purpose, from a button
+
+### Added - `Test content` and `Make it fail` on the Local Server screen
+
+**The machinery already existed and nothing could reach it.** `ServerFaults` can return any status for
+any path, drop connections mid-response, throttle to a byte rate and add latency — and it was called
+from exactly one place in the package: `CdnFaultInjectionTests`. `CdnTestContentCLI` can create remote
+test content and a whole corpus, and carried no menu item, so both were reachable only through
+`-executeMethod` in batchmode. **A capability nobody can press is a capability the team does not have.**
+
+Both are now on the screen that owns the server, in code rather than in the UXML so
+`CdnManagerWindow` gets them without a second markup file to keep in step.
+
+### Notes - faults are one global state, and the panel says so
+
+`InjectStatus` and `InjectConnectionDrop` **share** the path filter and the request budget — setting
+one overwrites the other — and the `IDisposable` every injector returns calls `Clear()`, which removes
+**all** faults rather than the one it came from. A panel offering several independently-removable
+faults would describe an engine that does not exist, so this offers one fault at a time and one way
+to remove it. The returned disposables are deliberately discarded.
+
+**The banner is the important part.** The state is static and survives domain reloads, so a 503
+switched on and forgotten makes everything afterwards fail with nothing on screen explaining why —
+and the next person debugs a CDN over a switch someone flipped ten minutes ago. While a fault is
+active the screen says so, and it clears itself on leaving play mode.
+
+Hidden when nothing is wrong: a permanent "no faults active" strip is a line people stop reading,
+which is the one thing this must not become.
+
+### Added - the `Reachability` design, as a preview only
+
+`Documentation/design/Reachability.dc.html`, in `DESIGN_PREVIEW.html`. Asking "can we reach the CDN,
+and is it newer" today requires **play mode** — `CdnManager.CheckForUpdateAsync` needs the game to
+have initialised the CDN layer, so testing infrastructure means running the game. The Editor assembly
+has never made an outbound request; its two networked files are an `HttpListener` that *serves*.
+
+The design decision is the number of outcomes: **four, not two.** "Up to date" and "could not ask"
+are opposites that render as the same pixel on a screen with one tick and one cross. A 401 is a fifth
+thing again — the host answered, and refused.
+
+Not implemented. **Deliberately after this release**: four of those five states can only be produced
+by making a server fail, and building the check before the means of failing it would have proven one
+branch out of five.
+
 ## [4.3.0] - 2026-08-25 - Which bundles the device actually has, and two screens that were showing less than they knew
 
 ### Added - `Downloaded Content`, and `CacheInventory` underneath it
