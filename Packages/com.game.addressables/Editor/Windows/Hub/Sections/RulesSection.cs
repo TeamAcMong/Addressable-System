@@ -187,6 +187,62 @@ namespace AddressableManager.Editor.Windows.Hub
             }
         }
 
+        /// <summary>Which rule set is on screen, and how to reach the others.</summary>
+        private VisualElement BuildRuleSetPicker(List<LayoutRuleData> all)
+        {
+            var card = new VisualElement();
+            card.AddToClassList("hub-card");
+
+            var head = new VisualElement();
+            head.AddToClassList("hub-card-header");
+
+            var title = new Label("This project has " + all.Count + " rule sets");
+            title.AddToClassList("hub-card-title");
+            head.Add(title);
+
+            var count = new Label("all of them run \u00b7 showing one at a time");
+            count.AddToClassList("hub-card-count");
+            head.Add(count);
+            card.Add(head);
+
+            var names = new List<string>(all.Count);
+            foreach (var data in all)
+                names.Add(AssetDatabase.GetAssetPath(data));
+
+            string current = AssetDatabase.GetAssetPath(_ruleData);
+
+            var picker = new PopupField<string>(names, names.IndexOf(current) < 0 ? 0 : names.IndexOf(current));
+            picker.label = "Showing";
+            picker.style.marginLeft = 9;
+            picker.style.marginRight = 9;
+            picker.style.marginTop = 6;
+            picker.style.marginBottom = 8;
+
+            picker.RegisterValueChangedCallback(evt =>
+            {
+                SessionState.SetString(SelectedRuleSetKey, evt.newValue);
+
+                // A preview belongs to the rule set it was run against. Carrying it across would
+                // show one set's planned changes under another set's name.
+                _preview = null;
+                Rebuild();
+            });
+
+            card.Add(picker);
+
+            var note = new Label(
+                "A dry run and Apply act on the rule set selected here. Conflicts scans every one of " +
+                "them, because two rule sets can address the same asset.");
+
+            note.AddToClassList("hub-note-text");
+            note.style.paddingLeft = 9;
+            note.style.paddingRight = 9;
+            note.style.paddingBottom = 8;
+            card.Add(note);
+
+            return card;
+        }
+
         private void Rebuild()
         {
             if (_body == null) return;
@@ -198,7 +254,14 @@ namespace AddressableManager.Editor.Windows.Hub
                 return;
             }
 
+            var allRuleSets = FindAllRuleData();
             _ruleData = FindRuleData();
+
+            // More than one rule set is normal - they are not alternatives, every one of them runs.
+            // A screen showing a single name with no sign the others exist is how a project with
+            // four rule sets reads as a project with one.
+            if (allRuleSets.Count > 1)
+                _body.Add(BuildRuleSetPicker(allRuleSets));
             if (_ruleData == null)
             {
                 _body.Add(BuildNoRulesState());
@@ -744,17 +807,56 @@ namespace AddressableManager.Editor.Windows.Hub
             return row;
         }
 
-        internal static LayoutRuleData FindRuleData()
+        /// <summary>Every rule set in the project, ordered by path.</summary>
+        /// <remarks>
+        /// Sorted, because <c>AssetDatabase.FindAssets</c> does not promise an order. Without that,
+        /// a project with more than one rule set showed a DIFFERENT one depending on import order -
+        /// so the screen was not merely incomplete, it was unrepeatable.
+        /// </remarks>
+        internal static List<LayoutRuleData> FindAllRuleData()
         {
-            var guids = AssetDatabase.FindAssets("t:LayoutRuleData");
-            foreach (var guid in guids)
+            var found = new List<LayoutRuleData>();
+
+            foreach (var guid in AssetDatabase.FindAssets("t:LayoutRuleData"))
             {
                 var data = AssetDatabase.LoadAssetAtPath<LayoutRuleData>(AssetDatabase.GUIDToAssetPath(guid));
-                if (data != null) return data;
+                if (data != null) found.Add(data);
             }
 
-            return null;
+            found.Sort((a, b) => string.CompareOrdinal(
+                AssetDatabase.GetAssetPath(a), AssetDatabase.GetAssetPath(b)));
+
+            return found;
         }
+
+        /// <summary>
+        /// The rule set this screen is showing.
+        /// </summary>
+        /// <remarks>
+        /// This used to return the first asset <c>FindAssets</c> happened to yield and ignore the
+        /// rest, so a project with several rule sets saw one of them with nothing on screen saying
+        /// the others existed. Rule sets are not alternatives to each other - every one of them runs
+        /// - so showing one and calling it "Layout Rules" understated what the project does.
+        ///
+        /// The remembered choice is per-session and falls back to the first by path, so the answer
+        /// is the same twice in a row on a project that has not changed.
+        /// </remarks>
+        internal static LayoutRuleData FindRuleData()
+        {
+            var all = FindAllRuleData();
+            if (all.Count == 0) return null;
+
+            string remembered = SessionState.GetString(SelectedRuleSetKey, string.Empty);
+            if (!string.IsNullOrEmpty(remembered))
+            {
+                foreach (var data in all)
+                    if (AssetDatabase.GetAssetPath(data) == remembered) return data;
+            }
+
+            return all[0];
+        }
+
+        private const string SelectedRuleSetKey = "AddressableManager.Hub.SelectedRuleSet";
 
         private static VisualElement Note(string text)
         {

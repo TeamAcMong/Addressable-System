@@ -258,6 +258,69 @@ nó được vá: kết quả của cả ba nút bị <code>Refresh()</code> ghi
 trên <code>IOwnedHandle</code>, mà nó chỉ có <code>IsAlive</code>. Nửa đó chưa đo, và màn hình ghi
 rõ chứ không đoán.</p>
 
+<h2 id="cache">Downloaded Content — màn mới, và ba ràng buộc định hình nó</h2>
+
+<p>Câu hỏi: <em>bundle nào đã được tải về và nằm trong cache của máy chơi?</em>
+Trước bản này, tool chỉ trả lời được <strong>tổng</strong> — <code>OccupiedBytes</code> /
+<code>FreeBytes</code> trên Runtime Monitor. Không có gì nói được <em>cái gì</em> đang chiếm chỗ đó.</p>
+
+<p>Ba ràng buộc dưới đây <strong>đã tra thẳng source Addressables 2.9.1</strong>, không phải suy đoán.
+Chúng quyết định hình dạng màn hình, nên chúng đứng trước mọi thứ khác.</p>
+
+<div class="card c-err">
+<h3>1. Cache không liệt kê được</h3>
+<p><code>Caching</code> trả lời <em>&ldquo;bundle tên X có trong cache không?&rdquo;</em> cho một X mà anh đã biết tên.
+Nó <strong>không</strong> trả lời được <em>&ldquo;trong cache có những gì?&rdquo;</em>.
+<code>Caching.GetAllCachePaths</code> liệt kê <em>thư mục cache</em>, không phải bundle.</p>
+<p><strong>Hệ quả thiết kế:</strong> danh sách chỉ có thể là bundle của <em>catalog đang nạp</em>.
+Nội dung do catalog cũ tải về không có tên để hiện. Màn hình <strong>phải nói điều đó ra</strong>
+thay vì lặng lẽ bỏ qua — vì phần bị bỏ qua chính là phần <code>Clean obsolete</code> xóa.</p>
+</div>
+
+<div class="card c-err">
+<h3>2. Khoá cache là <code>BundleName</code>, không phải tên file</h3>
+<p>Addressables khoá bằng <code>new CachedAssetBundle(options.BundleName, Hash128.Parse(options.Hash))</code>
+— xác minh ở ba chỗ gọi trong <code>AssetBundleProvider.cs</code>.</p>
+<p><code>BundleName</code> là <strong>id nội bộ</strong> dạng <code>0198c01022dfc87272228a59dbea2a92</code>.
+Tên file thật nằm ở đuôi <code>InternalId</code>. <code>CatalogReader</code> cố tình khoá theo
+<em>tên file</em> — vì câu hỏi của nó là &ldquo;file này có trên CDN không&rdquo;.</p>
+<p><strong>Hai câu hỏi khác nhau, hai khoá khác nhau.</strong> Dùng nhầm thì màn hình báo
+<em>mọi</em> bundle là chưa tải, và trông như hỏng chứ không như sai khoá.
+Chính comment trong <code>CatalogReader</code> ghi lại rằng nhầm khoá theo chiều ngược lại
+đã khiến mọi bundle trông như thiếu.</p>
+</div>
+
+<div class="card c-warn">
+<h3>3. Bundle local không bao giờ vào cache</h3>
+<p>Chúng nằm sẵn trong player. <em>&ldquo;Chưa tải&rdquo;</em> và <em>&ldquo;không bao giờ tải&rdquo;</em>
+là hai câu trả lời khác nhau, nên chúng được tách thành <strong>hai nhóm riêng</strong>.
+Gộp lại thì người đọc sẽ đi tìm lý do một bundle &ldquo;không chịu tải&rdquo;.</p>
+</div>
+
+<h3>Hình dạng màn hình</h3>
+
+<p><strong>Rail:</strong> <code>Cache</code> &middot; <strong>tiêu đề:</strong> <code>Downloaded Content</code>
+— dùng đúng cơ chế <code>IHubRailLabel</code> mà <code>Validator</code>/<code>Configuration</code> đã thiết lập.
+Đặt ở stage <strong>Run</strong>, cạnh Runtime Monitor và Asset Lifetime.</p>
+
+<ul>
+<li><strong>Thanh chia theo byte, không theo số lượng.</strong> &ldquo;340 bundle&rdquo; là một con số;
+&ldquo;2.0 GB qua 4G&rdquo; là một quyết định. Dùng lại <code>hub-splitbar</code> của màn Build.</li>
+<li><strong>Phân đoạn thứ ba: <em>Other versions</em></strong> — hiệu của tổng cache trừ phần catalog
+giải trình được. Đây là con số không công cụ nào khác hiện, và là thứ <code>Clean obsolete</code> nhắm tới.</li>
+<li><strong>Nhóm theo ý nghĩa của câu trả lời</strong>, không theo tên bundle — giống cách Validator
+nhóm theo hậu quả: <em>On this device</em> / <em>Still to fetch</em> / <em>Ships in the player</em>.</li>
+<li><strong>Mỗi dòng nói nó giữ gì</strong> (&ldquo;84 addresses&rdquo;), vì tên bundle là hash — không ai
+nhận ra <code>ui_sprites_9a41</code> là cái gì nếu không được nói.</li>
+<li><strong><code>Evict</code> chỉ có ở nhóm đã cache</strong>, tô màu cảnh báo.
+<code>Caching.ClearAllCachedVersions(name)</code> làm được việc này ở mức từng bundle.</li>
+<li><strong>Dấu thời gian lấy mẫu.</strong> Mọi dòng là ảnh chụp, và danh sách không nói mình chụp lúc nào
+thì bị đọc như đang sống.</li>
+</ul>
+
+<p><strong>Ngoài play mode màn này không có gì để nói</strong>, và nói thế — không có catalog nào được nạp,
+và cache của Editor không phải cache của thiết bị.</p>
+
 <h2 id="pitfalls">Ba cái bẫy đã trả giá để biết</h2>
 
 <div class="card c-err">

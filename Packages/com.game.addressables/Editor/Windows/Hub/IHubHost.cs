@@ -42,6 +42,20 @@ namespace AddressableManager.Editor.Windows.Hub
 
         /// <summary>Show a section by <see cref="IHubSection.Id"/>.</summary>
         void Navigate(string sectionId);
+
+        /// <summary>
+        /// Rebuild the header buttons for the section on screen.
+        /// </summary>
+        /// <remarks>
+        /// The shell fills that area once, during navigation. A section whose button carries a
+        /// COUNT - "Release leaked (3)" - therefore goes stale the moment the count moves, even
+        /// while its own body is refreshing correctly underneath. Half a screen updating is worse
+        /// than none of it, because the half that stopped looks authoritative.
+        ///
+        /// Call it only when the answer actually changed. Rebuilding the row on every tick would
+        /// destroy and recreate a button under a cursor that might be on its way to clicking it.
+        /// </remarks>
+        void RefreshHeaderActions();
     }
 
     /// <summary>

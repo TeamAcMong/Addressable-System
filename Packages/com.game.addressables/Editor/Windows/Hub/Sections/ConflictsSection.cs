@@ -39,6 +39,7 @@ namespace AddressableManager.Editor.Windows.Hub
         private static List<LayoutRuleProcessor.AddressCollision> _lastScan;
         private static string _lastScanFailure;
         private static double _lastScanAt;
+        private static int _lastScanSetCount;
 
         private VisualElement _body;
 
@@ -93,9 +94,9 @@ namespace AddressableManager.Editor.Windows.Hub
 
         private void Scan()
         {
-            var data = RulesSection.FindRuleData();
+            var all = RulesSection.FindAllRuleData();
 
-            if (data == null)
+            if (all.Count == 0)
             {
                 _lastScan = null;
                 _lastScanFailure = "No LayoutRuleData asset in the project, so there are no rules to " +
@@ -106,10 +107,18 @@ namespace AddressableManager.Editor.Windows.Hub
 
             try
             {
-                var result = new LayoutRuleProcessor(data).PreviewRules();
-                _lastScan = result.Collisions;
+                // Every rule set, not the one Layout Rules happens to be showing. Two sets can both
+                // address the same asset, and that collision belongs to neither of them alone - a
+                // scan of one would report it clean while the build fails.
+                var collisions = new List<LayoutRuleProcessor.AddressCollision>();
+
+                foreach (var data in all)
+                    collisions.AddRange(new LayoutRuleProcessor(data).PreviewRules().Collisions);
+
+                _lastScan = collisions;
                 _lastScanFailure = null;
                 _lastScanAt = EditorApplication.timeSinceStartup;
+                _lastScanSetCount = all.Count;
             }
             catch (Exception ex)
             {
@@ -154,8 +163,9 @@ namespace AddressableManager.Editor.Windows.Hub
             if (_lastScan.Count == 0)
             {
                 _body.Add(Note(
-                    "No two assets resolve to the same address. Scanned " + Ago(_lastScanAt) +
-                    ", against the rule set as it is now - re-scan after changing a rule or adding assets.",
+                    "No two assets resolve to the same address across " + _lastScanSetCount +
+                    " rule set(s). Scanned " + Ago(_lastScanAt) +
+                    " - re-scan after changing a rule or adding assets.",
                     HealthState.Ok));
                 return;
             }
